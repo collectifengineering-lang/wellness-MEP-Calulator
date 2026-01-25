@@ -1,7 +1,15 @@
-// xAI Grok Vision API client for PDF zone extraction
+// AI Vision API client for PDF zone extraction
+// Supports Claude (primary) and Grok (fallback)
 
 const XAI_API_KEY = import.meta.env.VITE_XAI_API_KEY || ''
 const XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
+
+const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || ''
+const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
+
+// Check which AI providers are available
+export const isClaudeConfigured = () => !!ANTHROPIC_API_KEY && ANTHROPIC_API_KEY.length > 10
+export const isGrokConfigured = () => !!XAI_API_KEY && XAI_API_KEY.length > 10
 
 // Our available zone types for AI matching
 const AVAILABLE_ZONE_TYPES = [
@@ -442,15 +450,8 @@ If no good match exists, use "custom". Only respond with valid JSON.`
   }
 }
 
-export async function extractZonesFromImage(
-  imageBase64: string,
-  mimeType: string = 'image/png'
-): Promise<ExtractionResult> {
-  if (!isXAIConfigured()) {
-    throw new Error('xAI API key not configured')
-  }
-
-  const prompt = `You are extracting room data from an architectural floor plan or area schedule.
+// Shared extraction prompt for both Claude and Grok
+const EXTRACTION_PROMPT = `You are extracting room data from an architectural floor plan or area schedule.
 
 TASK: Find ALL rooms/spaces with their SQUARE FOOTAGE numbers.
 
@@ -498,119 +499,229 @@ Respond with ONLY valid JSON:
 
 Be precise with numbers. A gym is often 5,000-15,000 SF, not 500 SF.`
 
+// Track which provider was used for extraction
+export type AIProvider = 'claude' | 'grok' | 'none'
+let lastUsedProvider: AIProvider = 'none'
+export const getLastUsedProvider = () => lastUsedProvider
+
+// Extract zones using Claude (primary provider)
+async function extractWithClaude(
+  imageBase64: string,
+  mimeType: string
+): Promise<{ zones: any[]; totalSF: number; rawResponse: string }> {
+  console.log('Attempting extraction with Claude...')
+  
+  const response = await fetch(ANTHROPIC_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8192,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: mimeType,
+                data: imageBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: EXTRACTION_PROMPT,
+            },
+          ],
+        },
+      ],
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Claude API error: ${response.status} - ${errorText}`)
+  }
+
+  const data = await response.json()
+  const content = data.content?.[0]?.text || ''
+  
+  // Parse JSON from response
+  const jsonMatch = content.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    throw new Error('No JSON found in Claude response')
+  }
+  
+  const parsed = JSON.parse(jsonMatch[0])
+  lastUsedProvider = 'claude'
+  
+  return {
+    zones: parsed.zones || [],
+    totalSF: parsed.totalSF || 0,
+    rawResponse: content,
+  }
+}
+
+// Extract zones using Grok (fallback provider)
+async function extractWithGrok(
+  imageBase64: string,
+  mimeType: string
+): Promise<{ zones: any[]; totalSF: number; rawResponse: string }> {
+  console.log('Attempting extraction with Grok...')
+  
+  const response = await fetch(XAI_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${XAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'grok-2-vision-1212',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:${mimeType};base64,${imageBase64}`,
+              },
+            },
+            {
+              type: 'text',
+              text: EXTRACTION_PROMPT,
+            },
+          ],
+        },
+      ],
+      max_tokens: 8192,
+      temperature: 0.2,
+    }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`xAI API error: ${response.status} - ${errorText}`)
+  }
+
+  const data = await response.json()
+  const content = data.choices?.[0]?.message?.content || ''
+  
+  // Parse JSON from response
+  const jsonMatch = content.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    throw new Error('No JSON found in Grok response')
+  }
+  
+  const parsed = JSON.parse(jsonMatch[0])
+  lastUsedProvider = 'grok'
+  
+  return {
+    zones: parsed.zones || [],
+    totalSF: parsed.totalSF || 0,
+    rawResponse: content,
+  }
+}
+
+export async function extractZonesFromImage(
+  imageBase64: string,
+  mimeType: string = 'image/png'
+): Promise<ExtractionResult> {
+  // Check if any AI is configured
+  if (!isClaudeConfigured() && !isGrokConfigured()) {
+    throw new Error('No AI API key configured. Please add VITE_ANTHROPIC_API_KEY or VITE_XAI_API_KEY.')
+  }
+
+  let rawResult: { zones: any[]; totalSF: number; rawResponse: string } | null = null
+  let errors: string[] = []
+
+  // Try Claude first (better at document parsing)
+  if (isClaudeConfigured()) {
+    try {
+      rawResult = await extractWithClaude(imageBase64, mimeType)
+      console.log('Claude extraction successful:', rawResult.zones.length, 'zones')
+    } catch (claudeError: any) {
+      console.warn('Claude extraction failed:', claudeError.message)
+      errors.push(`Claude: ${claudeError.message}`)
+    }
+  }
+
+  // Fall back to Grok if Claude failed or not configured
+  if (!rawResult && isGrokConfigured()) {
+    try {
+      rawResult = await extractWithGrok(imageBase64, mimeType)
+      console.log('Grok extraction successful:', rawResult.zones.length, 'zones')
+    } catch (grokError: any) {
+      console.warn('Grok extraction failed:', grokError.message)
+      errors.push(`Grok: ${grokError.message}`)
+    }
+  }
+
+  if (!rawResult) {
+    throw new Error(`All AI providers failed:\n${errors.join('\n')}`)
+  }
+
+  // Process the raw zones - filter and map
+  const rawZones = rawResult.zones
+    .map((z: any) => ({
+      name: z.name || 'Unknown',
+      type: z.type || 'unknown',
+      sf: Math.round(z.sf || z.area || 0),
+    }))
+    .filter((z: any) => {
+      // Skip zones without SF
+      if (!z.sf || z.sf <= 0) {
+        console.log(`Skipping "${z.name}" - no SF`)
+        return false
+      }
+      // Skip circulation zones
+      if (shouldSkipZone(z.name)) {
+        console.log(`Skipping "${z.name}" - circulation/stairs`)
+        return false
+      }
+      return true
+    })
+  
+  console.log(`Extracted ${rawZones.length} valid zones (after filtering)`)
+
+  // Use AI to match zone types (in parallel with better accuracy)
+  let aiMatches: Record<string, string> = {}
   try {
-    const response = await fetch(XAI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${XAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'grok-2-vision-1212',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:${mimeType};base64,${imageBase64}`,
-                },
-              },
-              {
-                type: 'text',
-                text: prompt,
-              },
-            ],
-          },
-        ],
-        max_tokens: 8192,
-        temperature: 0.2,
-      }),
-    })
+    aiMatches = await matchZoneTypesWithAI(rawZones)
+    console.log('AI zone matches:', aiMatches)
+  } catch (aiError) {
+    console.warn('AI matching failed, falling back to keyword matching:', aiError)
+  }
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`xAI API error: ${response.status} - ${errorText}`)
-    }
-
-    const data = await response.json()
-    const content = data.choices?.[0]?.message?.content || ''
+  // Map the response to our format with AI-enhanced zone type suggestions
+  const zones: ExtractedZone[] = rawZones.map((z: any) => {
+    // Priority: AI match > keyword match > custom
+    const aiMatch = aiMatches[z.name]
+    const keywordMatch = suggestZoneType(z.name || z.type || '')
+    // Don't use _skip_ as a zone type
+    const suggestedType = aiMatch || (keywordMatch !== 'custom' && keywordMatch !== '_skip_' ? keywordMatch : null) || 'custom'
     
-    // Parse JSON from response
-    let parsed: any
-    try {
-      // Try to extract JSON from the response
-      const jsonMatch = content.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[0])
-      } else {
-        throw new Error('No JSON found in response')
-      }
-    } catch (parseError) {
-      console.error('Failed to parse AI response:', content)
-      throw new Error('Failed to parse AI response as JSON')
-    }
-
-    // Initial extraction - filter out circulation/stairs and zones without SF
-    const rawZones = (parsed.zones || [])
-      .map((z: any) => ({
-        name: z.name || 'Unknown',
-        type: z.type || 'unknown',
-        sf: Math.round(z.sf || z.area || 0),
-      }))
-      .filter((z: any) => {
-        // Skip zones without SF
-        if (!z.sf || z.sf <= 0) {
-          console.log(`Skipping "${z.name}" - no SF`)
-          return false
-        }
-        // Skip circulation zones
-        if (shouldSkipZone(z.name)) {
-          console.log(`Skipping "${z.name}" - circulation/stairs`)
-          return false
-        }
-        return true
-      })
-    
-    console.log(`Extracted ${rawZones.length} valid zones (after filtering)`)
-
-    // Use AI to match zone types (in parallel with better accuracy)
-    let aiMatches: Record<string, string> = {}
-    try {
-      aiMatches = await matchZoneTypesWithAI(rawZones)
-      console.log('AI zone matches:', aiMatches)
-    } catch (aiError) {
-      console.warn('AI matching failed, falling back to keyword matching:', aiError)
-    }
-
-    // Map the response to our format with AI-enhanced zone type suggestions
-    const zones: ExtractedZone[] = rawZones.map((z: any) => {
-      // Priority: AI match > keyword match > custom
-      const aiMatch = aiMatches[z.name]
-      const keywordMatch = suggestZoneType(z.name || z.type || '')
-      // Don't use _skip_ as a zone type
-      const suggestedType = aiMatch || (keywordMatch !== 'custom' && keywordMatch !== '_skip_' ? keywordMatch : null) || 'custom'
-      
-      return {
-        name: z.name,
-        type: z.type,
-        suggestedZoneType: suggestedType,
-        sf: z.sf,
-        confidence: aiMatch ? 'high' : (keywordMatch !== 'custom' && keywordMatch !== '_skip_' ? 'medium' : 'low'),
-        notes: aiMatch ? 'AI-matched' : undefined,
-      }
-    })
-
     return {
-      zones,
-      totalSF: parsed.totalSF || zones.reduce((sum, z) => sum + z.sf, 0),
-      pageCount: 1,
-      rawResponse: content,
+      name: z.name,
+      type: z.type,
+      suggestedZoneType: suggestedType,
+      sf: z.sf,
+      confidence: aiMatch ? 'high' : (keywordMatch !== 'custom' && keywordMatch !== '_skip_' ? 'medium' : 'low'),
+      notes: aiMatch ? 'AI-matched' : undefined,
     }
-  } catch (error) {
-    console.error('Zone extraction error:', error)
-    throw error
+  })
+
+  return {
+    zones,
+    totalSF: rawResult.totalSF || zones.reduce((sum, z) => sum + z.sf, 0),
+    pageCount: 1,
+    rawResponse: rawResult.rawResponse,
   }
 }
 

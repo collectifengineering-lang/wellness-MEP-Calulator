@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo } from 'react'
-import { extractZonesFromPDF, isXAIConfigured, type ExtractedZone } from '../../lib/xai'
+import { extractZonesFromPDF, isXAIConfigured, isClaudeConfigured, getLastUsedProvider, type ExtractedZone } from '../../lib/xai'
 import { useProjectStore } from '../../store/useProjectStore'
 import { zoneDefaults } from '../../data/zoneDefaults'
 import type { ZoneType } from '../../types'
@@ -25,6 +25,7 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
   const [checkedForCombine, setCheckedForCombine] = useState<Set<number>>(new Set())
   const [error, setError] = useState<string | null>(null)
   const [showCombinePanel, setShowCombinePanel] = useState(false)
+  const [aiProvider, setAiProvider] = useState<'claude' | 'grok' | 'none'>('none')
   
   // Zone type options for dropdown
   const zoneTypeOptions = Object.entries(zoneDefaults).map(([id, def]) => ({
@@ -190,6 +191,7 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
     
     setStep('processing')
     setError(null)
+    setAiProvider('none')
     
     try {
       const arrayBuffer = await file.arrayBuffer()
@@ -211,6 +213,8 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
         setSelectedZones(new Set(result.zones.map((_, i) => i)))
       }
       
+      // Check which provider was used
+      setAiProvider(getLastUsedProvider())
       setStep('review')
     } catch (err) {
       console.error('PDF extraction error:', err)
@@ -307,7 +311,7 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
           {/* Upload Step */}
           {step === 'upload' && (
             <div className="flex flex-col items-center justify-center py-12">
-              {!isXAIConfigured() ? (
+              {!isClaudeConfigured() && !isXAIConfigured() ? (
                 <div className="text-center">
                   <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-amber-500/10 flex items-center justify-center">
                     <svg className="w-8 h-8 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -316,7 +320,7 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
                   </div>
                   <h3 className="text-lg font-medium text-white mb-2">AI Not Configured</h3>
                   <p className="text-surface-400 max-w-md">
-                    Add VITE_XAI_API_KEY to your environment variables to enable AI-powered PDF extraction.
+                    Add VITE_ANTHROPIC_API_KEY or VITE_XAI_API_KEY to enable AI-powered PDF extraction.
                   </p>
                 </div>
               ) : (
@@ -345,9 +349,18 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
                     onChange={handleFileSelect}
                     className="hidden"
                   />
-                  <p className="mt-4 text-xs text-surface-500">
-                    Powered by Grok Vision AI • Supports PDFs and images
-                  </p>
+                  <div className="mt-4 flex items-center gap-3 text-xs">
+                    {isClaudeConfigured() && (
+                      <span className="px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded">
+                        ✓ Claude (Primary)
+                      </span>
+                    )}
+                    {isXAIConfigured() && (
+                      <span className="px-2 py-1 bg-purple-500/10 text-purple-400 rounded">
+                        {isClaudeConfigured() ? 'Grok (Fallback)' : '✓ Grok Vision'}
+                      </span>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -366,8 +379,8 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
                   ? `Processing page ${progress.current} of ${progress.total}...`
                   : 'Extracting zones with AI vision + smart matching...'}
               </p>
-              <p className="text-purple-400 text-xs mt-2">
-                ✨ Using Grok AI for intelligent zone type matching
+              <p className="text-emerald-400 text-xs mt-2">
+                ✨ Using {isClaudeConfigured() ? 'Claude' : 'Grok'} AI for intelligent zone extraction
               </p>
             </div>
           )}
@@ -377,6 +390,25 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
             <div className="flex gap-4">
               {/* Main zones table */}
               <div className="flex-1">
+                {/* AI Provider indicator */}
+                {aiProvider === 'grok' && (
+                  <div className="mb-4 p-3 bg-amber-900/30 border border-amber-600/50 rounded-lg">
+                    <div className="flex items-center gap-2 text-amber-400 text-sm">
+                      <span>⚠️</span>
+                      <span className="font-medium">Using Grok (fallback)</span>
+                      <span className="text-amber-500/80">— Claude unavailable. Results may be less accurate.</span>
+                    </div>
+                  </div>
+                )}
+                {aiProvider === 'claude' && (
+                  <div className="mb-4 p-2 bg-emerald-900/20 border border-emerald-600/30 rounded-lg">
+                    <div className="flex items-center gap-2 text-emerald-400 text-sm">
+                      <span>✓</span>
+                      <span>Extracted with Claude AI</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-sm text-surface-400">
                     Found <span className="text-white font-medium">{extractedZones.length}</span> zones • 
