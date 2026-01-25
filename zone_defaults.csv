@@ -1,0 +1,40 @@
+Zone Type,Display Name,Category,Default SF,Lighting (W/SF),Receptacle (VA/SF),Ventilation (CFM/SF),Exhaust (CFM/SF),Cooling (SF/Ton),Heating (BTUH/SF),Fixed kW,Gas MBH,Fixed Vent CFM,Fixed Exh CFM,Flue Size (in),Pool Heater MBH,Dehumid (lb/hr),Default Showers,Default LAVs,Default WCs,Default Floor Drains,Default Service Sinks,Default Washers,Default Dryers,Fixture SF per WC,Fixture SF per LAV,Fixture SF per Shower,Fixture SF per FD,Exhaust CFM/Toilet,Exhaust CFM/Shower,Notes
+reception,Reception / Lounge,Support,1500,1.5,3,0.15,0,400,25,,,,,,,,,2,2,0,,,,,,,,,
+mechanical_room,Mechanical Room,Support,500,1,5,0,0,0,0,,,500,400,,,,,0,0,2,,,,,,,,,Unconditioned
+retail,Retail,Support,800,1.5,3,0.15,0,400,25,,,,,,,,,,0,,,,,,,,,
+office,Office / Admin,Support,400,1.2,5,0.15,0,400,25,,,,,,,,,,0,,,,,,,,,
+storage,Storage,Support,300,0.8,1,0,0,0,0,,,,,,,,,,0,,,,,,,,,Unconditioned
+open_gym,Open Gym / Fitness Floor,Fitness,5000,1,8,0.2,0,400,25,,,,,,,,,,0,,,,,,,,,High receptacle for equipment
+group_fitness,Group Fitness Studio,Fitness,2000,1.2,5,0.25,0,350,25,,,,,,,,,,0,,,,,,,,,
+mma_studio,MMA / Boxing Studio,Fitness,2400,1.2,4,0.3,0,300,25,,,,,,,,,,0,,,,,,,,,High intensity activity
+yoga_studio,Yoga Studio,Fitness,800,1,2,0.2,0,400,30,,,,,,,,,,0,,,,,,,,,May want warmer
+pilates_studio,Pilates Studio,Fitness,600,1.2,3,0.18,0,400,25,,,,,,,,,,0,,,,,,,,,
+stretching_area,Stretching / Recovery Area,Fitness,500,1,3,0.15,0,400,25,,,,,,,,,,0,,,,,,,,,
+locker_room,Locker Room,Locker/Hygiene,2500,1,2,0,0,350,30,,,,,,,10,5,6,4,,,400,500,250,600,50,20,Auto-calc fixtures from SF
+restroom,Restroom,Locker/Hygiene,150,1,1,0,0,400,25,,,,,,,,1,1,1,,,75,100,,300,50,,Auto-calc fixtures from SF
+banya_gas,Banya (Gas),Thermal,500,0.5,1,0.75,0,200,0,5,1260,1260,1260,10,,,,,2,,,,,,,,Power Flame J30A-12
+sauna_gas,Sauna (Gas),Thermal,200,0.5,1,0,0,250,0,2,91,910,910,8,,,,,1,,,,,,,,,
+sauna_electric,Sauna (Electric),Thermal,200,0.5,1,0,0,250,0,30,,910,910,,,,,,1,,,,,,,,,
+steam_room,Steam Room,Thermal,200,0.5,1,0,0,150,0,15,,400,400,,,,,,2,,,,,,,,,0.5 latent adder
+cold_plunge,Cold Plunge,Thermal,150,1,2,0.1,0,300,0,25,,,,,,,,,1,,,,,,,,,
+snow_room,Snow Room,Thermal,100,1,2,0,0,100,0,20,,,,,,,,,1,,,,,,,,,
+contrast_suite,Contrast Suite (Hot/Cold),Thermal,1500,1,2,0,0,200,0,50,,1500,1500,,,2,,,4,,,,,,,,,Combined sauna + cold plunge
+pool_indoor,Pool (Indoor),Pool/Spa,3000,1.5,2,0,0,200,0,,,1870,2050,,600,75,,,4,,,,,,,,,Gas or electric heater
+pool_outdoor,Pool (Outdoor),Pool/Spa,2000,0.5,1,0,0,0,0,,,,,,,600,,,,2,,,,,,,,,
+hot_tub,Hot Tub / Spa,Pool/Spa,200,1,2,0.1,0,250,0,5,,,,,,200,,,,1,,,,,,,,,
+treatment_room,Treatment Room,Pool/Spa,150,1,3,0.15,0,400,25,,,,,,,,1,,0,,,,,,,,,
+laundry_commercial,Laundry (Commercial),Kitchen/Laundry,600,1,2,0,0,400,25,,,,,,,,,0,2,1,4,6,,,,,,,Standby power required; See equipment specs
+laundry_residential,Laundry (Residential),Kitchen/Laundry,150,1,5,0,0,400,25,8,,,200,,,,,1,,1,1,,,,,,,
+kitchen_commercial,Kitchen (Commercial),Kitchen/Laundry,700,1.5,15,0,0,300,0,,490,,,,,,,2,2,,,,,,,,Type 1 hood; MAU 4000 CFM; Grease interceptor 500 gal
+kitchen_light_fb,Kitchen (Light F&B),Kitchen/Laundry,300,1.2,10,0.15,0.2,350,25,15,,,,,,,1,,1,,,,,,,,,
+cowork,Co-Work Space,Event/CoWork,4000,1.2,8,0.15,0,350,25,,,,,,,,,,0,,,,,,,,,High receptacle for workstations
+conference_room,Conference Room,Event/CoWork,500,1.3,6,0.2,0,300,25,,,,,,,,,,0,,,,,,,,,Higher vent for occupant density
+event_space,Event Space / Studio,Event/CoWork,6000,2,5,0.25,0,250,25,,,,,,,,,,2,,,,,,,,,High occupant density
+screening_room,Screening Room / Theater,Event/CoWork,1000,0.8,4,0.2,0,300,25,5,,,,,,,,,0,,,,,,,,,AV equipment
+child_care,Child Care,Specialty,1200,1.5,3,0.25,0,350,30,,,,,,,,2,2,1,,,,,,,,,Higher vent for children
+recovery_longevity,Recovery & Longevity,Specialty,1600,1,5,0.2,0,350,25,20,,,,,,,2,,2,,,,,,,,,Cryo; compression; etc.
+basketball_court,Basketball Court (Half),Sports,2400,1.5,2,0.25,0,350,25,,,,,,,,,,0,,,,,,,,,Sports lighting
+padel_court,Padel Court,Sports,2200,1.8,2,0.25,0,350,25,,,,,,,,,,0,,,,,,,,,High sports lighting
+cafe_light_fb,Café / Light F&B,F&B,1200,1.5,8,0.2,0.15,350,25,10,,,,,,,1,,1,,,,,,,,,Espresso machines; refrigeration
+terrace,Terrace / Outdoor,Outdoor,2500,0.5,2,0,0,0,0,,,,,,,,,,2,,,,,,,,,Unconditioned
+custom,Custom Zone,Custom,1000,1,3,0.15,0,400,25,,,,,,,,,,0,,,,,,,,,
