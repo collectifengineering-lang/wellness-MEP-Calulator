@@ -278,19 +278,21 @@ const ZONE_TYPE_MAPPING: Record<string, string> = {
   'staff': 'office',
   'employee': 'office',
   
-  // Circulation
-  'corridor': 'custom',
-  'hall': 'custom',
-  'hallway': 'custom',
-  'circulation': 'custom',
-  'circ': 'custom',
-  'stair': 'custom',
-  'stairwell': 'custom',
-  'elevator': 'custom',
-  'elev': 'custom',
-  'vest': 'custom',
-  'vestibule': 'custom',
-  'airlock': 'custom',
+  // Circulation - these should be SKIPPED (mapped to special value)
+  'corridor': '_skip_',
+  'hall': '_skip_',
+  'hallway': '_skip_',
+  'circulation': '_skip_',
+  'circ': '_skip_',
+  'stair': '_skip_',
+  'stairwell': '_skip_',
+  'elevator': '_skip_',
+  'elev': '_skip_',
+  'vest': '_skip_',
+  'vestibule': '_skip_',
+  'airlock': '_skip_',
+  'egress': '_skip_',
+  'exit': '_skip_',
   
   // Outdoor
   'terrace': 'terrace',
@@ -358,6 +360,13 @@ function suggestZoneType(roomName: string): string {
   }
   
   return 'custom'
+}
+
+// Check if a zone should be skipped (circulation, stairs, etc.)
+function shouldSkipZone(roomName: string): boolean {
+  const lower = roomName.toLowerCase()
+  const skipKeywords = ['stair', 'elevator', 'corridor', 'hallway', 'vestibule', 'egress', 'exit', 'circulation']
+  return skipKeywords.some(keyword => lower.includes(keyword))
 }
 
 // AI-powered zone type matching using Grok
@@ -441,46 +450,40 @@ export async function extractZonesFromImage(
     throw new Error('xAI API key not configured')
   }
 
-  const prompt = `You are analyzing an architectural floor plan or area schedule for a wellness facility (gym, spa, bathhouse).
+  const prompt = `You are analyzing an architectural floor plan or area schedule for a wellness facility.
 
-YOUR TASK: Extract EVERY room/space with its square footage. Be THOROUGH - miss nothing.
+YOUR TASK: Extract rooms/spaces that have a SQUARE FOOTAGE NUMBER visible.
 
-WHAT TO LOOK FOR:
-1. Room names/labels (e.g., "RECEPTION", "LOCKER ROOM", "POOL", "SAUNA", "YOGA STUDIO")
-2. Square footage numbers near room names (e.g., "1,250 SF", "500 sqft", "2500")
-3. Area schedules or room lists with SF columns
-4. Dimension strings (e.g., "25'-0\" x 50'-0\"" = 1,250 SF)
-5. Room numbers with associated names and areas
+CRITICAL RULES:
+1. ONLY extract spaces that have a visible SF/sqft number (e.g., "1,250 SF", "500", "2500 sqft")
+2. The SF number is usually displayed BELOW or NEXT TO the room name
+3. SKIP spaces without SF numbers - we only want rooms with areas specified
+4. IGNORE: stairs, elevators, corridors, hallways, vestibules, circulation areas
+5. Look for area schedules or room lists that show name + SF in columns
 
-COMMON SPACES IN WELLNESS FACILITIES:
-- Reception/Lobby, Locker Rooms (Men's, Women's), Restrooms
-- Pool areas, Hot tub/Spa, Sauna, Steam room, Banya
-- Yoga studio, Fitness floor, Group fitness, Cycling/Spin
-- Treatment rooms, Massage rooms, Recovery areas
-- Laundry, Mechanical, Storage, Office/Admin
-- Café, Juice bar, Retail, Lounge areas
+WHAT A VALID ENTRY LOOKS LIKE:
+- "RECEPTION" with "1,500 SF" nearby → Extract it
+- "MEN'S LOCKER" with "2,500" below it → Extract it  
+- "STAIR 1" with no SF number → SKIP IT
+- "CORRIDOR" → SKIP IT
 
-EXTRACTION RULES:
-- Extract EVERY labeled space, even small ones (closets, corridors)
-- If you see a number near a room name, that's likely the SF
-- Include circulation/corridor spaces if labeled
-- For unlabeled areas, estimate based on scale if possible
-- Don't skip any rooms - completeness is critical
+COMMON WELLNESS SPACES TO FIND:
+Reception, Locker Rooms, Restrooms, Pool, Hot Tub, Sauna, Steam Room, Banya,
+Yoga Studio, Fitness Floor, Group Fitness, Treatment Rooms, Massage,
+Laundry, Mechanical, Storage, Office, Café, Retail, Co-Work
 
-Respond with ONLY valid JSON in this exact format:
+Respond with ONLY valid JSON:
 {
   "zones": [
     {"name": "Reception", "type": "reception", "sf": 1500},
     {"name": "Men's Locker Room", "type": "locker room", "sf": 2500},
-    {"name": "Women's Locker Room", "type": "locker room", "sf": 3000},
-    {"name": "Pool Area", "type": "pool", "sf": 4000},
-    {"name": "Sauna 1", "type": "sauna", "sf": 200}
+    {"name": "Pool Area", "type": "pool", "sf": 4000}
   ],
-  "totalSF": 11200,
-  "notes": "Found 5 labeled spaces on this page"
+  "totalSF": 8000,
+  "notes": "Extracted 3 spaces with visible SF numbers"
 }
 
-Be exhaustive. Extract ALL spaces you can identify.`
+ONLY include spaces with SF numbers. Quality over quantity.`
 
   try {
     const response = await fetch(XAI_API_URL, {
@@ -536,12 +539,28 @@ Be exhaustive. Extract ALL spaces you can identify.`
       throw new Error('Failed to parse AI response as JSON')
     }
 
-    // Initial extraction with keyword-based matching
-    const rawZones = (parsed.zones || []).map((z: any) => ({
-      name: z.name || 'Unknown',
-      type: z.type || 'unknown',
-      sf: Math.round(z.sf || z.area || 0),
-    }))
+    // Initial extraction - filter out circulation/stairs and zones without SF
+    const rawZones = (parsed.zones || [])
+      .map((z: any) => ({
+        name: z.name || 'Unknown',
+        type: z.type || 'unknown',
+        sf: Math.round(z.sf || z.area || 0),
+      }))
+      .filter((z: any) => {
+        // Skip zones without SF
+        if (!z.sf || z.sf <= 0) {
+          console.log(`Skipping "${z.name}" - no SF`)
+          return false
+        }
+        // Skip circulation zones
+        if (shouldSkipZone(z.name)) {
+          console.log(`Skipping "${z.name}" - circulation/stairs`)
+          return false
+        }
+        return true
+      })
+    
+    console.log(`Extracted ${rawZones.length} valid zones (after filtering)`)
 
     // Use AI to match zone types (in parallel with better accuracy)
     let aiMatches: Record<string, string> = {}
@@ -557,14 +576,15 @@ Be exhaustive. Extract ALL spaces you can identify.`
       // Priority: AI match > keyword match > custom
       const aiMatch = aiMatches[z.name]
       const keywordMatch = suggestZoneType(z.name || z.type || '')
-      const suggestedType = aiMatch || (keywordMatch !== 'custom' ? keywordMatch : null) || 'custom'
+      // Don't use _skip_ as a zone type
+      const suggestedType = aiMatch || (keywordMatch !== 'custom' && keywordMatch !== '_skip_' ? keywordMatch : null) || 'custom'
       
       return {
         name: z.name,
         type: z.type,
         suggestedZoneType: suggestedType,
         sf: z.sf,
-        confidence: aiMatch ? 'high' : (keywordMatch !== 'custom' ? 'medium' : 'low'),
+        confidence: aiMatch ? 'high' : (keywordMatch !== 'custom' && keywordMatch !== '_skip_' ? 'medium' : 'low'),
         notes: aiMatch ? 'AI-matched' : undefined,
       }
     })
