@@ -417,7 +417,8 @@ export async function extractZonesFromPDF(
   onProgress?: (page: number, total: number) => void
 ): Promise<ExtractionResult> {
   const pdfjsLib = await import('pdfjs-dist')
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+  // Use unpkg which has all npm versions (cdnjs doesn't have latest)
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
   
   const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise
   const numPages = pdf.numPages
