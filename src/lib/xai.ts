@@ -382,9 +382,8 @@ export async function pdfPageToImage(
   // Dynamic import of pdfjs
   const pdfjsLib = await import('pdfjs-dist')
   
-  // Set worker path - use unpkg which has all npm versions
-  // cdnjs may not have the latest versions
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+  // Set worker path - use jsDelivr which is reliable and fast
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
   
   const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise
   const page = await pdf.getPage(pageNumber)
@@ -422,8 +421,8 @@ export async function extractZonesFromPDF(
   }
   
   const pdfjsLib = await import('pdfjs-dist')
-  // Use unpkg which has all npm versions (cdnjs doesn't have latest)
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+  // Use jsDelivr which is reliable and fast
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
   
   console.log('PDF.js version:', pdfjsLib.version)
   console.log('Worker URL:', pdfjsLib.GlobalWorkerOptions.workerSrc)
