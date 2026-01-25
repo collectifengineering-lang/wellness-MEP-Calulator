@@ -333,10 +333,10 @@ const ZONE_TYPE_MAPPING: Record<string, string> = {
   // Retail
   'retail': 'retail',
   'shop': 'retail',
-  'store': 'retail',
   'merchandise': 'retail',
   'pro shop': 'retail',
   'boutique': 'retail',
+  'gift shop': 'retail',
   
   // Sports courts
   'basketball': 'basketball_court',
