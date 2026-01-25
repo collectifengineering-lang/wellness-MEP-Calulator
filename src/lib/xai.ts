@@ -283,7 +283,7 @@ Only respond with valid JSON, no other text.`
         'Authorization': `Bearer ${XAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'grok-vision-beta',
+        model: 'grok-2-vision-1212',
         messages: [
           {
             role: 'user',
