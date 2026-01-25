@@ -1,5 +1,15 @@
 import type { ZoneType, ZoneFixtures, ZoneRates } from '../types'
 
+// Pool configuration for pool zones
+export interface PoolConfig {
+  name: string
+  type: 'lap' | 'warm' | 'hot' | 'cold' | 'therapy' | 'spa'
+  surface_sf: number
+  temperature_f: number
+  depth_ft: number
+  heater_mbh?: number
+}
+
 // Export the interface for use in settings store
 export interface ZoneDefaults {
   displayName: string
@@ -41,6 +51,14 @@ export interface ZoneDefaults {
   occupants_per_1000sf?: number
   rp_cfm_person?: number        // Outdoor air rate per person
   ra_cfm_sf?: number            // Outdoor air rate per area
+  // ACH-based ventilation (thermal spaces)
+  ceiling_height_ft?: number    // Default ceiling height for ACH calc
+  ach_ventilation?: number      // Air changes per hour for ventilation
+  ach_exhaust?: number          // Air changes per hour for exhaust
+  // Pool configuration
+  pool_config?: {
+    pools: PoolConfig[]
+  }
   // Laundry equipment specs (from B&C Tech SP-75 & Huebsch HTT45)
   laundry_equipment?: {
     washer_kw: number           // kW per washer (with electric heat)
@@ -369,19 +387,20 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultRates: {
       lighting_w_sf: 0.50,
       receptacle_va_sf: 2,
-      ventilation_cfm_sf: 0.30,
-      exhaust_cfm_sf: 1.00,
+      ventilation_cfm_sf: 1.00,  // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
+      exhaust_cfm_sf: 1.00,      // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
       cooling_sf_ton: 250,
       heating_btuh_sf: 0,
     },
     fixed_kw: 2,
     gas_mbh: 91,
-    ventilation_cfm: 910,
-    exhaust_cfm: 910,
     flue_size_in: 8,
     rp_cfm_person: 10,
     ra_cfm_sf: 0.06,
-    source_notes: 'Dry sauna lower vent',
+    ceiling_height_ft: 10,
+    ach_ventilation: 6,
+    ach_exhaust: 6,
+    source_notes: '6 ACH vent + 6 ACH exhaust @ 10ft ceiling',
   },
   sauna_electric: {
     displayName: 'Sauna (Electric)',
@@ -393,17 +412,18 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultRates: {
       lighting_w_sf: 0.50,
       receptacle_va_sf: 2,
-      ventilation_cfm_sf: 0.30,
-      exhaust_cfm_sf: 1.00,
+      ventilation_cfm_sf: 1.00,  // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
+      exhaust_cfm_sf: 1.00,      // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
       cooling_sf_ton: 250,
       heating_btuh_sf: 0,
     },
     fixed_kw: 30,
-    ventilation_cfm: 910,
-    exhaust_cfm: 910,
     rp_cfm_person: 10,
     ra_cfm_sf: 0.06,
-    source_notes: '30 fixed kW electric heater',
+    ceiling_height_ft: 10,
+    ach_ventilation: 6,
+    ach_exhaust: 6,
+    source_notes: '6 ACH vent + 6 ACH exhaust @ 10ft ceiling; 30 fixed kW',
   },
   steam_room: {
     displayName: 'Steam Room',
@@ -414,18 +434,19 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultRates: {
       lighting_w_sf: 0.50,
       receptacle_va_sf: 2,
-      ventilation_cfm_sf: 0.50,
-      exhaust_cfm_sf: 2.00,
+      ventilation_cfm_sf: 1.00,  // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
+      exhaust_cfm_sf: 1.00,      // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
       cooling_sf_ton: 150,
       heating_btuh_sf: 0,
     },
     fixed_kw: 15,
-    ventilation_cfm: 400,
-    exhaust_cfm: 400,
     latent_adder: 0.5,
     rp_cfm_person: 10,
     ra_cfm_sf: 0.06,
-    source_notes: 'Very high latent/exh; 0.5 latent adder',
+    ceiling_height_ft: 10,
+    ach_ventilation: 6,
+    ach_exhaust: 6,
+    source_notes: '6 ACH vent + 6 ACH exhaust @ 10ft ceiling; 0.5 latent adder',
   },
   cold_plunge: {
     displayName: 'Cold Plunge',
@@ -507,7 +528,12 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     ventilation_cfm: 1870,
     exhaust_cfm: 2050,
     pool_heater_gas_mbh: 600,
-    source_notes: 'Natatorium special rates (ASHRAE 62.1 Appendix); 0.48 lb/hr dehumid',
+    pool_config: {
+      pools: [
+        { name: 'Main Pool', type: 'warm', surface_sf: 1200, temperature_f: 84, depth_ft: 4, heater_mbh: 400 },
+      ]
+    },
+    source_notes: 'Natatorium special rates; Configure pools in zone editor',
   },
   pool_outdoor: {
     displayName: 'Pool (Outdoor)',
@@ -559,9 +585,64 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       cooling_sf_ton: 400,
       heating_btuh_sf: 25,
     },
+    occupants_per_1000sf: 13,  // ~2 per 150 SF room
     rp_cfm_person: 5,
     ra_cfm_sf: 0.06,
-    source_notes: 'Similar to health clinic',
+    source_notes: 'General treatment; Similar to health clinic',
+  },
+  massage_room: {
+    displayName: 'Massage Room',
+    category: 'Pool/Spa',
+    defaultSF: 120,
+    defaultFixtures: { ...defaultFixtures, lavs: 1 },
+    defaultRates: {
+      lighting_w_sf: 0.60,
+      receptacle_va_sf: 3,
+      ventilation_cfm_sf: 0.15,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 30,  // Warmer for massage
+    },
+    occupants_per_1000sf: 17,  // ~2 per 120 SF room
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    source_notes: 'Massage therapy room; warmer temps typical',
+  },
+  couples_treatment: {
+    displayName: 'Couples Treatment Room',
+    category: 'Pool/Spa',
+    defaultSF: 250,
+    defaultFixtures: { ...defaultFixtures, lavs: 1 },
+    defaultRates: {
+      lighting_w_sf: 0.60,
+      receptacle_va_sf: 3,
+      ventilation_cfm_sf: 0.15,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 30,
+    },
+    occupants_per_1000sf: 16,  // ~4 per 250 SF room
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    source_notes: 'Couples massage/treatment room',
+  },
+  private_suite: {
+    displayName: 'Private Suite',
+    category: 'Pool/Spa',
+    defaultSF: 400,
+    defaultFixtures: { ...defaultFixtures, lavs: 1, showers: 1, floorDrains: 1 },
+    defaultRates: {
+      lighting_w_sf: 0.80,
+      receptacle_va_sf: 4,
+      ventilation_cfm_sf: 0.18,
+      exhaust_cfm_sf: 0.20,
+      cooling_sf_ton: 350,
+      heating_btuh_sf: 28,
+    },
+    occupants_per_1000sf: 10,  // ~4 per 400 SF suite
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    source_notes: 'Private spa suite with shower',
   },
 
   // ============================================
@@ -942,6 +1023,78 @@ export interface LaundryLoads {
   total_dfu: number
   exhaust_cfm: number
   mua_sqft: number
+}
+
+// Calculate occupants for a zone based on SF
+export function calculateOccupants(type: ZoneType, sf: number): number {
+  const defaults = getZoneDefaults(type)
+  if (defaults.occupants_per_1000sf) {
+    return Math.ceil((sf / 1000) * defaults.occupants_per_1000sf)
+  }
+  // Default: 1 per 200 SF for general spaces
+  return Math.ceil(sf / 200)
+}
+
+// Calculate ACH-based CFM for thermal zones
+export function calculateACHBasedCFM(
+  sf: number,
+  ach: number,
+  ceilingHeight: number = 10
+): number {
+  // CFM = (SF × Height × ACH) / 60
+  return Math.ceil((sf * ceilingHeight * ach) / 60)
+}
+
+// Get ventilation CFM for a zone (considers ACH or CFM/SF)
+export function getZoneVentilationCFM(type: ZoneType, sf: number): number {
+  const defaults = getZoneDefaults(type)
+  
+  // If zone has ACH-based ventilation, use that
+  if (defaults.ach_ventilation && defaults.ceiling_height_ft) {
+    return calculateACHBasedCFM(sf, defaults.ach_ventilation, defaults.ceiling_height_ft)
+  }
+  
+  // If zone has fixed ventilation CFM, use that
+  if (defaults.ventilation_cfm) {
+    return defaults.ventilation_cfm
+  }
+  
+  // Otherwise use rate-based
+  return Math.ceil(sf * defaults.defaultRates.ventilation_cfm_sf)
+}
+
+// Get exhaust CFM for a zone (considers ACH or CFM/SF)
+export function getZoneExhaustCFM(type: ZoneType, sf: number): number {
+  const defaults = getZoneDefaults(type)
+  
+  // If zone has ACH-based exhaust, use that
+  if (defaults.ach_exhaust && defaults.ceiling_height_ft) {
+    return calculateACHBasedCFM(sf, defaults.ach_exhaust, defaults.ceiling_height_ft)
+  }
+  
+  // If zone has fixed exhaust CFM, use that
+  if (defaults.exhaust_cfm) {
+    return defaults.exhaust_cfm
+  }
+  
+  // Otherwise use rate-based
+  return Math.ceil(sf * defaults.defaultRates.exhaust_cfm_sf)
+}
+
+// Pool heater sizing helper
+export function calculatePoolHeaterMBH(
+  surfaceSF: number,
+  targetTemp: number,
+  ambientTemp: number = 70,
+  coverFactor: number = 0.5  // 0.5 = covered when not in use
+): number {
+  // Simplified pool heater sizing:
+  // BTU/hr = Surface Area × ΔT × 10 × Cover Factor
+  // For typical indoor pool: ~500 BTU/hr per SF at 84°F
+  const deltaT = targetTemp - ambientTemp
+  const baseMBH = (surfaceSF * deltaT * 10 * coverFactor) / 1000
+  // Add 20% for startup/recovery
+  return Math.ceil(baseMBH * 1.2)
 }
 
 export function calculateLaundryLoads(
