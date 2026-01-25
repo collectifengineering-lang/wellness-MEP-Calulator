@@ -65,6 +65,7 @@ export interface ExtractedZone {
   type: string
   suggestedZoneType: string
   sf: number
+  floor: string // Floor/Level identifier (e.g., "L1", "Level 2", "Ground", "Roof")
   confidence: 'high' | 'medium' | 'low'
   notes?: string
 }
@@ -73,6 +74,7 @@ export interface ExtractionResult {
   zones: ExtractedZone[]
   totalSF: number
   pageCount: number
+  detectedFloor?: string // The floor detected from this page
   rawResponse?: string
 }
 
@@ -453,13 +455,20 @@ If no good match exists, use "custom". Only respond with valid JSON.`
 // Shared extraction prompt for both Claude and Grok
 const EXTRACTION_PROMPT = `You are extracting room data from an architectural floor plan or area schedule.
 
-TASK: Find ALL rooms/spaces with their SQUARE FOOTAGE numbers.
+TASK: Find ALL rooms/spaces with their SQUARE FOOTAGE numbers, and identify the FLOOR/LEVEL.
 
 HOW TO READ THE DOCUMENT:
 1. Look for TABLES or LISTS showing: Room Name | Square Footage
 2. Look for LABELS on floor plans with format: "ROOM NAME" and "X,XXX sqft" or "X,XXX SF"
 3. Numbers like "10,274 sqft", "5,252 sqft", "1,515 sqft" are square footage values
 4. Each room/space should have a name and an area number nearby
+
+IDENTIFY THE FLOOR/LEVEL:
+- Look in the TITLE BLOCK (usually bottom right corner) for: "Level 1", "Floor 2", "L1", "1st Floor", "Ground Floor", "Roof", "Basement", etc.
+- Look for headers like "FIRST FLOOR PLAN", "LEVEL 2", "GROUND LEVEL"
+- Look in area schedule tables for a "Level" or "Floor" column
+- Common formats: "L1", "Level 1", "1F", "Floor 1", "1st Floor", "Ground", "G", "B1" (basement), "Roof", "R", "Mezz", "M"
+- If you can't determine the floor, use "Unknown"
 
 EXTRACT THESE TYPES OF SPACES:
 - GYM, FITNESS, WEIGHT ROOM (often 3,000-15,000 SF)
@@ -485,6 +494,7 @@ READ CAREFULLY: The SF number may be formatted as:
 
 Respond with ONLY valid JSON:
 {
+  "floor": "Level 1",
   "zones": [
     {"name": "Gym", "type": "gym", "sf": 10274},
     {"name": "Co-Work", "type": "office", "sf": 5252},
@@ -494,7 +504,7 @@ Respond with ONLY valid JSON:
     {"name": "Café", "type": "cafe", "sf": 1119}
   ],
   "totalSF": 21621,
-  "notes": "Found X rooms on this page"
+  "notes": "Found X rooms on Level 1"
 }
 
 Be precise with numbers. A gym is often 5,000-15,000 SF, not 500 SF.`
@@ -508,7 +518,7 @@ export const getLastUsedProvider = () => lastUsedProvider
 async function extractWithClaude(
   imageBase64: string,
   mimeType: string
-): Promise<{ zones: any[]; totalSF: number; rawResponse: string }> {
+): Promise<{ zones: any[]; totalSF: number; floor: string; rawResponse: string }> {
   console.log('Attempting extraction with Claude...')
   
   const response = await fetch(ANTHROPIC_API_URL, {
@@ -564,6 +574,7 @@ async function extractWithClaude(
   return {
     zones: parsed.zones || [],
     totalSF: parsed.totalSF || 0,
+    floor: parsed.floor || 'Unknown',
     rawResponse: content,
   }
 }
@@ -572,7 +583,7 @@ async function extractWithClaude(
 async function extractWithGrok(
   imageBase64: string,
   mimeType: string
-): Promise<{ zones: any[]; totalSF: number; rawResponse: string }> {
+): Promise<{ zones: any[]; totalSF: number; floor: string; rawResponse: string }> {
   console.log('Attempting extraction with Grok...')
   
   const response = await fetch(XAI_API_URL, {
@@ -625,6 +636,7 @@ async function extractWithGrok(
   return {
     zones: parsed.zones || [],
     totalSF: parsed.totalSF || 0,
+    floor: parsed.floor || 'Unknown',
     rawResponse: content,
   }
 }
@@ -638,7 +650,7 @@ export async function extractZonesFromImage(
     throw new Error('No AI API key configured. Please add VITE_ANTHROPIC_API_KEY or VITE_XAI_API_KEY.')
   }
 
-  let rawResult: { zones: any[]; totalSF: number; rawResponse: string } | null = null
+  let rawResult: { zones: any[]; totalSF: number; floor: string; rawResponse: string } | null = null
   let errors: string[] = []
 
   // Try Claude first (better at document parsing)
@@ -666,6 +678,10 @@ export async function extractZonesFromImage(
   if (!rawResult) {
     throw new Error(`All AI providers failed:\n${errors.join('\n')}`)
   }
+
+  // Get detected floor from AI response
+  const detectedFloor = rawResult.floor || 'Unknown'
+  console.log(`Detected floor: ${detectedFloor}`)
 
   // Process the raw zones - filter and map
   const rawZones = rawResult.zones
@@ -699,7 +715,11 @@ export async function extractZonesFromImage(
     console.warn('AI matching failed, falling back to keyword matching:', aiError)
   }
 
+  // Track name occurrences to handle duplicates
+  const nameCount: Record<string, number> = {}
+
   // Map the response to our format with AI-enhanced zone type suggestions
+  // Include floor prefix in name and handle duplicates
   const zones: ExtractedZone[] = rawZones.map((z: any) => {
     // Priority: AI match > keyword match > custom
     const aiMatch = aiMatches[z.name]
@@ -707,13 +727,46 @@ export async function extractZonesFromImage(
     // Don't use _skip_ as a zone type
     const suggestedType = aiMatch || (keywordMatch !== 'custom' && keywordMatch !== '_skip_' ? keywordMatch : null) || 'custom'
     
+    // Track duplicate names and add suffix if needed
+    const baseName = z.name
+    nameCount[baseName] = (nameCount[baseName] || 0) + 1
+    const occurrence = nameCount[baseName]
+    
+    // Format floor prefix (normalize to short format)
+    const floorPrefix = formatFloorPrefix(detectedFloor)
+    
+    // Build final name: "L1 - Gym" or "L1 - Conference Room (2)" for duplicates
+    let finalName = `${floorPrefix} - ${baseName}`
+    if (occurrence > 1) {
+      finalName = `${floorPrefix} - ${baseName} (${occurrence})`
+    }
+    
     return {
-      name: z.name,
+      name: finalName,
       type: z.type,
       suggestedZoneType: suggestedType,
       sf: z.sf,
+      floor: detectedFloor,
       confidence: aiMatch ? 'high' : (keywordMatch !== 'custom' && keywordMatch !== '_skip_' ? 'medium' : 'low'),
       notes: aiMatch ? 'AI-matched' : undefined,
+    }
+  })
+
+  // Go back and fix the first occurrence names if there were duplicates
+  // e.g., if we have "Conference Room" appearing 3 times, rename first to "Conference Room (1)"
+  const finalNameCount: Record<string, number> = {}
+  zones.forEach(z => {
+    const baseName = z.name.replace(/ \(\d+\)$/, '') // Remove any existing suffix
+    finalNameCount[baseName] = (finalNameCount[baseName] || 0) + 1
+  })
+  
+  // If a name appears multiple times, ensure first one also has (1)
+  zones.forEach(z => {
+    const nameWithoutSuffix = z.name.replace(/ \(\d+\)$/, '')
+    
+    if (finalNameCount[nameWithoutSuffix] > 1 && !z.name.match(/ \(\d+\)$/)) {
+      // This is a first occurrence that needs numbering
+      z.name = `${nameWithoutSuffix} (1)`
     }
   })
 
@@ -721,8 +774,48 @@ export async function extractZonesFromImage(
     zones,
     totalSF: rawResult.totalSF || zones.reduce((sum, z) => sum + z.sf, 0),
     pageCount: 1,
+    detectedFloor,
     rawResponse: rawResult.rawResponse,
   }
+}
+
+// Format floor to a consistent short prefix
+function formatFloorPrefix(floor: string): string {
+  if (!floor || floor === 'Unknown') return 'L?'
+  
+  const lower = floor.toLowerCase().trim()
+  
+  // Already short format
+  if (/^l\d+$/i.test(floor)) return floor.toUpperCase()
+  if (/^[bgmr]$/i.test(floor)) return floor.toUpperCase()
+  if (/^b\d+$/i.test(floor)) return floor.toUpperCase() // Basement levels
+  
+  // Convert common formats
+  if (lower.includes('ground') || lower === 'g') return 'G'
+  if (lower.includes('basement') || lower.includes('cellar')) {
+    const num = lower.match(/\d+/)
+    return num ? `B${num[0]}` : 'B1'
+  }
+  if (lower.includes('roof') || lower === 'r') return 'RF'
+  if (lower.includes('mezz')) return 'M'
+  if (lower.includes('penthouse') || lower === 'ph') return 'PH'
+  
+  // Extract number from various formats
+  // "Level 1", "Floor 2", "1st Floor", "2nd Floor", "First Floor", etc.
+  const numMatch = lower.match(/(\d+)/)
+  if (numMatch) return `L${numMatch[1]}`
+  
+  // Word numbers
+  const wordNums: Record<string, string> = {
+    'first': '1', 'second': '2', 'third': '3', 'fourth': '4', 'fifth': '5',
+    'sixth': '6', 'seventh': '7', 'eighth': '8', 'ninth': '9', 'tenth': '10'
+  }
+  for (const [word, num] of Object.entries(wordNums)) {
+    if (lower.includes(word)) return `L${num}`
+  }
+  
+  // Fallback - use first few chars
+  return floor.substring(0, 3).toUpperCase()
 }
 
 // Convert a PDF page to base64 image using an already-loaded PDF document
@@ -758,9 +851,9 @@ export async function extractZonesFromPDF(
   pdfData: ArrayBuffer,
   onProgress?: (page: number, total: number) => void
 ): Promise<ExtractionResult> {
-  // Check if xAI is configured first
-  if (!isXAIConfigured()) {
-    throw new Error('xAI API key not configured. Please add VITE_XAI_API_KEY to your environment variables.')
+  // Check if any AI is configured
+  if (!isClaudeConfigured() && !isGrokConfigured()) {
+    throw new Error('No AI API key configured. Please add VITE_ANTHROPIC_API_KEY or VITE_XAI_API_KEY to your environment variables.')
   }
   
   const pdfjsLib = await import('pdfjs-dist')
@@ -779,6 +872,7 @@ export async function extractZonesFromPDF(
   
   const allZones: ExtractedZone[] = []
   const errors: string[] = []
+  const detectedFloors: string[] = []
   
   for (let i = 1; i <= numPages; i++) {
     onProgress?.(i, numPages)
@@ -786,9 +880,14 @@ export async function extractZonesFromPDF(
     try {
       console.log(`Processing page ${i}/${numPages}...`)
       const { base64, mimeType } = await renderPageToImage(pdf, i)
-      console.log(`Page ${i} converted to image, sending to xAI...`)
+      console.log(`Page ${i} converted to image, sending to AI...`)
       const result = await extractZonesFromImage(base64, mimeType)
-      console.log(`Page ${i} extracted ${result.zones.length} zones`)
+      console.log(`Page ${i} extracted ${result.zones.length} zones (Floor: ${result.detectedFloor})`)
+      
+      if (result.detectedFloor && result.detectedFloor !== 'Unknown') {
+        detectedFloors.push(result.detectedFloor)
+      }
+      
       allZones.push(...result.zones)
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error)
@@ -802,22 +901,22 @@ export async function extractZonesFromPDF(
     throw new Error(`Failed to extract zones: ${errors.join('; ')}`)
   }
   
-  // Deduplicate zones by name
-  const uniqueZones = allZones.reduce((acc, zone) => {
-    const existing = acc.find(z => z.name.toLowerCase() === zone.name.toLowerCase())
-    if (!existing) {
-      acc.push(zone)
-    } else if (zone.sf > existing.sf) {
-      // Keep the one with larger SF
-      const idx = acc.indexOf(existing)
-      acc[idx] = zone
-    }
-    return acc
-  }, [] as ExtractedZone[])
+  // DON'T deduplicate - keep all zones, even with same names
+  // The floor prefix + duplicate numbering already handles uniqueness
+  // Just sort by floor then name for better organization
+  const sortedZones = allZones.sort((a, b) => {
+    // Sort by floor first
+    const floorA = a.floor || 'ZZZ'
+    const floorB = b.floor || 'ZZZ'
+    if (floorA !== floorB) return floorA.localeCompare(floorB)
+    // Then by name
+    return a.name.localeCompare(b.name)
+  })
   
   return {
-    zones: uniqueZones,
-    totalSF: uniqueZones.reduce((sum, z) => sum + z.sf, 0),
+    zones: sortedZones,
+    totalSF: sortedZones.reduce((sum, z) => sum + z.sf, 0),
     pageCount: numPages,
+    detectedFloor: detectedFloors.length > 0 ? detectedFloors.join(', ') : undefined,
   }
 }

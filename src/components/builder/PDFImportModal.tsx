@@ -125,12 +125,14 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
     })
     const mostCommonType = Object.entries(typeCount).sort((a, b) => b[1] - a[1])[0][0]
     
-    // Create combined zone
+    // Create combined zone - use floor from first zone or 'Unknown'
+    const combinedFloor = zonesToCombine[0]?.floor || 'Unknown'
     const combinedZone: ExtractedZone = {
       name: newName || zonesToCombine.map(z => z.name).join(' + '),
       type: 'combined',
       suggestedZoneType: mostCommonType,
       sf: totalSF,
+      floor: combinedFloor,
       confidence: 'high',
       notes: `Combined from: ${zonesToCombine.map(z => z.name).join(', ')}`
     }
@@ -436,6 +438,7 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
                         <th className="w-10 px-3 py-2">
                           <span className="text-xs text-surface-500" title="Select for combine">⚡</span>
                         </th>
+                        <th className="w-16 px-3 py-2 text-left text-xs font-medium text-surface-400 uppercase">Floor</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-surface-400 uppercase">Name</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-surface-400 uppercase">Zone Type</th>
                         <th className="px-3 py-2 text-right text-xs font-medium text-surface-400 uppercase">SF</th>
@@ -469,6 +472,11 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
                               className="w-4 h-4 rounded border-surface-600 bg-surface-700 text-cyan-500 focus:ring-cyan-500"
                               title="Select to combine"
                             />
+                          </td>
+                          <td className="px-3 py-2">
+                            <span className="text-xs font-mono text-surface-400 bg-surface-700/50 px-1.5 py-0.5 rounded">
+                              {zone.floor || 'L?'}
+                            </span>
                           </td>
                           <td className="px-3 py-2">
                             <input
