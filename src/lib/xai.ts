@@ -416,25 +416,45 @@ export async function extractZonesFromPDF(
   pdfData: ArrayBuffer,
   onProgress?: (page: number, total: number) => void
 ): Promise<ExtractionResult> {
+  // Check if xAI is configured first
+  if (!isXAIConfigured()) {
+    throw new Error('xAI API key not configured. Please add VITE_XAI_API_KEY to your environment variables.')
+  }
+  
   const pdfjsLib = await import('pdfjs-dist')
   // Use unpkg which has all npm versions (cdnjs doesn't have latest)
   pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
   
+  console.log('PDF.js version:', pdfjsLib.version)
+  console.log('Worker URL:', pdfjsLib.GlobalWorkerOptions.workerSrc)
+  
   const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise
   const numPages = pdf.numPages
+  console.log('PDF loaded, pages:', numPages)
   
   const allZones: ExtractedZone[] = []
+  const errors: string[] = []
   
   for (let i = 1; i <= numPages; i++) {
     onProgress?.(i, numPages)
     
     try {
+      console.log(`Processing page ${i}/${numPages}...`)
       const { base64, mimeType } = await pdfPageToImage(pdfData, i)
+      console.log(`Page ${i} converted to image, sending to xAI...`)
       const result = await extractZonesFromImage(base64, mimeType)
+      console.log(`Page ${i} extracted ${result.zones.length} zones`)
       allZones.push(...result.zones)
     } catch (error) {
-      console.error(`Error processing page ${i}:`, error)
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      console.error(`Error processing page ${i}:`, errorMsg)
+      errors.push(`Page ${i}: ${errorMsg}`)
     }
+  }
+  
+  // If no zones found and there were errors, throw
+  if (allZones.length === 0 && errors.length > 0) {
+    throw new Error(`Failed to extract zones: ${errors.join('; ')}`)
   }
   
   // Deduplicate zones by name
