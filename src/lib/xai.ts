@@ -3,6 +3,51 @@
 const XAI_API_KEY = import.meta.env.VITE_XAI_API_KEY || ''
 const XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
 
+// Our available zone types for AI matching
+const AVAILABLE_ZONE_TYPES = [
+  { id: 'reception', name: 'Reception / Lounge', keywords: 'lobby, waiting, entry, front desk' },
+  { id: 'mechanical_room', name: 'Mechanical Room', keywords: 'mech, electrical, boiler, AHU' },
+  { id: 'retail', name: 'Retail', keywords: 'shop, store, merchandise' },
+  { id: 'office', name: 'Office / Admin', keywords: 'admin, back office, staff office' },
+  { id: 'storage', name: 'Storage', keywords: 'janitor, closet, supply' },
+  { id: 'open_gym', name: 'Open Gym / Fitness Floor', keywords: 'weight room, fitness center, gym floor' },
+  { id: 'group_fitness', name: 'Group Fitness Studio', keywords: 'aerobics, spin, cycling, class' },
+  { id: 'mma_studio', name: 'MMA / Boxing Studio', keywords: 'boxing, martial arts, fight' },
+  { id: 'yoga_studio', name: 'Yoga Studio', keywords: 'yoga, meditation, mindfulness' },
+  { id: 'pilates_studio', name: 'Pilates Studio', keywords: 'pilates, reformer' },
+  { id: 'stretching_area', name: 'Stretching / Recovery Area', keywords: 'stretch, recovery, cool down' },
+  { id: 'locker_room', name: 'Locker Room', keywords: 'locker, changing room, dressing' },
+  { id: 'restroom', name: 'Restroom', keywords: 'bathroom, toilet, WC, lavatory' },
+  { id: 'banya_gas', name: 'Banya (Gas)', keywords: 'banya, russian bath, parilka' },
+  { id: 'sauna_gas', name: 'Sauna (Gas)', keywords: 'dry sauna gas heated' },
+  { id: 'sauna_electric', name: 'Sauna (Electric)', keywords: 'dry sauna, finnish sauna' },
+  { id: 'steam_room', name: 'Steam Room', keywords: 'steam, hammam, wet sauna' },
+  { id: 'cold_plunge', name: 'Cold Plunge', keywords: 'cold pool, ice bath, cold tub' },
+  { id: 'snow_room', name: 'Snow Room', keywords: 'snow, ice room, cold room' },
+  { id: 'contrast_suite', name: 'Contrast Suite', keywords: 'hot cold, contrast therapy, thermal suite' },
+  { id: 'pool_indoor', name: 'Pool (Indoor)', keywords: 'lap pool, swimming pool, natatorium, warm pool' },
+  { id: 'pool_outdoor', name: 'Pool (Outdoor)', keywords: 'outdoor pool, deck pool' },
+  { id: 'hot_tub', name: 'Hot Tub / Spa', keywords: 'jacuzzi, whirlpool, spa tub, hydrotherapy' },
+  { id: 'treatment_room', name: 'Treatment Room', keywords: 'treatment, facial, body treatment' },
+  { id: 'massage_room', name: 'Massage Room', keywords: 'massage, bodywork, therapy room' },
+  { id: 'couples_treatment', name: 'Couples Treatment Room', keywords: 'couples massage, duo room' },
+  { id: 'private_suite', name: 'Private Suite', keywords: 'VIP suite, private spa, suite' },
+  { id: 'laundry_commercial', name: 'Laundry (Commercial)', keywords: 'laundry, washer dryer, linen' },
+  { id: 'kitchen_commercial', name: 'Kitchen (Commercial)', keywords: 'commercial kitchen, prep kitchen, BOH' },
+  { id: 'kitchen_light_fb', name: 'Kitchen (Light F&B)', keywords: 'pantry, kitchenette, prep' },
+  { id: 'cafe_light_fb', name: 'Café / Light F&B', keywords: 'cafe, juice bar, smoothie, snack bar' },
+  { id: 'cowork', name: 'Co-Work Space', keywords: 'coworking, workspace, desk area' },
+  { id: 'conference_room', name: 'Conference Room', keywords: 'meeting room, boardroom, conference' },
+  { id: 'event_space', name: 'Event Space / Studio', keywords: 'event, multipurpose, ballroom, studio' },
+  { id: 'screening_room', name: 'Screening Room', keywords: 'theater, cinema, screening, AV room' },
+  { id: 'child_care', name: 'Child Care', keywords: 'daycare, kids club, nursery, childcare' },
+  { id: 'recovery_longevity', name: 'Recovery & Longevity', keywords: 'cryo, compression, IV, biohacking, recovery' },
+  { id: 'basketball_court', name: 'Basketball Court', keywords: 'basketball, court, hoops' },
+  { id: 'padel_court', name: 'Padel Court', keywords: 'padel, tennis, racquet' },
+  { id: 'terrace', name: 'Terrace / Outdoor', keywords: 'terrace, patio, rooftop, outdoor, deck' },
+  { id: 'custom', name: 'Custom Zone', keywords: 'other, misc, general' },
+]
+
 export const isXAIConfigured = () => {
   return !!XAI_API_KEY && XAI_API_KEY.length > 10
 }
@@ -122,6 +167,79 @@ function suggestZoneType(roomName: string): string {
   return 'custom'
 }
 
+// AI-powered zone type matching using Grok
+async function matchZoneTypesWithAI(
+  zones: { name: string; type: string; sf: number }[]
+): Promise<Record<string, string>> {
+  if (!isXAIConfigured() || zones.length === 0) {
+    return {}
+  }
+
+  const zoneTypeList = AVAILABLE_ZONE_TYPES
+    .map(z => `- ${z.id}: "${z.name}" (${z.keywords})`)
+    .join('\n')
+
+  const roomList = zones
+    .map((z, i) => `${i + 1}. "${z.name}" (${z.type}, ${z.sf} SF)`)
+    .join('\n')
+
+  const prompt = `You are matching room names from a floor plan to predefined zone types for an MEP (mechanical/electrical/plumbing) calculator for wellness facilities (spas, gyms, bathhouses).
+
+AVAILABLE ZONE TYPES:
+${zoneTypeList}
+
+ROOMS TO MATCH:
+${roomList}
+
+For each room, pick the BEST matching zone type ID from the list above. Consider:
+- The room name and what it's used for
+- Similar keywords and concepts
+- Wellness/spa facility context
+
+Respond with ONLY a JSON object mapping room names to zone type IDs:
+{
+  "Room Name 1": "zone_type_id",
+  "Room Name 2": "zone_type_id",
+  ...
+}
+
+If no good match exists, use "custom". Only respond with valid JSON.`
+
+  try {
+    const response = await fetch(XAI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${XAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'grok-beta',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 2048,
+        temperature: 0.1,
+      }),
+    })
+
+    if (!response.ok) {
+      console.error('AI matching failed:', response.status)
+      return {}
+    }
+
+    const data = await response.json()
+    const content = data.choices?.[0]?.message?.content || ''
+    
+    // Parse JSON from response
+    const jsonMatch = content.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    }
+    return {}
+  } catch (error) {
+    console.error('AI zone matching error:', error)
+    return {}
+  }
+}
+
 export async function extractZonesFromImage(
   imageBase64: string,
   mimeType: string = 'image/png'
@@ -211,15 +329,38 @@ Only respond with valid JSON, no other text.`
       throw new Error('Failed to parse AI response as JSON')
     }
 
-    // Map the response to our format with zone type suggestions
-    const zones: ExtractedZone[] = (parsed.zones || []).map((z: any) => ({
+    // Initial extraction with keyword-based matching
+    const rawZones = (parsed.zones || []).map((z: any) => ({
       name: z.name || 'Unknown',
       type: z.type || 'unknown',
-      suggestedZoneType: suggestZoneType(z.name || z.type || ''),
       sf: Math.round(z.sf || z.area || 0),
-      confidence: z.sf > 0 ? 'high' : 'medium',
-      notes: z.notes,
     }))
+
+    // Use AI to match zone types (in parallel with better accuracy)
+    let aiMatches: Record<string, string> = {}
+    try {
+      aiMatches = await matchZoneTypesWithAI(rawZones)
+      console.log('AI zone matches:', aiMatches)
+    } catch (aiError) {
+      console.warn('AI matching failed, falling back to keyword matching:', aiError)
+    }
+
+    // Map the response to our format with AI-enhanced zone type suggestions
+    const zones: ExtractedZone[] = rawZones.map((z: any) => {
+      // Priority: AI match > keyword match > custom
+      const aiMatch = aiMatches[z.name]
+      const keywordMatch = suggestZoneType(z.name || z.type || '')
+      const suggestedType = aiMatch || (keywordMatch !== 'custom' ? keywordMatch : null) || 'custom'
+      
+      return {
+        name: z.name,
+        type: z.type,
+        suggestedZoneType: suggestedType,
+        sf: z.sf,
+        confidence: aiMatch ? 'high' : (keywordMatch !== 'custom' ? 'medium' : 'low'),
+        notes: aiMatch ? 'AI-matched' : undefined,
+      }
+    })
 
     return {
       zones,

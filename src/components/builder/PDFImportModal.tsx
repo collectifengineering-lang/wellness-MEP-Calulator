@@ -364,7 +364,10 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
               <p className="text-surface-400 text-sm">
                 {progress.total > 0 
                   ? `Processing page ${progress.current} of ${progress.total}...`
-                  : 'Extracting zones and areas...'}
+                  : 'Extracting zones with AI vision + smart matching...'}
+              </p>
+              <p className="text-purple-400 text-xs mt-2">
+                ✨ Using Grok AI for intelligent zone type matching
               </p>
             </div>
           )}
@@ -475,13 +478,17 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
                               <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-cyan-500/10 text-cyan-400">
                                 combined
                               </span>
+                            ) : zone.notes?.includes('AI-matched') ? (
+                              <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-purple-500/10 text-purple-400" title="Zone type matched using AI">
+                                ✨ AI
+                              </span>
                             ) : (
                               <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
                                 zone.confidence === 'high' ? 'bg-emerald-500/10 text-emerald-400' :
                                 zone.confidence === 'medium' ? 'bg-amber-500/10 text-amber-400' :
                                 'bg-rose-500/10 text-rose-400'
                               }`}>
-                                {zone.confidence}
+                                {zone.confidence === 'high' ? 'exact' : zone.confidence === 'medium' ? 'keyword' : 'manual'}
                               </span>
                             )}
                           </td>
