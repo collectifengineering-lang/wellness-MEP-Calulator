@@ -382,8 +382,9 @@ export async function pdfPageToImage(
   // Dynamic import of pdfjs
   const pdfjsLib = await import('pdfjs-dist')
   
-  // Set worker path
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+  // Set worker path - use unpkg which has all npm versions
+  // cdnjs may not have the latest versions
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
   
   const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise
   const page = await pdf.getPage(pageNumber)
