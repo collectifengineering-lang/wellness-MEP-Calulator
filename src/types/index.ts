@@ -1,0 +1,204 @@
+export * from './database'
+
+export type ClimateType = 'hot_humid' | 'cold_dry' | 'temperate'
+
+export type ZoneType =
+  | 'reception'
+  | 'mechanical_room'
+  | 'open_gym'
+  | 'group_fitness'
+  | 'locker_room'
+  | 'restroom'
+  | 'banya_gas'
+  | 'sauna_gas'
+  | 'sauna_electric'
+  | 'steam_room'
+  | 'cold_plunge'
+  | 'snow_room'
+  | 'pool_indoor'
+  | 'pool_outdoor'
+  | 'hot_tub'
+  | 'laundry_commercial'
+  | 'laundry_residential'
+  | 'kitchen_commercial'
+  | 'kitchen_light_fb'
+  | 'treatment_room'
+  | 'retail'
+  | 'office'
+  | 'storage'
+  // NEW zone types from SPX plans
+  | 'cowork'
+  | 'conference_room'
+  | 'child_care'
+  | 'event_space'
+  | 'screening_room'
+  | 'contrast_suite'
+  | 'mma_studio'
+  | 'basketball_court'
+  | 'padel_court'
+  | 'yoga_studio'
+  | 'pilates_studio'
+  | 'stretching_area'
+  | 'cafe_light_fb'
+  | 'terrace'
+  | 'recovery_longevity'
+  | 'custom'
+
+export interface Project {
+  id: string
+  userId: string
+  name: string
+  targetSF: number
+  climate: ClimateType
+  electricPrimary: boolean
+  dhwSettings: DHWSettings
+  electricalSettings: ProjectElectricalSettings
+  contingency: number
+  resultAdjustments: ResultAdjustments
+  createdAt: Date
+  updatedAt: Date
+}
+
+// Project-level electrical settings (overrides global defaults)
+export interface ProjectElectricalSettings {
+  voltage: number           // Primary voltage (208, 480, 240, 120)
+  phase: 1 | 3              // Single or three phase
+  demandFactor: number      // Demand factor (0.5 - 1.0), default 0.90
+  powerFactor: number       // Power factor (0.7 - 1.0)
+  spareCapacity: number     // Spare capacity % (0 - 0.50)
+}
+
+export interface Zone {
+  id: string
+  projectId: string
+  name: string
+  type: ZoneType
+  subType: 'electric' | 'gas'
+  sf: number
+  color: string
+  fixtures: ZoneFixtures
+  rates: ZoneRates
+  lineItems: LineItem[]
+  sortOrder: number
+}
+
+export interface DHWSettings {
+  heaterType: 'electric' | 'gas'
+  gasEfficiency: number
+  electricEfficiency: number
+  storageTemp: number
+  deliveryTemp: number
+  coldWaterTemp: number
+  peakDuration: number
+}
+
+export interface ResultAdjustments {
+  hvacNotes: string
+  electricalNotes: string
+  gasNotes: string
+  waterSanitaryNotes: string
+  sprinklerNotes: string
+  fireAlarmNotes: string
+  overrides: Record<string, number | string>
+}
+
+export interface ZoneFixtures {
+  showers: number
+  lavs: number
+  wcs: number
+  floorDrains: number
+  serviceSinks: number
+  washingMachines: number
+  dryers: number
+}
+
+export interface ZoneRates {
+  lighting_w_sf: number
+  receptacle_va_sf: number
+  ventilation_cfm_sf: number
+  exhaust_cfm_sf: number
+  cooling_sf_ton: number
+  heating_btuh_sf: number
+}
+
+export interface LineItem {
+  id: string
+  category: 'lighting' | 'power' | 'ventilation' | 'exhaust' | 'cooling' | 'heating' | 'gas' | 'other'
+  name: string
+  quantity: number
+  unit: string
+  value: number
+  notes?: string
+}
+
+export interface AggregatedFixtures {
+  showers: number
+  lavs: number
+  wcs: number
+  floorDrains: number
+  serviceSinks: number
+  washingMachines: number
+  dryers: number
+}
+
+export interface CalculationResults {
+  electrical: ElectricalCalcResult
+  hvac: HVACCalcResult
+  gas: GasCalcResult
+  dhw: DHWCalcResult
+  plumbing: PlumbingCalcResult
+}
+
+export interface ElectricalCalcResult {
+  totalKW: number
+  totalKVA: number
+  amps_480v: number
+  amps_208v: number
+  recommendedService: string
+  panelCount: number
+  // Detailed settings and calculations
+  voltages?: { primary: number; secondary: number }
+  powerFactor?: number
+  spareCapacity?: number
+  calculatedAmps?: number       // Raw calculated amps
+  standardServiceAmps?: number  // Upsized to standard service size
+  exceedsMaxService?: boolean   // True if > max standard size for voltage
+}
+
+export interface HVACCalcResult {
+  totalTons: number
+  totalMBH: number
+  totalVentCFM: number
+  totalExhaustCFM: number
+  dehumidLbHr: number
+  rtuCount: number
+}
+
+export interface GasCalcResult {
+  totalCFH: number
+  totalMBH: number
+  recommendedPressure: string
+  recommendedPipeSize: string
+  equipmentBreakdown: { name: string; mbh: number; cfh: number }[]
+}
+
+export interface DHWCalcResult {
+  peakGPH: number
+  netBTU: number
+  grossBTU: number
+  gasCFH: number
+  electricKW: number
+  storageGallons: number
+  tanklessUnits: number
+  efficiency: number
+}
+
+export interface PlumbingCalcResult {
+  totalWSFU: number
+  totalDFU: number
+  peakGPM: number
+  recommendedMeterSize: string
+  recommendedDrainSize: string
+  coldWaterMainSize: string
+  hotWaterMainSize: string
+}
