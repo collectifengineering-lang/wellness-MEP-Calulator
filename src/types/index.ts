@@ -29,6 +29,7 @@ export type ZoneType =
   | 'retail'
   | 'office'
   | 'storage'
+  | 'break_room'
   // NEW zone types from SPX plans
   | 'cowork'
   | 'conference_room'

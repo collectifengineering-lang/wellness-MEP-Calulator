@@ -184,6 +184,28 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     },
     source_notes: 'NYCECC storage 0.40-0.60',
   },
+  break_room: {
+    displayName: 'Break Room / Lounge',
+    category: 'Support',
+    defaultSF: 500,
+    defaultFixtures: {
+      ...defaultFixtures,
+      lavs: 1,        // Hand sink / pantry sink
+      floorDrains: 1, // Floor drain for spills
+    },
+    defaultRates: {
+      lighting_w_sf: 0.90,       // NYCECC dining/lounge
+      receptacle_va_sf: 10,      // Higher for microwave, fridge, coffee maker, vending
+      ventilation_cfm_sf: 0.25,  // Higher due to food prep/odors
+      exhaust_cfm_sf: 0.10,      // Light exhaust for cooking odors
+      cooling_sf_ton: 350,       // Slightly higher due to appliance heat
+      heating_btuh_sf: 25,       // Standard
+    },
+    occupants_per_1000sf: 25,    // ASHRAE 62.1 Table 6.2.2.1 - similar to dining
+    rp_cfm_person: 5,            // ASHRAE 62.1 - break rooms
+    ra_cfm_sf: 0.06,             // ASHRAE 62.1 - office building default
+    source_notes: 'ASHRAE 62.1 break room/employee dining; NYCECC dining 0.90; higher receptacle for kitchen appliances (microwave 1500W, fridge 500W, coffee 1000W)',
+  },
 
   // ============================================
   // CATEGORY 2: Fitness

@@ -18,6 +18,7 @@ const AVAILABLE_ZONE_TYPES = [
   { id: 'retail', name: 'Retail', keywords: 'shop, store, merchandise' },
   { id: 'office', name: 'Office / Admin', keywords: 'admin, back office, staff office' },
   { id: 'storage', name: 'Storage', keywords: 'janitor, closet, supply' },
+  { id: 'break_room', name: 'Break Room / Lounge', keywords: 'break room, breakroom, lounge, employee lounge, staff lounge, break area, lunch room, kitchenette' },
   { id: 'open_gym', name: 'Open Gym / Fitness Floor', keywords: 'weight room, fitness center, gym floor' },
   { id: 'group_fitness', name: 'Group Fitness Studio', keywords: 'aerobics, spin, cycling, class' },
   { id: 'mma_studio', name: 'MMA / Boxing Studio', keywords: 'boxing, martial arts, fight' },
@@ -88,8 +89,22 @@ const ZONE_TYPE_MAPPING: Record<string, string> = {
   'entry': 'reception',
   'entrance': 'reception',
   'waiting': 'reception',
-  'lounge': 'reception',
   'common': 'reception',
+  
+  // Break Room / Lounge (employee areas with kitchen equipment)
+  'break room': 'break_room',
+  'breakroom': 'break_room',
+  'break': 'break_room',
+  'break area': 'break_room',
+  'lounge': 'break_room',
+  'employee lounge': 'break_room',
+  'staff lounge': 'break_room',
+  'lunch room': 'break_room',
+  'lunchroom': 'break_room',
+  'kitchenette': 'break_room',
+  'pantry': 'break_room',
+  'employee break': 'break_room',
+  'staff break': 'break_room',
   'welcome': 'reception',
   
   // Restrooms - LOTS of variations
@@ -281,12 +296,9 @@ const ZONE_TYPE_MAPPING: Record<string, string> = {
   'admin': 'office',
   'administration': 'office',
   'manager': 'office',
+  "manager's office": 'office',
   'back office': 'office',
-  'break': 'office',
-  'break room': 'office',
-  'breakroom': 'office',
-  'staff': 'office',
-  'employee': 'office',
+  'staff office': 'office',
   
   // Circulation - these should be SKIPPED (mapped to special value)
   'corridor': '_skip_',
@@ -413,6 +425,7 @@ MATCHING RULES:
 - "Café", "Cafe", "F&B", "Juice Bar" → cafe_light_fb
 - "Co-Work", "Cowork", "Coworking" → cowork
 - "Conference", "Meeting Room" → conference_room
+- "Break Room", "Breakroom", "Lounge", "Employee Lounge", "Lunch Room" → break_room
 - "Sauna" → sauna_electric (unless gas specified)
 - "Steam", "Steam Room" → steam_room
 - "Recovery", "Longevity" → recovery_longevity
@@ -423,8 +436,8 @@ MATCHING RULES:
 - "MMA", "Boxing" → mma_studio
 - "Yoga" → yoga_studio
 - "Stretching" → stretching_area
-- "Reception", "Lobby" → reception
-- "Office", "Admin" → office
+- "Reception", "Lobby", "Entry" → reception
+- "Office", "Admin", "Manager's Office" → office
 - "Contrast" → contrast_suite
 
 For each room, respond with the BEST zone type ID. Be generous with matching - if it's close, match it!
