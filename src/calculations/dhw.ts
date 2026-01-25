@@ -1,24 +1,69 @@
 import type { DHWSettings, DHWCalcResult, ZoneFixtures } from '../types'
-import { dhwDefaults, fixtureUnits } from '../data/defaults'
+import { dhwDefaults, dhwBuildingTypeFactors, fixtureUnits } from '../data/defaults'
+
+export interface DHWCalcBreakdown {
+  // Fixture demand
+  showerDemandGPH: number
+  lavDemandGPH: number
+  serviceSinkDemandGPH: number
+  washerDemandGPH: number
+  totalFixtureDemandGPH: number
+  
+  // Adjusted demand
+  adjustedDemandGPH: number  // After demand factor
+  peakHourGPH: number        // After peak hour factor
+  
+  // Energy
+  deltaT: number
+  netBTUhr: number
+  grossBTUhr: number
+  efficiency: number
+  
+  // System sizing
+  recommendedSystemType: string
+  storageGallons: number
+  tanklessUnits: number
+  recoveryBTUhr: number
+  
+  // Building type info
+  buildingTypeInfo: typeof dhwBuildingTypeFactors.gymnasium
+}
 
 export function calculateDHW(
   fixtures: ZoneFixtures,
   settings: DHWSettings,
   contingency: number
-): DHWCalcResult {
-  // Calculate peak hourly demand (GPH) using ASHRAE Table 10 values
-  const peakGPH =
-    fixtures.showers * fixtureUnits.shower.hot_gph +
-    fixtures.lavs * fixtureUnits.lavatory.hot_gph +
-    fixtures.serviceSinks * fixtureUnits.service_sink.hot_gph +
-    fixtures.washingMachines * fixtureUnits.washing_machine.hot_gph
-
+): DHWCalcResult & { breakdown?: DHWCalcBreakdown } {
+  // Get building type factors
+  const buildingFactors = dhwBuildingTypeFactors[settings.buildingType] || dhwBuildingTypeFactors.gymnasium
+  
+  // Use building-specific GPH values if not custom, otherwise use defaults
+  const showerGPH = settings.buildingType !== 'custom' ? buildingFactors.showerGPH : fixtureUnits.shower.hot_gph
+  const lavGPH = settings.buildingType !== 'custom' ? buildingFactors.lavGPH : fixtureUnits.lavatory.hot_gph
+  
+  // Calculate individual fixture demands
+  const showerDemandGPH = fixtures.showers * showerGPH
+  const lavDemandGPH = fixtures.lavs * lavGPH
+  const serviceSinkDemandGPH = fixtures.serviceSinks * fixtureUnits.service_sink.hot_gph
+  const washerDemandGPH = fixtures.washingMachines * fixtureUnits.washing_machine.hot_gph
+  
+  // Total fixture demand (unadjusted)
+  const totalFixtureDemandGPH = showerDemandGPH + lavDemandGPH + serviceSinkDemandGPH + washerDemandGPH
+  
+  // Apply demand/diversity factor
+  const demandFactor = settings.demandFactor ?? buildingFactors.demandDiversity
+  const adjustedDemandGPH = totalFixtureDemandGPH * demandFactor
+  
+  // Apply peak hour factor
+  const peakHourFactor = buildingFactors.peakHourFactor
+  const peakHourGPH = adjustedDemandGPH * peakHourFactor
+  
   // Temperature calculations
   const deltaT = settings.storageTemp - settings.coldWaterTemp
   
-  // Recovery rate (BTU/hr)
-  // Net BTU = GPH × 8.33 lb/gal × ΔT °F
-  const netBTU = peakGPH * 8.33 * deltaT
+  // Calculate BTU/hr based on peak demand
+  // BTU/hr = GPH × 8.33 lb/gal × ΔT °F
+  const netBTU = peakHourGPH * 8.33 * deltaT
   
   // Efficiency based on heater type
   const efficiency = settings.heaterType === 'gas' 
@@ -28,35 +73,70 @@ export function calculateDHW(
   // Gross BTU required (before efficiency loss)
   const grossBTU = netBTU / efficiency
   
+  // Apply recovery factor for sizing
+  const recoveryFactor = settings.recoveryFactor ?? 1.0
+  const recoveryBTUhr = grossBTU * recoveryFactor
+  
   // For gas: convert BTU/hr to CFH (natural gas ~1,000 BTU/CF)
-  const gasCFH = settings.heaterType === 'gas' ? grossBTU / 1000 : 0
+  const gasCFH = settings.heaterType === 'gas' ? recoveryBTUhr / 1000 : 0
   
   // For electric: convert BTU/hr to kW (1 kW = 3,412 BTU/hr)
-  const electricKW = settings.heaterType === 'electric' ? grossBTU / 3412 : 0
+  const electricKW = settings.heaterType === 'electric' ? recoveryBTUhr / 3412 : 0
   
-  // Storage tank sizing
-  // Storage factor 0.7 (70% usable)
-  const storageFactor = 0.7
-  const storageGallons = (peakGPH * settings.peakDuration) / storageFactor
+  // Storage tank sizing (ASHRAE method)
+  // Storage = (Peak GPH × Peak Duration) / Storage Factor
+  const storageFactor = settings.storageFactor ?? buildingFactors.storageFactor
+  const peakDuration = settings.peakDuration ?? buildingFactors.typicalPeakDuration
   
-  // Calculate number of tankless units needed (based on Navien 199,900 BTU)
-  const tanklessUnits = Math.ceil(grossBTU / dhwDefaults.tankless_unit_btu)
+  let storageGallons: number
+  if (settings.tankSizingMethod === 'manual' && settings.manualStorageGallons) {
+    storageGallons = settings.manualStorageGallons
+  } else {
+    storageGallons = (peakHourGPH * peakDuration) / storageFactor
+  }
+  
+  // Tankless units needed
+  const tanklessUnitBtu = settings.tanklessUnitBtu ?? dhwDefaults.tankless_unit_btu
+  const tanklessUnits = Math.ceil(recoveryBTUhr / tanklessUnitBtu)
   
   // Apply contingency
-  const finalGrossBTU = grossBTU * (1 + contingency)
+  const finalGrossBTU = recoveryBTUhr * (1 + contingency)
   const finalGasCFH = gasCFH * (1 + contingency)
   const finalElectricKW = electricKW * (1 + contingency)
   const finalStorageGallons = storageGallons * (1 + contingency)
+  const finalTanklessUnits = Math.ceil(finalGrossBTU / tanklessUnitBtu)
+
+  // Build breakdown for UI
+  const breakdown: DHWCalcBreakdown = {
+    showerDemandGPH: Math.round(showerDemandGPH),
+    lavDemandGPH: Math.round(lavDemandGPH),
+    serviceSinkDemandGPH: Math.round(serviceSinkDemandGPH),
+    washerDemandGPH: Math.round(washerDemandGPH),
+    totalFixtureDemandGPH: Math.round(totalFixtureDemandGPH),
+    adjustedDemandGPH: Math.round(adjustedDemandGPH),
+    peakHourGPH: Math.round(peakHourGPH),
+    deltaT,
+    netBTUhr: Math.round(netBTU),
+    grossBTUhr: Math.round(grossBTU),
+    efficiency,
+    recommendedSystemType: peakHourGPH > 500 ? 'Storage with booster' : 
+                           peakHourGPH > 200 ? 'Multiple tankless' : 'Single tankless',
+    storageGallons: Math.round(storageGallons),
+    tanklessUnits,
+    recoveryBTUhr: Math.round(recoveryBTUhr),
+    buildingTypeInfo: buildingFactors,
+  }
 
   return {
-    peakGPH: Math.round(peakGPH),
+    peakGPH: Math.round(peakHourGPH),
     netBTU: Math.round(netBTU),
     grossBTU: Math.round(finalGrossBTU),
     gasCFH: Math.round(finalGasCFH),
     electricKW: Math.round(finalElectricKW * 10) / 10,
     storageGallons: Math.round(finalStorageGallons),
-    tanklessUnits: Math.max(tanklessUnits, 1),
+    tanklessUnits: Math.max(finalTanklessUnits, 1),
     efficiency,
+    breakdown,
   }
 }
 

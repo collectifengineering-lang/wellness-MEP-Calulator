@@ -99,14 +99,46 @@ export interface Zone {
   sortOrder: number
 }
 
+// ASHRAE building types for DHW demand factors
+export type DHWBuildingType = 
+  | 'gymnasium'      // Health clubs, fitness centers, spas
+  | 'hotel'          // Hotels, motels
+  | 'apartment'      // Multifamily residential
+  | 'office'         // Office buildings
+  | 'hospital'       // Healthcare facilities
+  | 'restaurant'     // Full-service restaurants
+  | 'school'         // Schools, universities
+  | 'custom'         // Manual entry
+
+export type DHWSystemType = 'storage' | 'instantaneous' | 'hybrid'
+
 export interface DHWSettings {
+  // System configuration
+  systemType: DHWSystemType
   heaterType: 'electric' | 'gas'
+  buildingType: DHWBuildingType
+  
+  // Efficiency
   gasEfficiency: number
   electricEfficiency: number
-  storageTemp: number
-  deliveryTemp: number
-  coldWaterTemp: number
-  peakDuration: number
+  
+  // Temperatures
+  storageTemp: number       // Storage tank temperature (°F)
+  deliveryTemp: number      // Delivery/fixture temperature (°F)  
+  coldWaterTemp: number     // Incoming cold water (°F)
+  
+  // ASHRAE sizing parameters
+  peakDuration: number      // Peak demand duration (hours)
+  storageFactor: number     // Usable storage fraction (0.6-0.8, default 0.7)
+  demandFactor: number      // Diversity/simultaneity factor (0.5-1.0)
+  recoveryFactor: number    // Recovery capacity multiplier (0.8-1.5)
+  
+  // Tank sizing (for storage systems)
+  tankSizingMethod: 'ashrae' | 'fixture_unit' | 'manual'
+  manualStorageGallons?: number
+  
+  // Tankless sizing (for instantaneous systems)
+  tanklessUnitBtu: number   // BTU per unit (default 199,900)
 }
 
 export interface ResultAdjustments {

@@ -89,6 +89,119 @@ export const dhwDefaults = {
   } as Record<string, number>,
 }
 
+// ASHRAE Service Water Heating demand factors by building type
+// Based on ASHRAE Handbook - HVAC Applications, Chapter 50
+// Values represent typical peak hour demand and recovery characteristics
+export const dhwBuildingTypeFactors: Record<string, {
+  name: string
+  description: string
+  peakHourFactor: number      // Multiplier for peak hour demand (GPH per fixture)
+  demandDiversity: number     // Simultaneity factor (0-1)
+  typicalPeakDuration: number // Hours of peak demand
+  storageFactor: number       // Recommended storage factor
+  recoveryHours: number       // Typical recovery period (hours)
+  showerGPH: number           // Hot water per shower (GPH)
+  lavGPH: number              // Hot water per lavatory (GPH)
+  notes: string
+}> = {
+  gymnasium: {
+    name: 'Gymnasium / Health Club / Spa',
+    description: 'Fitness centers, spas, bathhouses with high shower usage',
+    peakHourFactor: 1.5,
+    demandDiversity: 0.70,
+    typicalPeakDuration: 2.0,
+    storageFactor: 0.70,
+    recoveryHours: 2.0,
+    showerGPH: 100,      // ASHRAE Table 10 - gymnasium showers
+    lavGPH: 6,
+    notes: 'High peak demand due to simultaneous shower usage after classes/workouts',
+  },
+  hotel: {
+    name: 'Hotel / Motel',
+    description: 'Lodging with guest room showers and laundry',
+    peakHourFactor: 1.2,
+    demandDiversity: 0.50,
+    typicalPeakDuration: 2.0,
+    storageFactor: 0.70,
+    recoveryHours: 4.0,
+    showerGPH: 75,
+    lavGPH: 6,
+    notes: 'Morning peak, spread over longer period',
+  },
+  apartment: {
+    name: 'Apartment / Multifamily',
+    description: 'Residential multifamily buildings',
+    peakHourFactor: 1.0,
+    demandDiversity: 0.40,
+    typicalPeakDuration: 1.5,
+    storageFactor: 0.70,
+    recoveryHours: 3.0,
+    showerGPH: 50,
+    lavGPH: 4,
+    notes: 'Lower diversity due to varied schedules',
+  },
+  office: {
+    name: 'Office Building',
+    description: 'Commercial offices with restrooms only',
+    peakHourFactor: 0.5,
+    demandDiversity: 0.30,
+    typicalPeakDuration: 1.0,
+    storageFactor: 0.80,
+    recoveryHours: 2.0,
+    showerGPH: 0,
+    lavGPH: 3,
+    notes: 'Low demand, primarily handwashing',
+  },
+  hospital: {
+    name: 'Hospital / Healthcare',
+    description: 'Medical facilities with patient care needs',
+    peakHourFactor: 1.3,
+    demandDiversity: 0.60,
+    typicalPeakDuration: 3.0,
+    storageFactor: 0.65,
+    recoveryHours: 4.0,
+    showerGPH: 75,
+    lavGPH: 8,
+    notes: '24-hour demand with morning/evening peaks',
+  },
+  restaurant: {
+    name: 'Restaurant / Food Service',
+    description: 'Commercial kitchen with dishwashing',
+    peakHourFactor: 1.8,
+    demandDiversity: 0.80,
+    typicalPeakDuration: 3.0,
+    storageFactor: 0.65,
+    recoveryHours: 2.0,
+    showerGPH: 0,
+    lavGPH: 4,
+    notes: 'High demand from dishwashing, meal periods',
+  },
+  school: {
+    name: 'School / University',
+    description: 'Educational facilities with gym/cafeteria',
+    peakHourFactor: 1.1,
+    demandDiversity: 0.50,
+    typicalPeakDuration: 1.5,
+    storageFactor: 0.70,
+    recoveryHours: 3.0,
+    showerGPH: 80,
+    lavGPH: 5,
+    notes: 'Peak after PE classes and during lunch',
+  },
+  custom: {
+    name: 'Custom / Manual',
+    description: 'User-defined parameters',
+    peakHourFactor: 1.0,
+    demandDiversity: 0.70,
+    typicalPeakDuration: 2.0,
+    storageFactor: 0.70,
+    recoveryHours: 2.0,
+    showerGPH: 75,
+    lavGPH: 6,
+    notes: 'Adjust parameters manually',
+  },
+}
+
 // Fixture unit values (IPC-based)
 export const fixtureUnits = {
   lavatory: { wsfu: 1.5, dfu: 1, hot_gph: 6 },
@@ -126,14 +239,34 @@ export const waterMeterSizing = [
 ]
 
 export function getDefaultDHWSettings(climate: ClimateType): DHWSettings {
+  const buildingFactors = dhwBuildingTypeFactors.gymnasium // Default for wellness facilities
+  
   return {
+    // System configuration
+    systemType: 'instantaneous',  // Default to tankless for wellness
     heaterType: 'gas',
+    buildingType: 'gymnasium',
+    
+    // Efficiency
     gasEfficiency: dhwDefaults.efficiency_presets.condensing,
     electricEfficiency: 0.98,
+    
+    // Temperatures
     storageTemp: dhwDefaults.storage_temp_f,
     deliveryTemp: dhwDefaults.delivery_temp_f,
     coldWaterTemp: coldWaterTempByClimate[climate],
-    peakDuration: 2,
+    
+    // ASHRAE sizing parameters
+    peakDuration: buildingFactors.typicalPeakDuration,
+    storageFactor: buildingFactors.storageFactor,
+    demandFactor: buildingFactors.demandDiversity,
+    recoveryFactor: 1.0,
+    
+    // Tank sizing
+    tankSizingMethod: 'ashrae',
+    
+    // Tankless sizing
+    tanklessUnitBtu: dhwDefaults.tankless_unit_btu,
   }
 }
 
