@@ -55,6 +55,8 @@ export interface ZoneDefaults {
   ceiling_height_ft?: number    // Default ceiling height for ACH calc
   ach_ventilation?: number      // Air changes per hour for ventilation
   ach_exhaust?: number          // Air changes per hour for exhaust
+  // Equipment load calculation (thermal spaces)
+  kw_per_cubic_meter?: number   // kW per m³ for electric heaters (saunas, steam)
   // Pool configuration
   pool_config?: {
     pools: PoolConfig[]
@@ -417,13 +419,15 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       cooling_sf_ton: 250,
       heating_btuh_sf: 0,
     },
-    fixed_kw: 30,
+    // 200 SF × 10 ft = 2000 CF = 56.6 m³ → 57 kW @ 1 kW/m³
+    fixed_kw: 57,
+    kw_per_cubic_meter: 1.0,
     rp_cfm_person: 10,
     ra_cfm_sf: 0.06,
     ceiling_height_ft: 10,
     ach_ventilation: 6,
     ach_exhaust: 6,
-    source_notes: '6 ACH vent + 6 ACH exhaust @ 10ft ceiling; 30 fixed kW',
+    source_notes: '6 ACH vent + 6 ACH exhaust @ 10ft ceiling; 1 kW/m³ heater sizing',
   },
   steam_room: {
     displayName: 'Steam Room',
@@ -439,14 +443,16 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       cooling_sf_ton: 150,
       heating_btuh_sf: 0,
     },
-    fixed_kw: 15,
+    // 200 SF × 10 ft = 2000 CF = 56.6 m³ → 57 kW @ 1 kW/m³
+    fixed_kw: 57,
+    kw_per_cubic_meter: 1.0,
     latent_adder: 0.5,
     rp_cfm_person: 10,
     ra_cfm_sf: 0.06,
     ceiling_height_ft: 10,
     ach_ventilation: 6,
     ach_exhaust: 6,
-    source_notes: '6 ACH vent + 6 ACH exhaust @ 10ft ceiling; 0.5 latent adder',
+    source_notes: '6 ACH vent + 6 ACH exhaust @ 10ft ceiling; 1 kW/m³ steam gen; 0.5 latent adder',
   },
   cold_plunge: {
     displayName: 'Cold Plunge',
@@ -1043,6 +1049,35 @@ export function calculateACHBasedCFM(
 ): number {
   // CFM = (SF × Height × ACH) / 60
   return Math.ceil((sf * ceilingHeight * ach) / 60)
+}
+
+// Calculate equipment kW based on volume (for electric saunas, steam rooms)
+// Formula: 1 kW per cubic meter
+export function calculateEquipmentKW(
+  sf: number,
+  ceilingHeight: number = 10,
+  kwPerCubicMeter: number = 1.0
+): number {
+  // Volume in cubic feet
+  const volumeCF = sf * ceilingHeight
+  // Convert to cubic meters (1 m³ = 35.315 CF)
+  const volumeM3 = volumeCF / 35.315
+  // kW = volume × rate
+  return Math.ceil(volumeM3 * kwPerCubicMeter)
+}
+
+// Get equipment kW for a zone (uses kw_per_cubic_meter if defined, else fixed_kw)
+export function getZoneEquipmentKW(type: ZoneType, sf: number, ceilingHeight?: number): number {
+  const defaults = getZoneDefaults(type)
+  
+  // If zone has kW/m³ rate, calculate dynamically
+  if (defaults.kw_per_cubic_meter) {
+    const height = ceilingHeight || defaults.ceiling_height_ft || 10
+    return calculateEquipmentKW(sf, height, defaults.kw_per_cubic_meter)
+  }
+  
+  // Otherwise return fixed kW
+  return defaults.fixed_kw || 0
 }
 
 // Get ventilation CFM for a zone (considers ACH or CFM/SF)
