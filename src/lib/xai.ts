@@ -507,59 +507,65 @@ If truly no match, use "custom". Only respond with valid JSON, no explanation.`
 // Shared extraction prompt for both Claude and Grok
 const EXTRACTION_PROMPT = `You are extracting room data from an architectural floor plan or area schedule.
 
-TASK: Find ALL rooms/spaces with their SQUARE FOOTAGE numbers, and identify the FLOOR/LEVEL.
+TASK: Find EVERY room/space with a SQUARE FOOTAGE number. Be thorough - don't miss any!
 
 HOW TO READ THE DOCUMENT:
-1. Look for TABLES or LISTS showing: Room Name | Square Footage
-2. Look for LABELS on floor plans with format: "ROOM NAME" and "X,XXX sqft" or "X,XXX SF"
-3. Numbers like "10,274 sqft", "5,252 sqft", "1,515 sqft" are square footage values
-4. Each room/space should have a name and an area number nearby
+1. Look for TABLES with room names and SF in cells
+2. Look for LABELS on floor plans: "ROOM NAME" with "X,XXX sqft" below or beside
+3. Numbers like "10,274 sqft", "482 sqft", "191 sqft" are square footage
+4. SCAN THE ENTIRE IMAGE - rooms can be in corners, small cells, anywhere
+5. Even SMALL TEXT contains valid rooms - read everything carefully
 
 IDENTIFY THE FLOOR/LEVEL:
-- Look in the TITLE BLOCK (usually bottom right corner) for: "Level 1", "Floor 2", "L1", "1st Floor", "Ground Floor", "Roof", "Basement", etc.
-- Look for headers like "FIRST FLOOR PLAN", "LEVEL 2", "GROUND LEVEL"
-- Look in area schedule tables for a "Level" or "Floor" column
-- Common formats: "L1", "Level 1", "1F", "Floor 1", "1st Floor", "Ground", "G", "B1" (basement), "Roof", "R", "Mezz", "M"
-- If you can't determine the floor, use "Unknown"
+- Look in TITLE BLOCK (usually corners) for: "Level 3", "Level 4", "Floor 2", "L1"
+- Look for headers: "Level 3 - GYM & Co-Work", "Level 4 - Wellness"
+- Common formats: "L1", "Level 1", "1F", "Ground", "Roof", "B1" (basement)
 
-EXTRACT THESE TYPES OF SPACES:
-- GYM, FITNESS, WEIGHT ROOM (often 3,000-15,000 SF)
+EXTRACT ALL OF THESE (including small rooms):
+- GYM, FITNESS (often 3,000-15,000 SF)
 - CO-WORK, COWORKING (often 2,000-8,000 SF)
-- LOCKER ROOM, MEN'S LOCKERS, WOMEN'S LOCKERS (often 1,000-3,000 SF each)
-- POOL, POOL AREA, NATATORIUM (often 1,500-5,000 SF)
-- CAFÉ, F&B, RESTAURANT (often 500-2,000 SF)
-- CONFERENCE, CONF ROOM (often 200-800 SF)
+- CONFERENCE ROOM, CONF ROOM (often 200-800 SF) - may have multiple!
+- LOUNGE, BREAK AREA (often 500-2,000 SF)
+- RECEPTION, LOBBY (often 200-1,000 SF)
+- OFFICE, MANAGER'S OFFICE (often 100-500 SF)
+- CALL BOOTH, PHONE BOOTH (often 50-150 SF)
+- LOCKER ROOM, MEN'S/WOMEN'S LOCKERS (often 1,000-3,000 SF)
+- POOL, POOL WELLNESS, POOL BAR (often 500-5,000 SF)
+- CAFÉ, F&B (often 500-2,000 SF)
 - CHILD CARE, KIDS CLUB (often 500-2,000 SF)
 - RECOVERY, LONGEVITY, STRETCHING (often 500-3,000 SF)
 - CONTRAST SUITE, SAUNA, STEAM (often 200-2,000 SF)
 - MMA, BOXING, YOGA STUDIO (often 1,000-3,000 SF)
-- LAUNDRY, MECHANICAL, BOH (often 300-1,000 SF)
-- RESTROOMS, RR (often 200-1,000 SF)
+- MECHANICAL, MECH ROOM, BOH (often 300-1,000 SF)
 - TERRACE, OUTDOOR (often 1,000-5,000 SF)
-- POOL BAR, BAR (often 300-1,000 SF)
+- RESTROOM, RR (often 100-500 SF)
+- STORAGE (often 100-500 SF)
 
-DO NOT EXTRACT: Stairs, Elevators, Corridors, Landing Areas, Vestibules
-
-READ CAREFULLY: The SF number may be formatted as:
-- "10,274 sqft" or "10274 SF" or just "10274"
-- Make sure to capture the FULL number including commas
+IMPORTANT:
+- Extract EVERY room with SF, even if small (50+ SF)
+- If same room type appears multiple times (e.g., 3 Conf Rooms), list each separately
+- DO NOT skip small offices, call booths, break areas
+- DO NOT EXTRACT: Stairs, Elevators, Corridors (unless they have SF numbers)
 
 Respond with ONLY valid JSON:
 {
-  "floor": "Level 1",
+  "floor": "Level 3",
   "zones": [
     {"name": "Gym", "type": "gym", "sf": 10274},
     {"name": "Co-Work", "type": "office", "sf": 5252},
-    {"name": "Men's Lockers", "type": "locker room", "sf": 1515},
-    {"name": "Women's Lockers", "type": "locker room", "sf": 1510},
-    {"name": "Pool", "type": "pool", "sf": 1951},
-    {"name": "Café", "type": "cafe", "sf": 1119}
+    {"name": "Conf Room", "type": "conference", "sf": 482},
+    {"name": "Conf Room", "type": "conference", "sf": 482},
+    {"name": "Conf Room", "type": "conference", "sf": 482},
+    {"name": "Reception", "type": "reception", "sf": 258},
+    {"name": "Lounge", "type": "lounge", "sf": 1024},
+    {"name": "Manager's Office", "type": "office", "sf": 191},
+    {"name": "Call Booth", "type": "office", "sf": 75}
   ],
-  "totalSF": 21621,
-  "notes": "Found X rooms on Level 1"
+  "totalSF": 13520,
+  "notes": "Found X rooms including small offices and booths"
 }
 
-Be precise with numbers. A gym is often 5,000-15,000 SF, not 500 SF.`
+Be THOROUGH. Missing rooms is worse than including extras!`
 
 // Track which provider was used for extraction
 export type AIProvider = 'claude' | 'grok' | 'none'
@@ -877,8 +883,8 @@ async function renderPageToImage(
 ): Promise<{ base64: string; mimeType: string }> {
   const page = await pdf.getPage(pageNumber)
   
-  // Render at 2x scale for better quality
-  const scale = 2.0
+  // Render at 3x scale for better quality (helps read smaller text in tables)
+  const scale = 3.0
   const viewport = page.getViewport({ scale })
   
   const canvas = document.createElement('canvas')
