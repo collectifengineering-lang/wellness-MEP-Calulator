@@ -365,8 +365,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 2,
       ventilation_cfm_sf: 0.50,
       exhaust_cfm_sf: 2.00,
-      cooling_sf_ton: 200,
-      heating_btuh_sf: 0,
+      cooling_sf_ton: 0,   // No HVAC cooling - only ventilation
+      heating_btuh_sf: 0,  // Process heat from furnace, not HVAC
     },
     fixed_kw: 5,
     gas_mbh: 1260,
@@ -391,8 +391,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 2,
       ventilation_cfm_sf: 1.00,  // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
       exhaust_cfm_sf: 1.00,      // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
-      cooling_sf_ton: 250,
-      heating_btuh_sf: 0,
+      cooling_sf_ton: 0,         // No HVAC cooling - only ventilation
+      heating_btuh_sf: 0,        // Process heat from heater, not HVAC
     },
     fixed_kw: 2,
     gas_mbh: 91,
@@ -416,8 +416,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 2,
       ventilation_cfm_sf: 1.00,  // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
       exhaust_cfm_sf: 1.00,      // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
-      cooling_sf_ton: 250,
-      heating_btuh_sf: 0,
+      cooling_sf_ton: 0,         // No HVAC cooling - only ventilation
+      heating_btuh_sf: 0,        // Process heat from electric heater, not HVAC
     },
     // 200 SF × 10 ft = 2000 CF = 56.6 m³ → 57 kW @ 1 kW/m³
     fixed_kw: 57,
@@ -440,8 +440,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 2,
       ventilation_cfm_sf: 1.00,  // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
       exhaust_cfm_sf: 1.00,      // 6 ACH @ 10ft ceiling = 1.0 CFM/SF
-      cooling_sf_ton: 150,
-      heating_btuh_sf: 0,
+      cooling_sf_ton: 0,         // No HVAC cooling - only ventilation
+      heating_btuh_sf: 0,        // Process heat from steam generator, not HVAC
     },
     // 200 SF × 10 ft = 2000 CF = 56.6 m³ → 57 kW @ 1 kW/m³
     fixed_kw: 57,
@@ -465,7 +465,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 3,
       ventilation_cfm_sf: 0.30,
       exhaust_cfm_sf: 1.00,
-      cooling_sf_ton: 300,
+      cooling_sf_ton: 0,         // No HVAC cooling - process chiller only
       heating_btuh_sf: 0,
     },
     fixed_kw: 25,
@@ -484,7 +484,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 3,
       ventilation_cfm_sf: 0.20,
       exhaust_cfm_sf: 0.50,
-      cooling_sf_ton: 100,
+      cooling_sf_ton: 0,         // No HVAC cooling - process equipment only
       heating_btuh_sf: 0,
     },
     fixed_kw: 20,
@@ -501,7 +501,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 3,
       ventilation_cfm_sf: 0.40,
       exhaust_cfm_sf: 1.50,
-      cooling_sf_ton: 200,
+      cooling_sf_ton: 0,         // No HVAC cooling - process equipment only
       heating_btuh_sf: 0,
     },
     fixed_kw: 50,

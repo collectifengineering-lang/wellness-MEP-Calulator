@@ -8,26 +8,31 @@ export function calculateGas(zones: Zone[], contingency: number): GasCalcResult 
 
   zones.forEach(zone => {
     const defaults = getZoneDefaults(zone.type)
+    const processLoads = zone.processLoads || {}
     
-    // Only count gas loads for gas sub-type zones (or always-gas equipment)
-    if (zone.subType === 'gas' || defaults.pool_heater_gas_mbh) {
+    // Get gas MBH - prefer zone's processLoads, fall back to defaults
+    const zoneGasMBH = processLoads.gas_mbh ?? defaults.gas_mbh ?? 0
+    const poolHeaterMBH = processLoads.pool_heater_mbh ?? defaults.pool_heater_gas_mbh ?? 0
+    
+    // Only count gas loads for gas sub-type zones (or always-gas equipment like pool heaters)
+    if (zone.subType === 'gas' || poolHeaterMBH > 0) {
       // Fixed gas loads (sauna, banya, etc.)
-      if (defaults.gas_mbh) {
-        totalMBH += defaults.gas_mbh
+      if (zoneGasMBH > 0 && zone.subType === 'gas') {
+        totalMBH += zoneGasMBH
         equipmentBreakdown.push({
           name: `${zone.name} - ${defaults.displayName}`,
-          mbh: defaults.gas_mbh,
-          cfh: defaults.gas_mbh,
+          mbh: zoneGasMBH,
+          cfh: zoneGasMBH,
         })
       }
       
-      // Pool heaters
-      if (defaults.pool_heater_gas_mbh) {
-        totalMBH += defaults.pool_heater_gas_mbh
+      // Pool heaters (can be gas regardless of zone subType)
+      if (poolHeaterMBH > 0) {
+        totalMBH += poolHeaterMBH
         equipmentBreakdown.push({
           name: `${zone.name} - Pool Heater`,
-          mbh: defaults.pool_heater_gas_mbh,
-          cfh: defaults.pool_heater_gas_mbh,
+          mbh: poolHeaterMBH,
+          cfh: poolHeaterMBH,
         })
       }
       

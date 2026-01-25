@@ -13,6 +13,7 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
 
   zones.forEach(zone => {
     const defaults = getZoneDefaults(zone.type)
+    const processLoads = zone.processLoads || {}
     
     // Cooling (SF/ton method)
     if (zone.rates.cooling_sf_ton > 0) {
@@ -35,22 +36,24 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
       totalMBH += btuhr / 1000
     }
     
-    // Ventilation
+    // Ventilation (rate-based)
     if (zone.rates.ventilation_cfm_sf > 0) {
       totalVentCFM += zone.sf * zone.rates.ventilation_cfm_sf
     }
-    // Fixed ventilation CFM (for special zones like mechanical rooms)
-    if (defaults.ventilation_cfm) {
-      totalVentCFM += defaults.ventilation_cfm
+    // Fixed ventilation CFM - prefer zone's processLoads, fall back to defaults
+    const fixedVentCFM = processLoads.ventilation_cfm ?? defaults.ventilation_cfm ?? 0
+    if (fixedVentCFM > 0) {
+      totalVentCFM += fixedVentCFM
     }
     
-    // Exhaust
+    // Exhaust (rate-based)
     if (zone.rates.exhaust_cfm_sf > 0) {
       totalExhaustCFM += zone.sf * zone.rates.exhaust_cfm_sf
     }
-    // Fixed exhaust CFM
-    if (defaults.exhaust_cfm) {
-      totalExhaustCFM += defaults.exhaust_cfm
+    // Fixed exhaust CFM - prefer zone's processLoads, fall back to defaults
+    const fixedExhaustCFM = processLoads.exhaust_cfm ?? defaults.exhaust_cfm ?? 0
+    if (fixedExhaustCFM > 0) {
+      totalExhaustCFM += fixedExhaustCFM
     }
     // Per-fixture exhaust (toilets, showers)
     if (defaults.exhaust_cfm_toilet) {
@@ -83,9 +86,10 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
       }
     })
     
-    // Dehumidification for pool areas
-    if (defaults.dehumidification_lb_hr) {
-      dehumidLbHr += defaults.dehumidification_lb_hr * factors.dehumid
+    // Dehumidification for pool areas - prefer zone's processLoads
+    const dehumidCapacity = processLoads.dehumid_lb_hr ?? defaults.dehumidification_lb_hr ?? 0
+    if (dehumidCapacity > 0) {
+      dehumidLbHr += dehumidCapacity * factors.dehumid
     }
   })
 
@@ -118,6 +122,7 @@ export function getHVACBreakdown(zones: Zone[], climate: ClimateType): {
   
   return zones.map(zone => {
     const defaults = getZoneDefaults(zone.type)
+    const processLoads = zone.processLoads || {}
     
     let tons = 0
     if (zone.rates.cooling_sf_ton > 0) {
@@ -128,10 +133,12 @@ export function getHVACBreakdown(zones: Zone[], climate: ClimateType): {
     }
     
     let ventCFM = zone.sf * zone.rates.ventilation_cfm_sf
-    if (defaults.ventilation_cfm) ventCFM += defaults.ventilation_cfm
+    const fixedVentCFM = processLoads.ventilation_cfm ?? defaults.ventilation_cfm ?? 0
+    if (fixedVentCFM > 0) ventCFM += fixedVentCFM
     
     let exhaustCFM = zone.sf * zone.rates.exhaust_cfm_sf
-    if (defaults.exhaust_cfm) exhaustCFM += defaults.exhaust_cfm
+    const fixedExhaustCFM = processLoads.exhaust_cfm ?? defaults.exhaust_cfm ?? 0
+    if (fixedExhaustCFM > 0) exhaustCFM += fixedExhaustCFM
     if (defaults.exhaust_cfm_toilet) exhaustCFM += zone.fixtures.wcs * defaults.exhaust_cfm_toilet
     if (defaults.exhaust_cfm_shower) exhaustCFM += zone.fixtures.showers * defaults.exhaust_cfm_shower
     
@@ -143,8 +150,9 @@ export function getHVACBreakdown(zones: Zone[], climate: ClimateType): {
     }
     
     const notes: string[] = []
-    if (defaults.dehumidification_lb_hr) {
-      notes.push(`Dehumid: ${defaults.dehumidification_lb_hr} lb/hr`)
+    const dehumidCapacity = processLoads.dehumid_lb_hr ?? defaults.dehumidification_lb_hr ?? 0
+    if (dehumidCapacity > 0) {
+      notes.push(`Dehumid: ${dehumidCapacity} lb/hr`)
     }
     if (defaults.requires_type1_hood) {
       notes.push('Type I hood required')
@@ -157,6 +165,11 @@ export function getHVACBreakdown(zones: Zone[], climate: ClimateType): {
     }
     if (defaults.requires_standby_power) {
       notes.push('Standby power required')
+    }
+    // Show equipment load for thermal zones
+    const fixedKW = processLoads.fixed_kw ?? defaults.fixed_kw ?? 0
+    if (fixedKW > 0) {
+      notes.push(`Equipment: ${fixedKW} kW`)
     }
     
     return {

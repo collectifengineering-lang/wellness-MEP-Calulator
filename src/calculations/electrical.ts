@@ -28,8 +28,8 @@ export function calculateElectrical(
     const lightingKW = zone.sf * zone.rates.lighting_w_sf / 1000
     const receptacleKW = zone.sf * zone.rates.receptacle_va_sf / 1000
     
-    // Fixed loads from zone defaults
-    let fixedKW = defaults.fixed_kw || 0
+    // Fixed loads - prefer zone's processLoads, fall back to defaults
+    let fixedKW = zone.processLoads?.fixed_kw ?? defaults.fixed_kw ?? 0
     
     // Special handling for laundry zones - calculate from equipment counts
     if (zone.type === 'laundry_commercial' && defaults.laundry_equipment) {
@@ -124,7 +124,7 @@ export function getElectricalBreakdown(zones: Zone[]): { zoneName: string; kW: n
     const defaults = getZoneDefaults(zone.type)
     const lightingKW = zone.sf * zone.rates.lighting_w_sf / 1000
     const receptacleKW = zone.sf * zone.rates.receptacle_va_sf / 1000
-    const fixedKW = defaults.fixed_kw || 0
+    const fixedKW = zone.processLoads?.fixed_kw ?? defaults.fixed_kw ?? 0
     const lineItemsKW = zone.lineItems
       .filter(li => li.category === 'lighting' || li.category === 'power')
       .reduce((sum, li) => li.unit === 'kW' ? sum + li.quantity * li.value : sum + (li.quantity * li.value) / 1000, 0)
@@ -134,7 +134,7 @@ export function getElectricalBreakdown(zones: Zone[]): { zoneName: string; kW: n
     return {
       zoneName: zone.name,
       kW: Math.round(totalKW * 10) / 10,
-      description: `${zone.sf.toLocaleString()} SF @ ${zone.rates.lighting_w_sf} W/SF lighting + ${zone.rates.receptacle_va_sf} VA/SF receptacle${fixedKW > 0 ? ` + ${fixedKW} kW fixed` : ''}`,
+      description: `${zone.sf.toLocaleString()} SF @ ${zone.rates.lighting_w_sf} W/SF lighting + ${zone.rates.receptacle_va_sf} VA/SF receptacle${fixedKW > 0 ? ` + ${fixedKW} kW equipment` : ''}`,
     }
   })
 }

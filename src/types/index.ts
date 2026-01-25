@@ -71,6 +71,18 @@ export interface ProjectElectricalSettings {
   spareCapacity: number     // Spare capacity % (0 - 0.50)
 }
 
+// Process loads that are fixed per zone (not per SF)
+export interface ZoneProcessLoads {
+  fixed_kw: number           // Fixed electrical load (heaters, equipment)
+  gas_mbh: number            // Gas load in MBH
+  ventilation_cfm: number    // Fixed ventilation CFM
+  exhaust_cfm: number        // Fixed exhaust CFM
+  pool_heater_mbh: number    // Pool heater gas load
+  dehumid_lb_hr: number      // Dehumidification capacity
+  flue_size_in: number       // Flue size for venting
+  ceiling_height_ft: number  // Ceiling height for ACH calcs
+}
+
 export interface Zone {
   id: string
   projectId: string
@@ -81,6 +93,7 @@ export interface Zone {
   color: string
   fixtures: ZoneFixtures
   rates: ZoneRates
+  processLoads: ZoneProcessLoads
   lineItems: LineItem[]
   sortOrder: number
 }
