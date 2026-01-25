@@ -374,18 +374,11 @@ Only respond with valid JSON, no other text.`
   }
 }
 
-// Convert PDF page to image using canvas
-export async function pdfPageToImage(
-  pdfData: ArrayBuffer,
-  pageNumber: number = 1
+// Convert a PDF page to base64 image using an already-loaded PDF document
+async function renderPageToImage(
+  pdf: any,
+  pageNumber: number
 ): Promise<{ base64: string; mimeType: string }> {
-  // Dynamic import of pdfjs
-  const pdfjsLib = await import('pdfjs-dist')
-  
-  // Set worker path - use jsDelivr which is reliable and fast
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
-  
-  const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise
   const page = await pdf.getPage(pageNumber)
   
   // Render at 2x scale for better quality
@@ -400,7 +393,6 @@ export async function pdfPageToImage(
   await page.render({
     canvasContext: context,
     viewport,
-    // @ts-ignore - pdfjs types are strict but this works
   } as any).promise
   
   // Convert to base64
@@ -427,7 +419,10 @@ export async function extractZonesFromPDF(
   console.log('PDF.js version:', pdfjsLib.version)
   console.log('Worker URL:', pdfjsLib.GlobalWorkerOptions.workerSrc)
   
-  const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise
+  // Copy the ArrayBuffer to prevent detachment issues
+  const pdfDataCopy = pdfData.slice(0)
+  
+  const pdf = await pdfjsLib.getDocument({ data: pdfDataCopy }).promise
   const numPages = pdf.numPages
   console.log('PDF loaded, pages:', numPages)
   
@@ -439,7 +434,7 @@ export async function extractZonesFromPDF(
     
     try {
       console.log(`Processing page ${i}/${numPages}...`)
-      const { base64, mimeType } = await pdfPageToImage(pdfData, i)
+      const { base64, mimeType } = await renderPageToImage(pdf, i)
       console.log(`Page ${i} converted to image, sending to xAI...`)
       const result = await extractZonesFromImage(base64, mimeType)
       console.log(`Page ${i} extracted ${result.zones.length} zones`)
