@@ -248,32 +248,46 @@ export async function extractZonesFromImage(
     throw new Error('xAI API key not configured')
   }
 
-  const prompt = `Analyze this floor plan or area schedule image. Extract ALL rooms/spaces with their areas.
+  const prompt = `You are analyzing an architectural floor plan or area schedule for a wellness facility (gym, spa, bathhouse).
 
-For each room/space found, provide:
-1. Room name (as labeled)
-2. Area in square feet (SF) - calculate from dimensions if shown, or estimate based on scale
-3. Room type (e.g., office, restroom, locker room, pool, gym, etc.)
+YOUR TASK: Extract EVERY room/space with its square footage. Be THOROUGH - miss nothing.
 
-IMPORTANT:
-- Include ALL labeled spaces
-- If dimensions are shown (like 20'-0" x 15'-0"), calculate the area
-- If only total SF is shown, use that
-- Look for area schedules, room labels, dimension strings
-- Estimate if exact numbers aren't clear
+WHAT TO LOOK FOR:
+1. Room names/labels (e.g., "RECEPTION", "LOCKER ROOM", "POOL", "SAUNA", "YOGA STUDIO")
+2. Square footage numbers near room names (e.g., "1,250 SF", "500 sqft", "2500")
+3. Area schedules or room lists with SF columns
+4. Dimension strings (e.g., "25'-0\" x 50'-0\"" = 1,250 SF)
+5. Room numbers with associated names and areas
 
-Respond in this exact JSON format:
+COMMON SPACES IN WELLNESS FACILITIES:
+- Reception/Lobby, Locker Rooms (Men's, Women's), Restrooms
+- Pool areas, Hot tub/Spa, Sauna, Steam room, Banya
+- Yoga studio, Fitness floor, Group fitness, Cycling/Spin
+- Treatment rooms, Massage rooms, Recovery areas
+- Laundry, Mechanical, Storage, Office/Admin
+- Café, Juice bar, Retail, Lounge areas
+
+EXTRACTION RULES:
+- Extract EVERY labeled space, even small ones (closets, corridors)
+- If you see a number near a room name, that's likely the SF
+- Include circulation/corridor spaces if labeled
+- For unlabeled areas, estimate based on scale if possible
+- Don't skip any rooms - completeness is critical
+
+Respond with ONLY valid JSON in this exact format:
 {
   "zones": [
-    {"name": "Reception", "type": "reception", "sf": 500},
-    {"name": "Men's Locker Room", "type": "locker room", "sf": 1200},
-    ...
+    {"name": "Reception", "type": "reception", "sf": 1500},
+    {"name": "Men's Locker Room", "type": "locker room", "sf": 2500},
+    {"name": "Women's Locker Room", "type": "locker room", "sf": 3000},
+    {"name": "Pool Area", "type": "pool", "sf": 4000},
+    {"name": "Sauna 1", "type": "sauna", "sf": 200}
   ],
-  "totalSF": 15000,
-  "notes": "Any relevant observations about the floor plan"
+  "totalSF": 11200,
+  "notes": "Found 5 labeled spaces on this page"
 }
 
-Only respond with valid JSON, no other text.`
+Be exhaustive. Extract ALL spaces you can identify.`
 
   try {
     const response = await fetch(XAI_API_URL, {
@@ -301,8 +315,8 @@ Only respond with valid JSON, no other text.`
             ],
           },
         ],
-        max_tokens: 4096,
-        temperature: 0.1,
+        max_tokens: 8192,
+        temperature: 0.2,
       }),
     })
 
