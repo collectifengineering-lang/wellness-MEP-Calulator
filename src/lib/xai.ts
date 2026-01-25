@@ -450,40 +450,53 @@ export async function extractZonesFromImage(
     throw new Error('xAI API key not configured')
   }
 
-  const prompt = `You are analyzing an architectural floor plan or area schedule for a wellness facility.
+  const prompt = `You are extracting room data from an architectural floor plan or area schedule.
 
-YOUR TASK: Extract rooms/spaces that have a SQUARE FOOTAGE NUMBER visible.
+TASK: Find ALL rooms/spaces with their SQUARE FOOTAGE numbers.
 
-CRITICAL RULES:
-1. ONLY extract spaces that have a visible SF/sqft number (e.g., "1,250 SF", "500", "2500 sqft")
-2. The SF number is usually displayed BELOW or NEXT TO the room name
-3. SKIP spaces without SF numbers - we only want rooms with areas specified
-4. IGNORE: stairs, elevators, corridors, hallways, vestibules, circulation areas
-5. Look for area schedules or room lists that show name + SF in columns
+HOW TO READ THE DOCUMENT:
+1. Look for TABLES or LISTS showing: Room Name | Square Footage
+2. Look for LABELS on floor plans with format: "ROOM NAME" and "X,XXX sqft" or "X,XXX SF"
+3. Numbers like "10,274 sqft", "5,252 sqft", "1,515 sqft" are square footage values
+4. Each room/space should have a name and an area number nearby
 
-WHAT A VALID ENTRY LOOKS LIKE:
-- "RECEPTION" with "1,500 SF" nearby → Extract it
-- "MEN'S LOCKER" with "2,500" below it → Extract it  
-- "STAIR 1" with no SF number → SKIP IT
-- "CORRIDOR" → SKIP IT
+EXTRACT THESE TYPES OF SPACES:
+- GYM, FITNESS, WEIGHT ROOM (often 3,000-15,000 SF)
+- CO-WORK, COWORKING (often 2,000-8,000 SF)
+- LOCKER ROOM, MEN'S LOCKERS, WOMEN'S LOCKERS (often 1,000-3,000 SF each)
+- POOL, POOL AREA, NATATORIUM (often 1,500-5,000 SF)
+- CAFÉ, F&B, RESTAURANT (often 500-2,000 SF)
+- CONFERENCE, CONF ROOM (often 200-800 SF)
+- CHILD CARE, KIDS CLUB (often 500-2,000 SF)
+- RECOVERY, LONGEVITY, STRETCHING (often 500-3,000 SF)
+- CONTRAST SUITE, SAUNA, STEAM (often 200-2,000 SF)
+- MMA, BOXING, YOGA STUDIO (often 1,000-3,000 SF)
+- LAUNDRY, MECHANICAL, BOH (often 300-1,000 SF)
+- RESTROOMS, RR (often 200-1,000 SF)
+- TERRACE, OUTDOOR (often 1,000-5,000 SF)
+- POOL BAR, BAR (often 300-1,000 SF)
 
-COMMON WELLNESS SPACES TO FIND:
-Reception, Locker Rooms, Restrooms, Pool, Hot Tub, Sauna, Steam Room, Banya,
-Yoga Studio, Fitness Floor, Group Fitness, Treatment Rooms, Massage,
-Laundry, Mechanical, Storage, Office, Café, Retail, Co-Work
+DO NOT EXTRACT: Stairs, Elevators, Corridors, Landing Areas, Vestibules
+
+READ CAREFULLY: The SF number may be formatted as:
+- "10,274 sqft" or "10274 SF" or just "10274"
+- Make sure to capture the FULL number including commas
 
 Respond with ONLY valid JSON:
 {
   "zones": [
-    {"name": "Reception", "type": "reception", "sf": 1500},
-    {"name": "Men's Locker Room", "type": "locker room", "sf": 2500},
-    {"name": "Pool Area", "type": "pool", "sf": 4000}
+    {"name": "Gym", "type": "gym", "sf": 10274},
+    {"name": "Co-Work", "type": "office", "sf": 5252},
+    {"name": "Men's Lockers", "type": "locker room", "sf": 1515},
+    {"name": "Women's Lockers", "type": "locker room", "sf": 1510},
+    {"name": "Pool", "type": "pool", "sf": 1951},
+    {"name": "Café", "type": "cafe", "sf": 1119}
   ],
-  "totalSF": 8000,
-  "notes": "Extracted 3 spaces with visible SF numbers"
+  "totalSF": 21621,
+  "notes": "Found X rooms on this page"
 }
 
-ONLY include spaces with SF numbers. Quality over quantity.`
+Be precise with numbers. A gym is often 5,000-15,000 SF, not 500 SF.`
 
   try {
     const response = await fetch(XAI_API_URL, {
