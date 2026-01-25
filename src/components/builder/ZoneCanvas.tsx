@@ -3,6 +3,7 @@ import ZoneBlock from './ZoneBlock'
 import ZoneEditor from './ZoneEditor'
 import TotalsBar from './TotalsBar'
 import AddZoneModal from './AddZoneModal'
+import PDFImportModal from './PDFImportModal'
 import { useProjectStore } from '../../store/useProjectStore'
 import type { Zone, CalculationResults, ZoneFixtures } from '../../types'
 
@@ -18,6 +19,7 @@ export default function ZoneCanvas({ calculations }: ZoneCanvasProps) {
   const { zones, currentProject } = useProjectStore()
   const [selectedZone, setSelectedZone] = useState<Zone | null>(null)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showPDFImport, setShowPDFImport] = useState(false)
 
   const totalSF = calculations.totalSF
   const targetSF = currentProject?.targetSF || 1
@@ -39,15 +41,26 @@ export default function ZoneCanvas({ calculations }: ZoneCanvasProps) {
               <p className="text-surface-400 mb-6 max-w-sm">
                 Start building your facility by adding zones. Each zone represents a distinct area with its own MEP requirements.
               </p>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-lg font-medium transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add First Zone
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-lg font-medium transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add First Zone
+                </button>
+                <button
+                  onClick={() => setShowPDFImport(true)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-surface-700 hover:bg-surface-600 text-white rounded-lg font-medium transition-colors border border-surface-600"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                  </svg>
+                  Import from PDF
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -85,6 +98,17 @@ export default function ZoneCanvas({ calculations }: ZoneCanvasProps) {
                 </svg>
                 <span className="text-sm font-medium">Add Zone</span>
               </button>
+              
+              {/* Import from PDF Button */}
+              <button
+                onClick={() => setShowPDFImport(true)}
+                className="min-h-[120px] border-2 border-dashed border-surface-600 hover:border-cyan-500 rounded-xl flex flex-col items-center justify-center gap-2 text-surface-400 hover:text-cyan-400 transition-colors"
+              >
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                </svg>
+                <span className="text-sm font-medium">Import PDF</span>
+              </button>
             </div>
           </>
         )}
@@ -105,6 +129,12 @@ export default function ZoneCanvas({ calculations }: ZoneCanvasProps) {
       {showAddModal && (
         <AddZoneModal onClose={() => setShowAddModal(false)} />
       )}
+      
+      {/* PDF Import Modal */}
+      <PDFImportModal 
+        isOpen={showPDFImport} 
+        onClose={() => setShowPDFImport(false)} 
+      />
     </div>
   )
 }
