@@ -357,6 +357,211 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
             </div>
           )}
 
+          {/* EQUIPMENT ASSUMPTIONS (from cutsheets) */}
+          {(defaults.laundry_equipment || defaults.source_notes || defaults.gas_train_size_in) && (
+            <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-purple-400 mb-3">📋 Equipment Assumptions</h4>
+              
+              {/* Laundry Equipment Specs (B&C Tech SP-75, Stacker Dryer) */}
+              {defaults.laundry_equipment && (
+                <div className="space-y-3">
+                  <div className="bg-surface-900/50 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-white">🧺 Washers ({localZone.fixtures.washingMachines})</span>
+                      <span className="text-xs text-surface-400">B&C Tech SP-75</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Per unit:</span>
+                        <span className="text-white font-mono">{defaults.laundry_equipment.washer_kw} kW / {defaults.laundry_equipment.washer_amps_208v}A</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Total elec:</span>
+                        <span className="text-amber-400 font-mono">{(localZone.fixtures.washingMachines * defaults.laundry_equipment.washer_kw).toFixed(1)} kW</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Water:</span>
+                        <span className="text-white font-mono">{defaults.laundry_equipment.washer_water_gpm} GPM</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Drain:</span>
+                        <span className="text-white font-mono">{defaults.laundry_equipment.washer_drain_gpm} GPM ({defaults.laundry_equipment.washer_dfu} DFU)</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-surface-900/50 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-white">♨️ Dryers ({localZone.fixtures.dryers})</span>
+                      <span className="text-xs text-surface-400">Stacker Gas/Electric</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Gas per unit:</span>
+                        <span className="text-white font-mono">{defaults.laundry_equipment.dryer_gas_mbh} MBH</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Total gas:</span>
+                        <span className="text-orange-400 font-mono">{(localZone.fixtures.dryers * defaults.laundry_equipment.dryer_gas_mbh).toFixed(0)} MBH</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Electric alt:</span>
+                        <span className="text-white font-mono">{defaults.laundry_equipment.dryer_kw_electric} kW each</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Exhaust:</span>
+                        <span className="text-cyan-400 font-mono">{defaults.laundry_equipment.dryer_exhaust_cfm} CFM each</span>
+                      </div>
+                      <div className="flex justify-between col-span-2">
+                        <span className="text-surface-400">Total dryer exhaust:</span>
+                        <span className="text-cyan-400 font-mono">{(localZone.fixtures.dryers * defaults.laundry_equipment.dryer_exhaust_cfm).toLocaleString()} CFM</span>
+                      </div>
+                      <div className="flex justify-between col-span-2">
+                        <span className="text-surface-400">MUA opening req'd:</span>
+                        <span className="text-white font-mono">{(localZone.fixtures.dryers * defaults.laundry_equipment.dryer_mua_sqin).toLocaleString()} sq.in.</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {defaults.requires_standby_power && (
+                    <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-900/30 px-3 py-2 rounded-lg">
+                      <span>⚠️</span>
+                      <span>Standby power required for dryer exhaust fans</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Thermal Zone Furnace/Heater Specs */}
+              {(defaults.gas_train_size_in || defaults.gas_pressure_wc || (defaults.gas_mbh && defaults.category === 'Thermal')) && (
+                <div className="bg-surface-900/50 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-white">
+                      {localZone.type.includes('banya') ? '🔥 Banya Furnace' : 
+                       localZone.type.includes('sauna') ? '🔥 Sauna Heater' : '🔥 Heating Equipment'}
+                    </span>
+                    <span className="text-xs text-surface-400">
+                      {defaults.source_notes?.split(';')[0] || 'See notes'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    {defaults.gas_mbh && localZone.subType === 'gas' && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-surface-400">Gas input:</span>
+                          <span className="text-orange-400 font-mono">{defaults.gas_mbh} MBH</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-surface-400">CFH:</span>
+                          <span className="text-white font-mono">{defaults.gas_mbh} CFH</span>
+                        </div>
+                      </>
+                    )}
+                    {defaults.gas_train_size_in && (
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Gas train:</span>
+                        <span className="text-white font-mono">{defaults.gas_train_size_in}" pipe</span>
+                      </div>
+                    )}
+                    {defaults.gas_pressure_wc && (
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Gas pressure:</span>
+                        <span className="text-white font-mono">{defaults.gas_pressure_wc}" W.C.</span>
+                      </div>
+                    )}
+                    {defaults.flue_size_in && (
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Flue size:</span>
+                        <span className="text-white font-mono">{defaults.flue_size_in}" dia.</span>
+                      </div>
+                    )}
+                    {defaults.fixed_kw && localZone.subType === 'electric' && (
+                      <div className="flex justify-between col-span-2">
+                        <span className="text-surface-400">Electric heater:</span>
+                        <span className="text-amber-400 font-mono">{processLoads.fixed_kw} kW</span>
+                      </div>
+                    )}
+                    {defaults.ventilation_cfm && (
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Ventilation:</span>
+                        <span className="text-cyan-400 font-mono">{defaults.ventilation_cfm} CFM</span>
+                      </div>
+                    )}
+                    {defaults.exhaust_cfm && (
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Exhaust:</span>
+                        <span className="text-cyan-400 font-mono">{defaults.exhaust_cfm} CFM</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Kitchen Equipment */}
+              {(defaults.requires_type1_hood || defaults.requires_mau || defaults.grease_interceptor_gal) && (
+                <div className="bg-surface-900/50 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-white">🍳 Kitchen Equipment</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    {defaults.requires_type1_hood && (
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Hood type:</span>
+                        <span className="text-white font-mono">Type 1 (grease)</span>
+                      </div>
+                    )}
+                    {defaults.mau_cfm && (
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Make-up air:</span>
+                        <span className="text-cyan-400 font-mono">{defaults.mau_cfm.toLocaleString()} CFM</span>
+                      </div>
+                    )}
+                    {defaults.gas_mbh && (
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Kitchen gas:</span>
+                        <span className="text-orange-400 font-mono">{defaults.gas_mbh} MBH</span>
+                      </div>
+                    )}
+                    {defaults.grease_interceptor_gal && (
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Grease interceptor:</span>
+                        <span className="text-white font-mono">{defaults.grease_interceptor_gal} gal</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Pool Equipment */}
+              {defaults.pool_heater_gas_mbh && (
+                <div className="bg-surface-900/50 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-white">🏊 Pool Equipment</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-surface-400">Pool heater:</span>
+                      <span className="text-orange-400 font-mono">{defaults.pool_heater_gas_mbh} MBH</span>
+                    </div>
+                    {defaults.dehumidification_lb_hr && (
+                      <div className="flex justify-between">
+                        <span className="text-surface-400">Dehumidification:</span>
+                        <span className="text-white font-mono">{defaults.dehumidification_lb_hr} lb/hr</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Source Notes */}
+              {defaults.source_notes && (
+                <p className="text-xs text-surface-400 mt-2 italic">
+                  📝 {defaults.source_notes}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* VENTILATION / EXHAUST - Fixed amounts */}
           {(hasFixedVent || hasFixedExhaust) && (
             <div className="bg-cyan-900/20 border border-cyan-500/30 rounded-lg p-4">
