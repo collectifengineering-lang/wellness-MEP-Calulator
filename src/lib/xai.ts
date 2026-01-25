@@ -383,7 +383,8 @@ function shouldSkipZone(roomName: string): boolean {
 async function matchZoneTypesWithAI(
   zones: { name: string; type: string; sf: number }[]
 ): Promise<Record<string, string>> {
-  if (!isXAIConfigured() || zones.length === 0) {
+  // Need at least one AI configured
+  if ((!isClaudeConfigured() && !isGrokConfigured()) || zones.length === 0) {
     return {}
   }
 
@@ -395,7 +396,7 @@ async function matchZoneTypesWithAI(
     .map((z, i) => `${i + 1}. "${z.name}" (${z.type}, ${z.sf} SF)`)
     .join('\n')
 
-  const prompt = `You are matching room names from a floor plan to predefined zone types for an MEP (mechanical/electrical/plumbing) calculator for wellness facilities (spas, gyms, bathhouses).
+  const prompt = `You are matching room names from a floor plan to predefined zone types for an MEP calculator for wellness facilities (spas, gyms, bathhouses).
 
 AVAILABLE ZONE TYPES:
 ${zoneTypeList}
@@ -403,53 +404,104 @@ ${zoneTypeList}
 ROOMS TO MATCH:
 ${roomList}
 
-For each room, pick the BEST matching zone type ID from the list above. Consider:
-- The room name and what it's used for
-- Similar keywords and concepts
-- Wellness/spa facility context
+MATCHING RULES:
+- "Terrace", "Outdoor Terrace", "Rooftop" → terrace
+- "Gym", "Fitness", "Weight Room", "Exercise" → open_gym
+- "Pool", "Natatorium", "Pool Area" → pool_indoor
+- "Locker", "Lockers", "Men's Locker", "Women's Locker" → locker_room
+- "Restroom", "RR", "Bathroom", "Toilet" → restroom
+- "Café", "Cafe", "F&B", "Juice Bar" → cafe_light_fb
+- "Co-Work", "Cowork", "Coworking" → cowork
+- "Conference", "Meeting Room" → conference_room
+- "Sauna" → sauna_electric (unless gas specified)
+- "Steam", "Steam Room" → steam_room
+- "Recovery", "Longevity" → recovery_longevity
+- "Child Care", "Kids", "Daycare" → child_care
+- "Laundry" → laundry_commercial
+- "Mechanical", "Mech Room", "MEP" → mechanical_room
+- "Storage", "BOH" → storage
+- "MMA", "Boxing" → mma_studio
+- "Yoga" → yoga_studio
+- "Stretching" → stretching_area
+- "Reception", "Lobby" → reception
+- "Office", "Admin" → office
+- "Contrast" → contrast_suite
 
-Respond with ONLY a JSON object mapping room names to zone type IDs:
+For each room, respond with the BEST zone type ID. Be generous with matching - if it's close, match it!
+
+Respond with ONLY a JSON object:
 {
   "Room Name 1": "zone_type_id",
-  "Room Name 2": "zone_type_id",
-  ...
+  "Room Name 2": "zone_type_id"
 }
 
-If no good match exists, use "custom". Only respond with valid JSON.`
+If truly no match, use "custom". Only respond with valid JSON, no explanation.`
 
-  try {
-    const response = await fetch(XAI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${XAI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'grok-beta',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 2048,
-        temperature: 0.1,
-      }),
-    })
+  // Try Claude first for matching
+  if (isClaudeConfigured()) {
+    try {
+      const response = await fetch(ANTHROPIC_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2048,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      })
 
-    if (!response.ok) {
-      console.error('AI matching failed:', response.status)
-      return {}
+      if (response.ok) {
+        const data = await response.json()
+        const content = data.content?.[0]?.text || ''
+        const jsonMatch = content.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          console.log('Zone matching done with Claude')
+          return JSON.parse(jsonMatch[0])
+        }
+      }
+    } catch (e) {
+      console.warn('Claude matching failed, trying Grok:', e)
     }
-
-    const data = await response.json()
-    const content = data.choices?.[0]?.message?.content || ''
-    
-    // Parse JSON from response
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0])
-    }
-    return {}
-  } catch (error) {
-    console.error('AI zone matching error:', error)
-    return {}
   }
+
+  // Fall back to Grok
+  if (isGrokConfigured()) {
+    try {
+      const response = await fetch(XAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${XAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'grok-2-1212',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 2048,
+          temperature: 0.1,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const content = data.choices?.[0]?.message?.content || ''
+        const jsonMatch = content.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          console.log('Zone matching done with Grok')
+          return JSON.parse(jsonMatch[0])
+        }
+      }
+    } catch (e) {
+      console.warn('Grok matching failed:', e)
+    }
+  }
+
+  console.warn('All AI matching failed, using keyword fallback')
+  return {}
 }
 
 // Shared extraction prompt for both Claude and Grok
