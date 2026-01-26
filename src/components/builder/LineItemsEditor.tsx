@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { useProjectStore } from '../../store/useProjectStore'
+import { useProjectStore, generateDefaultLineItems } from '../../store/useProjectStore'
+import { useSettingsStore } from '../../store/useSettingsStore'
 import type { Zone, LineItem } from '../../types'
 
 interface LineItemsEditorProps {
@@ -18,8 +19,9 @@ const categoryOptions = [
   { value: 'other', label: '📦 Other', unit: '' },
 ] as const
 
-export default function LineItemsEditor({ zone }: LineItemsEditorProps) {
-  const { addLineItem, deleteLineItem } = useProjectStore()
+export default function LineItemsEditor({ zone, onUpdate }: LineItemsEditorProps) {
+  const { addLineItem, deleteLineItem, updateZone } = useProjectStore()
+  const { getZoneDefaults } = useSettingsStore()
   const [isAdding, setIsAdding] = useState(false)
   const [newItem, setNewItem] = useState({
     category: 'power' as LineItem['category'],
@@ -28,6 +30,20 @@ export default function LineItemsEditor({ zone }: LineItemsEditorProps) {
     unit: 'kW',
     value: 0,
   })
+
+  // Regenerate default line items from zone defaults
+  const handleResetToDefaults = () => {
+    if (!confirm('This will replace all current line items with default equipment. Continue?')) return
+    
+    const defaults = getZoneDefaults(zone.type)
+    const defaultItems = generateDefaultLineItems(defaults, zone.sf, zone.subType)
+    
+    // Update zone with new line items
+    updateZone(zone.id, { lineItems: defaultItems })
+    if (onUpdate) {
+      onUpdate({ lineItems: defaultItems })
+    }
+  }
 
   const handleAddItem = () => {
     if (!newItem.name.trim()) return
@@ -57,17 +73,31 @@ export default function LineItemsEditor({ zone }: LineItemsEditorProps) {
     <div>
       <div className="flex items-center justify-between mb-2">
         <label className="text-sm font-medium text-surface-300">Line Items (Specific Equipment)</label>
-        {!isAdding && (
-          <button
-            onClick={() => setIsAdding(true)}
-            className="text-xs text-primary-400 hover:text-primary-300 flex items-center gap-1"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Item
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {!isAdding && (
+            <>
+              <button
+                onClick={handleResetToDefaults}
+                className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1"
+                title="Reset to default equipment for this zone type"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Reset Defaults
+              </button>
+              <button
+                onClick={() => setIsAdding(true)}
+                className="text-xs text-primary-400 hover:text-primary-300 flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Item
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Existing Line Items */}
@@ -186,9 +216,74 @@ export default function LineItemsEditor({ zone }: LineItemsEditorProps) {
 
       {/* Empty state */}
       {zone.lineItems.length === 0 && !isAdding && (
-        <p className="text-xs text-surface-500 italic">
-          No line items. Add specific equipment that isn't covered by rate-based calculations.
-        </p>
+        <div className="p-3 bg-amber-900/20 border border-amber-700/30 rounded-lg">
+          <p className="text-xs text-amber-400 mb-2">
+            ⚠️ No equipment line items! Click "Reset Defaults" to load default equipment for this zone type.
+          </p>
+          <button
+            onClick={handleResetToDefaults}
+            className="text-xs px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded font-medium"
+          >
+            Load Default Equipment
+          </button>
+        </div>
+      )}
+      
+      {/* Line Item Totals - Show what adds up */}
+      {zone.lineItems.length > 0 && (
+        <div className="mt-3 p-3 bg-surface-900/80 border border-surface-600 rounded-lg">
+          <div className="text-xs text-surface-500 mb-2 uppercase tracking-wider font-medium">
+            📊 Line Items Total (Equipment Only)
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            {(() => {
+              const elecKW = zone.lineItems
+                .filter(li => li.category === 'power' || li.category === 'lighting')
+                .reduce((sum, li) => sum + (li.unit === 'kW' ? li.quantity * li.value : (li.quantity * li.value) / 1000), 0)
+              const gasMBH = zone.lineItems
+                .filter(li => li.category === 'gas')
+                .reduce((sum, li) => sum + (li.unit === 'MBH' ? li.quantity * li.value : li.quantity * li.value / 1000), 0)
+              const ventCFM = zone.lineItems
+                .filter(li => li.category === 'ventilation')
+                .reduce((sum, li) => sum + li.quantity * li.value, 0)
+              const exhCFM = zone.lineItems
+                .filter(li => li.category === 'exhaust')
+                .reduce((sum, li) => sum + li.quantity * li.value, 0)
+              
+              return (
+                <>
+                  {elecKW > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-surface-400">⚡ Electrical:</span>
+                      <span className="text-white font-mono">{elecKW.toFixed(1)} kW</span>
+                    </div>
+                  )}
+                  {gasMBH > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-surface-400">🔥 Gas:</span>
+                      <span className="text-orange-400 font-mono">{gasMBH.toFixed(0)} MBH</span>
+                    </div>
+                  )}
+                  {ventCFM > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-surface-400">🌬️ Ventilation:</span>
+                      <span className="text-emerald-400 font-mono">{Math.round(ventCFM)} CFM</span>
+                    </div>
+                  )}
+                  {exhCFM > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-surface-400">💨 Exhaust:</span>
+                      <span className="text-amber-400 font-mono">{Math.round(exhCFM)} CFM</span>
+                    </div>
+                  )}
+                  {elecKW === 0 && gasMBH === 0 && ventCFM === 0 && exhCFM === 0 && (
+                    <div className="col-span-2 text-surface-500 italic">No utility loads in line items</div>
+                  )}
+                </>
+              )
+            })()}
+          </div>
+        </div>
       )}
     </div>
   )

@@ -117,10 +117,10 @@ export default function ZoneCanvas({ calculations }: ZoneCanvasProps) {
       {/* Totals Sidebar */}
       <TotalsBar calculations={calculations} />
 
-      {/* Zone Editor Slide-out */}
+      {/* Zone Editor Slide-out - Use live store data, not snapshot! */}
       {selectedZone && (
         <ZoneEditor
-          zone={selectedZone}
+          zone={zones.find(z => z.id === selectedZone.id) || selectedZone}
           onClose={() => setSelectedZone(null)}
         />
       )}
