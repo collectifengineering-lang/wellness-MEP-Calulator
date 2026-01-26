@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useProjectStore } from '../store/useProjectStore'
 import { useSettingsStore } from '../store/useSettingsStore'
-import { calculateElectrical, getElectricalBreakdown } from '../calculations/electrical'
+import { calculateElectrical, getElectricalBreakdown, recalculateServiceWithMechanical } from '../calculations/electrical'
 import { calculateHVAC, getHVACBreakdown } from '../calculations/hvac'
 import { calculateGas } from '../calculations/gas'
 import { calculateDHW } from '../calculations/dhw'
@@ -82,16 +82,6 @@ export function useCalculations() {
     const electricalBreakdown = getElectricalBreakdown(zones)
     const hvacBreakdown = getHVACBreakdown(zones, climate)
 
-    const results: CalculationResults = {
-      electrical,
-      hvac,
-      gas,
-      dhw,
-      plumbing,
-    }
-    
-    console.log(`📊 HVAC Results: ${hvac.totalTons} tons, ${hvac.dehumidLbHr} lb/hr dehumid, ${hvac.poolChillerTons} pool chiller tons`)
-
     // Calculate mechanical equipment electrical loads
     const mechanicalSettings = currentProject.mechanicalSettings || getDefaultMechanicalSettings()
     const mechanicalKVA = calculateMechanicalKVA(
@@ -102,6 +92,24 @@ export function useCalculations() {
       projectElectrical.powerFactor,
       currentProject.electricPrimary
     )
+    
+    // Recalculate electrical with mechanical loads included
+    const electricalWithMechanical = recalculateServiceWithMechanical(
+      electrical,
+      mechanicalKVA.total,
+      projectElectrical.voltage
+    )
+    
+    const results: CalculationResults = {
+      electrical: electricalWithMechanical,
+      hvac,
+      gas,
+      dhw,
+      plumbing,
+    }
+    
+    console.log(`📊 HVAC Results: ${hvac.totalTons} tons, ${hvac.dehumidLbHr} lb/hr dehumid, ${hvac.poolChillerTons} pool chiller tons`)
+    console.log(`📊 Electrical: ${electrical.totalKVA} kVA building + ${mechanicalKVA.total.toFixed(1)} kVA mechanical = ${electricalWithMechanical.totalKVA} kVA total`)
 
     return {
       results,

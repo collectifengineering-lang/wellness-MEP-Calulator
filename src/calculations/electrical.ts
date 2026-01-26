@@ -146,3 +146,53 @@ export function getElectricalBreakdown(zones: Zone[]): { zoneName: string; kW: n
     }
   })
 }
+
+// Recalculate service sizing with additional mechanical loads
+export function recalculateServiceWithMechanical(
+  baseElectrical: ElectricalCalcResult,
+  additionalKVA: number,
+  voltagePrimary: number = 208
+): ElectricalCalcResult {
+  const totalKVA = baseElectrical.totalKVA + additionalKVA
+  
+  // Calculate amps at primary voltage (3-phase)
+  const isPrimaryThreePhase = [208, 480].includes(voltagePrimary)
+  const amps_primary = isPrimaryThreePhase 
+    ? (totalKVA * 1000) / (voltagePrimary * Math.sqrt(3))
+    : (totalKVA * 1000) / voltagePrimary
+    
+  // Get secondary voltage
+  const voltageSecondary = voltagePrimary === 208 ? 480 : 208
+  const isSecondaryThreePhase = [208, 480].includes(voltageSecondary)
+  const amps_secondary = isSecondaryThreePhase
+    ? (totalKVA * 1000) / (voltageSecondary * Math.sqrt(3))
+    : (totalKVA * 1000) / voltageSecondary
+  
+  // Get standard service size
+  const calculatedAmps = Math.round(amps_primary)
+  const standardServiceAmps = getStandardServiceSize(calculatedAmps, voltagePrimary)
+  const exceedsMax = exceedsMaxServiceSize(calculatedAmps, voltagePrimary)
+  
+  // Format service string
+  const phaseStr = isPrimaryThreePhase ? '3PH' : '1PH'
+  const wireStr = isPrimaryThreePhase ? '4W' : '3W'
+  let recommendedService = `${standardServiceAmps}A @ ${voltagePrimary}V/${phaseStr}, ${wireStr}`
+  if (exceedsMax) {
+    recommendedService = `${standardServiceAmps}A+ @ ${voltagePrimary}V/${phaseStr} (EXCEEDS STANDARD - consider parallel services)`
+  }
+  
+  // Estimate panel count based on load
+  const panelCount = Math.max(Math.ceil(totalKVA / 200) + 2, 4)
+
+  return {
+    ...baseElectrical,
+    totalKVA: Math.round(totalKVA),
+    amps_480v: Math.round(voltageSecondary === 480 ? amps_secondary : amps_primary),
+    amps_208v: Math.round(voltagePrimary === 208 ? amps_primary : amps_secondary),
+    recommendedService,
+    panelCount,
+    calculatedAmps,
+    standardServiceAmps,
+    exceedsMaxService: exceedsMax,
+  }
+}
