@@ -10,6 +10,7 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
   let totalVentCFM = 0
   let totalExhaustCFM = 0
   let dehumidLbHr = 0
+  let poolChillerTons = 0
 
   zones.forEach(zone => {
     const defaults = getZoneDefaults(zone.type)
@@ -54,13 +55,31 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
       totalExhaustCFM += zone.fixtures.showers * defaults.exhaust_cfm_shower
     }
     
-    // 4. LINE ITEMS - All fixed ventilation/exhaust equipment!
+    // 4. LINE ITEMS - All fixed ventilation/exhaust/dehumidification/cooling equipment!
     zone.lineItems.forEach(li => {
       if (li.category === 'ventilation' && li.unit === 'CFM') {
         totalVentCFM += li.quantity * li.value
       }
       if (li.category === 'exhaust' && li.unit === 'CFM') {
         totalExhaustCFM += li.quantity * li.value
+      }
+      // Sum up dehumidification from line items (e.g., from pool room calculator)
+      if (li.category === 'dehumidification' && (li.unit === 'lb/hr' || li.unit === 'lbs/hr')) {
+        dehumidLbHr += li.quantity * li.value
+      }
+      // Sum up cooling from line items
+      if (li.category === 'cooling' && li.unit === 'tons') {
+        totalTons += li.quantity * li.value
+      }
+      // Sum up pool chiller from line items (tracked separately for mechanical loads)
+      if (li.category === 'pool_chiller' && li.unit === 'tons') {
+        poolChillerTons += li.quantity * li.value
+        // Pool chiller also counts toward total cooling
+        totalTons += li.quantity * li.value
+      }
+      // Sum up heating from line items
+      if (li.category === 'heating' && li.unit === 'MBH') {
+        totalMBH += li.quantity * li.value
       }
     })
     
@@ -96,6 +115,7 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
     totalVentCFM: Math.round(totalVentCFM),
     totalExhaustCFM: Math.round(totalExhaustCFM),
     dehumidLbHr: Math.round(dehumidLbHr),
+    poolChillerTons: Math.round(poolChillerTons * 10) / 10,
     rtuCount,
   }
 }

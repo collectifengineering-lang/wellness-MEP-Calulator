@@ -138,6 +138,9 @@ export interface MechanicalElectricalSettings {
   poolChillerKvaPerTon: number   // Default: 1.5 (water-cooled, slightly less efficient)
   dehumidKvaPerLbHr: number      // Default: 0.05 (5 kW per 100 lb/hr)
   
+  // Heating percentage - most heating via heat pumps/energy recovery
+  heatingElectricPercent: number // Default: 0.15 (15% of heating is supplemental electric)
+  
   // Include/exclude flags
   includeChiller: boolean        // Include HVAC cooling load
   includeHeating: boolean        // Include electric heating load (if not gas)
@@ -260,7 +263,7 @@ export interface ZoneRates {
 
 export interface LineItem {
   id: string
-  category: 'lighting' | 'power' | 'ventilation' | 'exhaust' | 'cooling' | 'heating' | 'gas' | 'dehumidification' | 'other'
+  category: 'lighting' | 'power' | 'ventilation' | 'exhaust' | 'cooling' | 'pool_chiller' | 'heating' | 'gas' | 'dehumidification' | 'other'
   name: string
   quantity: number
   unit: string
@@ -308,6 +311,7 @@ export interface HVACCalcResult {
   totalVentCFM: number
   totalExhaustCFM: number
   dehumidLbHr: number
+  poolChillerTons: number  // Tracked separately for mechanical loads
   rtuCount: number
 }
 

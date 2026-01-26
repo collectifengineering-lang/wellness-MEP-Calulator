@@ -290,6 +290,9 @@ export function getDefaultMechanicalSettings(): MechanicalElectricalSettings {
     poolChillerKvaPerTon: 1.5,   // Water-cooled, slightly less efficient
     dehumidKvaPerLbHr: 0.05,     // ~5 kW per 100 lb/hr dehumidification capacity
     
+    // Heating percentage - most heating via heat pumps/energy recovery
+    heatingElectricPercent: 0.15, // 15% of heating is supplemental electric (default)
+    
     // Include/exclude flags - all included by default
     includeChiller: true,
     includeHeating: true,        // Will only apply if not using gas heating

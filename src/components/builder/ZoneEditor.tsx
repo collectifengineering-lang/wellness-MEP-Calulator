@@ -112,6 +112,22 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
     .filter(li => li.category === 'exhaust')
     .reduce((sum, li) => sum + li.quantity * li.value, 0)
   
+  const lineItemDehumidLbHr = localZone.lineItems
+    .filter(li => li.category === 'dehumidification')
+    .reduce((sum, li) => sum + li.quantity * li.value, 0)
+  
+  const lineItemCoolingTons = localZone.lineItems
+    .filter(li => li.category === 'cooling')
+    .reduce((sum, li) => sum + li.quantity * li.value, 0)
+  
+  const lineItemPoolChillerTons = localZone.lineItems
+    .filter(li => li.category === 'pool_chiller')
+    .reduce((sum, li) => sum + li.quantity * li.value, 0)
+  
+  const lineItemHeatingMBH = localZone.lineItems
+    .filter(li => li.category === 'heating')
+    .reduce((sum, li) => sum + li.quantity * li.value, 0)
+  
   // 4. FINAL TOTALS = Rate-based + Line Items + Fixtures
   // ALL equipment (including laundry) should be in Line Items!
   const totalElecKW = lightingKW + receptacleKW + lineItemKW
@@ -399,21 +415,48 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
               </div>
             </div>
             
-            {/* HVAC (Rate-based) */}
-            {(coolingTons > 0 || heatingMBH > 0) && (
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                {coolingTons > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-surface-400">Cooling:</span>
-                    <span className="text-cyan-400 font-mono">{coolingTons.toFixed(1)} Tons</span>
+            {/* HVAC & Equipment */}
+            {(coolingTons > 0 || heatingMBH > 0 || lineItemCoolingTons > 0 || lineItemHeatingMBH > 0 || lineItemPoolChillerTons > 0 || lineItemDehumidLbHr > 0) && (
+              <div className="mb-3 bg-surface-900/50 rounded p-3">
+                <div className="text-xs text-surface-500 mb-2 uppercase tracking-wider">❄️ HVAC / Equipment</div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  {/* Cooling column */}
+                  <div className="space-y-1">
+                    {coolingTons > 0 && (
+                      <div className="flex justify-between text-surface-400">
+                        <span>Space Cooling:</span>
+                        <span className="font-mono">{coolingTons.toFixed(1)} tons</span>
+                      </div>
+                    )}
+                    {lineItemCoolingTons > 0 && (
+                      <div className="flex justify-between text-cyan-400">
+                        <span>+ Line Items:</span>
+                        <span className="font-mono">{lineItemCoolingTons.toFixed(1)} tons</span>
+                      </div>
+                    )}
+                    {lineItemPoolChillerTons > 0 && (
+                      <div className="flex justify-between text-blue-400">
+                        <span>Pool Chiller:</span>
+                        <span className="font-mono">{lineItemPoolChillerTons.toFixed(1)} tons</span>
+                      </div>
+                    )}
                   </div>
-                )}
-                {heatingMBH > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-surface-400">Heating:</span>
-                    <span className="text-red-400 font-mono">{heatingMBH.toFixed(1)} MBH</span>
+                  {/* Heating/Other column */}
+                  <div className="space-y-1">
+                    {(heatingMBH > 0 || lineItemHeatingMBH > 0) && (
+                      <div className="flex justify-between text-orange-400">
+                        <span>Heating:</span>
+                        <span className="font-mono">{(heatingMBH + lineItemHeatingMBH).toFixed(1)} MBH</span>
+                      </div>
+                    )}
+                    {lineItemDehumidLbHr !== 0 && (
+                      <div className={`flex justify-between ${lineItemDehumidLbHr < 0 ? 'text-blue-400' : 'text-cyan-400'}`}>
+                        <span>{lineItemDehumidLbHr < 0 ? 'Condensation:' : 'Dehumid:'}</span>
+                        <span className="font-mono">{lineItemDehumidLbHr.toFixed(0)} lb/hr</span>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             )}
             
@@ -421,7 +464,7 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
             {localZone.lineItems.length > 0 && (
               <div className="mt-3 pt-3 border-t border-surface-700">
                 <p className="text-xs text-surface-500">
-                  📦 {localZone.lineItems.length} equipment item{localZone.lineItems.length !== 1 ? 's' : ''} in Line Items below
+                  📦 {localZone.lineItems.length} equipment item{localZone.lineItems.length !== 1 ? 's' : ''} in Line Items
                 </p>
               </div>
             )}

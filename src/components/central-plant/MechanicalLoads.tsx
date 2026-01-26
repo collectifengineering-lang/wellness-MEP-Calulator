@@ -22,23 +22,25 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
   const { hvac, dhw } = results
   
   // Calculate kVA for each load type
+  // For cooling, subtract pool chiller from total (tracked separately)
+  const spaceCoolingTons = hvac.totalTons - hvac.poolChillerTons
   const coolingKVA = settings.includeChiller 
-    ? hvac.totalTons * settings.coolingKvaPerTon 
+    ? spaceCoolingTons * settings.coolingKvaPerTon 
     : 0
     
-  // For heating, only count if it's NOT gas primary (electric heating)
-  const heatingKVA = settings.includeHeating && !currentProject.electricPrimary === false
-    ? hvac.totalMBH * settings.heatingKvaPerMbh 
+  // For heating, apply the electric heating percentage (most heating via heat pumps/energy recovery)
+  const heatingElectricPercent = settings.heatingElectricPercent ?? 0.15
+  const heatingElectricMBH = hvac.totalMBH * heatingElectricPercent
+  const heatingKVA = settings.includeHeating
+    ? heatingElectricMBH * settings.heatingKvaPerMbh 
     : 0
     
-  // Pool chiller - we'll get this from zones with pool types
-  // For now, estimate based on pool zone cooling loads (TODO: can be refined)
-  const poolChillerTons = 0 // Will be calculated in useCalculations
+  // Pool chiller - now comes from hvac.poolChillerTons (summed from zone line items)
   const poolChillerKVA = settings.includePoolChiller
-    ? poolChillerTons * settings.poolChillerKvaPerTon
+    ? hvac.poolChillerTons * settings.poolChillerKvaPerTon
     : 0
     
-  // Dehumidification
+  // Dehumidification - from line items (summed in hvac calculation)
   const dehumidKVA = settings.includeDehumid
     ? hvac.dehumidLbHr * settings.dehumidKvaPerLbHr
     : 0
@@ -88,9 +90,9 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
                     className="w-4 h-4 rounded accent-cyan-500"
                   />
                 </td>
-                <td className="py-3 px-2 text-white">HVAC Cooling (Chiller)</td>
+                <td className="py-3 px-2 text-white">Space Cooling (Chiller)</td>
                 <td className="py-3 px-2 text-right text-surface-300 font-mono">
-                  {hvac.totalTons.toFixed(1)} tons
+                  {spaceCoolingTons.toFixed(1)} tons
                 </td>
                 <td className="py-3 px-2 text-center text-surface-500">×</td>
                 <td className="py-3 px-2">
@@ -123,14 +125,28 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
                     className="w-4 h-4 rounded accent-cyan-500"
                   />
                 </td>
-                <td className="py-3 px-2 text-white">
-                  Space Heating (Electric)
-                  {currentProject.electricPrimary === false && (
-                    <span className="ml-2 text-xs text-amber-400">(Gas primary)</span>
-                  )}
+                <td className="py-3 px-2">
+                  <div className="text-white">Supplemental Electric Heating</div>
+                  <div className="text-xs text-surface-500 mt-0.5">
+                    {(heatingElectricPercent * 100).toFixed(0)}% of {hvac.totalMBH.toFixed(0)} MBH total
+                  </div>
                 </td>
-                <td className="py-3 px-2 text-right text-surface-300 font-mono">
-                  {hvac.totalMBH.toFixed(0)} MBH
+                <td className="py-3 px-2 text-right">
+                  <div className="flex flex-col items-end">
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        step="5"
+                        min="0"
+                        max="100"
+                        value={Math.round(heatingElectricPercent * 100)}
+                        onChange={(e) => handleUpdate('heatingElectricPercent', Number(e.target.value) / 100)}
+                        className="w-14 px-2 py-1 bg-surface-900 border border-surface-600 rounded text-white text-right font-mono text-sm"
+                      />
+                      <span className="text-xs text-surface-500">%</span>
+                    </div>
+                    <span className="text-surface-400 font-mono text-xs mt-1">= {heatingElectricMBH.toFixed(0)} MBH</span>
+                  </div>
                 </td>
                 <td className="py-3 px-2 text-center text-surface-500">×</td>
                 <td className="py-3 px-2">
@@ -165,7 +181,7 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
                 </td>
                 <td className="py-3 px-2 text-white">Pool Water Chiller</td>
                 <td className="py-3 px-2 text-right text-surface-300 font-mono">
-                  {poolChillerTons.toFixed(1)} tons
+                  {hvac.poolChillerTons.toFixed(1)} tons
                 </td>
                 <td className="py-3 px-2 text-center text-surface-500">×</td>
                 <td className="py-3 px-2">
@@ -314,17 +330,26 @@ export function calculateMechanicalKVA(
 ): { total: number; breakdown: { name: string; kva: number }[] } {
   const breakdown: { name: string; kva: number }[] = []
   
+  // Space cooling (total minus pool chiller)
   if (settings.includeChiller) {
-    const kva = hvac.totalTons * settings.coolingKvaPerTon
-    breakdown.push({ name: 'HVAC Cooling', kva })
+    const spaceCoolingTons = hvac.totalTons - (hvac.poolChillerTons || 0)
+    const kva = spaceCoolingTons * settings.coolingKvaPerTon
+    breakdown.push({ name: 'Space Cooling', kva })
   }
   
-  if (settings.includeHeating && electricPrimary) {
-    const kva = hvac.totalMBH * settings.heatingKvaPerMbh
-    breakdown.push({ name: 'Electric Heating', kva })
+  // Supplemental electric heating (percentage of total heating)
+  if (settings.includeHeating) {
+    const heatingElectricPercent = settings.heatingElectricPercent ?? 0.15
+    const heatingElectricMBH = hvac.totalMBH * heatingElectricPercent
+    const kva = heatingElectricMBH * settings.heatingKvaPerMbh
+    breakdown.push({ name: `Electric Heating (${Math.round(heatingElectricPercent * 100)}%)`, kva })
   }
   
-  // Pool chiller would be added here when we have the data
+  // Pool chiller (tracked separately from space cooling)
+  if (settings.includePoolChiller && hvac.poolChillerTons > 0) {
+    const kva = hvac.poolChillerTons * settings.poolChillerKvaPerTon
+    breakdown.push({ name: 'Pool Chiller', kva })
+  }
   
   if (settings.includeDehumid && hvac.dehumidLbHr > 0) {
     const kva = hvac.dehumidLbHr * settings.dehumidKvaPerLbHr
