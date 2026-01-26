@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { zoneDefaults as builtInDefaults } from '../../data/zoneDefaults'
 import type { ZoneDefaults } from '../../data/zoneDefaults'
+import { NYC_FIXTURE_DATABASE, FIXTURE_CATEGORIES, getFixtureById, LEGACY_FIXTURE_MAPPING } from '../../data/nycFixtures'
+import type { ZoneFixtures } from '../../types'
 
 // Equipment categories with display info
 const equipmentCategories = [
@@ -282,6 +284,244 @@ function DefaultEquipmentEditor({
   )
 }
 
+// Component for editing default fixtures with add/remove functionality
+function DefaultFixturesEditor({ 
+  fixtures, 
+  visibleFixtures,
+  onChange,
+  onVisibleChange
+}: { 
+  fixtures: ZoneFixtures
+  visibleFixtures: string[]
+  onChange: (fixtures: ZoneFixtures) => void
+  onVisibleChange: (visibleFixtures: string[]) => void
+}) {
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(FIXTURE_CATEGORIES))
+
+  // Get fixtures to display (visible + those with counts)
+  const displayedFixtureIds = useMemo(() => {
+    const ids = new Set<string>()
+    visibleFixtures.forEach(id => ids.add(id))
+    Object.entries(fixtures).forEach(([id, count]) => {
+      if (count > 0) {
+        const newId = LEGACY_FIXTURE_MAPPING[id] || id
+        ids.add(newId)
+      }
+    })
+    return Array.from(ids)
+  }, [fixtures, visibleFixtures])
+
+  // Get fixture info for display
+  const displayedFixtures = displayedFixtureIds
+    .map(id => {
+      const def = getFixtureById(id)
+      if (!def) return null
+      const legacyId = Object.entries(LEGACY_FIXTURE_MAPPING).find(([_, newId]) => newId === id)?.[0]
+      const count = fixtures[id] || (legacyId ? fixtures[legacyId] : 0) || 0
+      return { ...def, count }
+    })
+    .filter(Boolean) as Array<{ id: string; name: string; icon: string; count: number; wsfuTotal: number; dfu: number; occupancy: string }>
+
+  const handleRemoveFixture = (fixtureId: string) => {
+    const newFixtures = { ...fixtures }
+    delete newFixtures[fixtureId]
+    const legacyId = Object.entries(LEGACY_FIXTURE_MAPPING).find(([_, newId]) => newId === fixtureId)?.[0]
+    if (legacyId) delete newFixtures[legacyId]
+    onChange(newFixtures)
+    // Also remove from visible fixtures
+    onVisibleChange(visibleFixtures.filter(id => id !== fixtureId))
+  }
+
+  const handleAddFixture = (fixtureId: string, count: number) => {
+    onChange({ ...fixtures, [fixtureId]: count })
+    // Add to visible fixtures if not already there
+    if (!visibleFixtures.includes(fixtureId)) {
+      onVisibleChange([...visibleFixtures, fixtureId])
+    }
+    setShowAddModal(false)
+  }
+
+  const toggleCategory = (cat: string) => {
+    setExpandedCategories(prev => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }
+
+  // Filter fixtures for add modal
+  const filteredFixtures = useMemo(() => {
+    return NYC_FIXTURE_DATABASE.filter(f => {
+      if (searchTerm === '') return true
+      return f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             f.category.toLowerCase().includes(searchTerm.toLowerCase())
+    })
+  }, [searchTerm])
+
+  const groupedFixtures = useMemo(() => {
+    const groups: Record<string, typeof filteredFixtures> = {}
+    for (const cat of FIXTURE_CATEGORIES) {
+      const items = filteredFixtures.filter(f => f.category === cat)
+      if (items.length > 0) groups[cat] = items
+    }
+    return groups
+  }, [filteredFixtures])
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-white">🚿 Default Fixture Counts</h3>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="px-2 py-1 text-xs bg-primary-600/20 hover:bg-primary-600/30 text-primary-400 rounded flex items-center gap-1"
+        >
+          <span>+</span> Add Fixture
+        </button>
+      </div>
+      
+      {displayedFixtures.length > 0 ? (
+        <div className="grid grid-cols-2 gap-2">
+          {displayedFixtures.map(fixture => (
+            <div key={fixture.id} className="flex items-center gap-2 bg-surface-900 rounded-lg p-2">
+              <span className="text-lg">{fixture.icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-white truncate">{fixture.name}</div>
+                <div className="text-[10px] text-surface-500">
+                  WSFU: {fixture.wsfuTotal} | DFU: {fixture.dfu}
+                  <span className={`ml-1 ${fixture.occupancy === 'public' ? 'text-cyan-400' : 'text-amber-400'}`}>
+                    ({fixture.occupancy})
+                  </span>
+                </div>
+              </div>
+              <input
+                type="number"
+                value={fixture.count}
+                onChange={(e) => {
+                  const newCount = Math.max(0, parseInt(e.target.value) || 0)
+                  if (newCount > 0) {
+                    onChange({ ...fixtures, [fixture.id]: newCount })
+                  } else {
+                    handleRemoveFixture(fixture.id)
+                  }
+                }}
+                min={0}
+                className="w-14 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm text-center"
+              />
+              <button
+                onClick={() => handleRemoveFixture(fixture.id)}
+                className="p-1 hover:bg-surface-700 rounded text-surface-500 hover:text-red-400"
+                title="Remove fixture"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-4 text-surface-500 text-sm bg-surface-900 rounded-lg">
+          <p>No default fixtures</p>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="mt-2 text-primary-400 hover:text-primary-300 underline"
+          >
+            Add fixtures from ASPE database
+          </button>
+        </div>
+      )}
+
+      {/* Add Fixture Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-surface-800 rounded-2xl w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl border border-surface-700">
+            <div className="px-6 py-4 border-b border-surface-700 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">Add Fixture to Template</h2>
+                <p className="text-sm text-surface-400">ASPE Plumbing Fixture Database</p>
+              </div>
+              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-surface-700 rounded-lg">
+                <svg className="w-5 h-5 text-surface-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="px-6 py-3 border-b border-surface-700">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search fixtures..."
+                className="w-full bg-surface-900 border border-surface-600 rounded-lg py-2 px-4 text-white placeholder-surface-500"
+              />
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {Object.entries(groupedFixtures).map(([category, items]) => (
+                <div key={category} className="bg-surface-900/50 rounded-lg overflow-hidden">
+                  <button
+                    onClick={() => toggleCategory(category)}
+                    className="w-full flex items-center justify-between px-4 py-2 hover:bg-surface-700/50"
+                  >
+                    <span className="font-medium text-surface-200">{category}</span>
+                    <svg className={`w-4 h-4 text-surface-400 transition-transform ${expandedCategories.has(category) ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {expandedCategories.has(category) && (
+                    <div className="px-2 pb-2 space-y-1">
+                      {items.map(fixture => {
+                        const isAdded = displayedFixtureIds.includes(fixture.id)
+                        return (
+                          <button
+                            key={fixture.id}
+                            onClick={() => handleAddFixture(fixture.id, 1)}
+                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                              isAdded 
+                                ? 'bg-emerald-900/30 border border-emerald-600/50'
+                                : 'bg-surface-800 hover:bg-surface-700 border border-transparent'
+                            }`}
+                          >
+                            <span className="text-lg">{fixture.icon}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm text-white truncate">{fixture.name}</div>
+                              <div className="text-xs text-surface-500">
+                                WSFU: {fixture.wsfuTotal} | DFU: {fixture.dfu}
+                                <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${
+                                  fixture.occupancy === 'public' 
+                                    ? 'bg-cyan-900/50 text-cyan-300' 
+                                    : 'bg-amber-900/50 text-amber-300'
+                                }`}>
+                                  {fixture.occupancy}
+                                </span>
+                              </div>
+                            </div>
+                            {isAdded && (
+                              <span className="text-xs text-emerald-400">✓ Added</span>
+                            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="px-6 py-3 border-t border-surface-700 flex justify-end">
+              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-surface-300 hover:text-white">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface ZoneDefaultsEditorProps {
   zoneTypeId: string
   onClose: () => void
@@ -350,13 +590,6 @@ export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaults
     setLocalDefaults(prev => ({
       ...prev,
       defaultRates: { ...prev.defaultRates, [field]: value }
-    }))
-  }
-
-  const updateFixture = (field: string, value: number) => {
-    setLocalDefaults(prev => ({
-      ...prev,
-      defaultFixtures: { ...prev.defaultFixtures, [field]: value }
     }))
   }
 
@@ -521,25 +754,13 @@ export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaults
             </div>
           </div>
 
-          {/* Default Fixtures */}
-          <div>
-            <h3 className="text-sm font-semibold text-white mb-3">Default Fixture Counts</h3>
-            <div className="grid grid-cols-4 gap-4">
-              {Object.entries(localDefaults.defaultFixtures).map(([key, value]) => (
-                <div key={key}>
-                  <label className="block text-xs text-surface-400 mb-1 capitalize">
-                    {key.replace(/([A-Z])/g, ' $1').trim()}
-                  </label>
-                  <input
-                    type="number"
-                    value={value}
-                    onChange={(e) => updateFixture(key, Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
+          {/* Default Fixtures - Dynamic Editor */}
+          <DefaultFixturesEditor 
+            fixtures={localDefaults.defaultFixtures}
+            visibleFixtures={localDefaults.visibleFixtures || []}
+            onChange={(fixtures) => updateField('defaultFixtures', fixtures)}
+            onVisibleChange={(visibleFixtures) => updateField('visibleFixtures', visibleFixtures)}
+          />
 
           {/* Special Options */}
           <div>

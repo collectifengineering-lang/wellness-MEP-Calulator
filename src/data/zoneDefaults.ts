@@ -108,8 +108,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Reception / Lounge',
     category: 'Support',
     defaultSF: 1500,
-    defaultFixtures: { lavatory: 2, water_closet_tank: 2 },
-    visibleFixtures: ['lavatory', 'water_closet_tank'],
+    defaultFixtures: { lavatory_public: 2, water_closet_tank_public: 2 },
+    visibleFixtures: ['lavatory_public', 'water_closet_tank_public'],
     defaultRates: {
       lighting_w_sf: 0.90,
       receptacle_va_sf: 4,
@@ -197,10 +197,10 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Support',
     defaultSF: 500,
     defaultFixtures: {
-      lavatory: 1,        // Hand sink / pantry sink
+      lavatory_public: 1,        // Hand sink / pantry sink
       floor_drain_2in: 1, // Floor drain for spills
     },
-    visibleFixtures: ['lavatory', 'floor_drain_2in', 'drinking_fountain'],
+    visibleFixtures: ['lavatory_public', 'floor_drain_2in', 'drinking_fountain'],
     defaultRates: {
       lighting_w_sf: 0.90,       // NYCECC dining/lounge
       receptacle_va_sf: 10,      // Higher for microwave, fridge, coffee maker, vending
@@ -340,8 +340,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Locker Room',
     category: 'Locker/Hygiene',
     defaultSF: 2500,
-    defaultFixtures: { shower: 10, lavatory: 5, water_closet_tank: 6, floor_drain_2in: 4 },
-    visibleFixtures: ['shower', 'lavatory', 'water_closet_tank', 'urinal_flush_valve', 'floor_drain_2in'],
+    defaultFixtures: { shower_public: 10, lavatory_public: 5, water_closet_valve_public: 6, floor_drain_2in: 4 },
+    visibleFixtures: ['shower_public', 'lavatory_public', 'water_closet_valve_public', 'urinal_3_4in_valve', 'floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 3,
@@ -367,8 +367,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Restroom',
     category: 'Locker/Hygiene',
     defaultSF: 150,
-    defaultFixtures: { lavatory: 1, water_closet_tank: 1, floor_drain_2in: 1 },
-    visibleFixtures: ['lavatory', 'water_closet_tank', 'urinal_flush_valve', 'floor_drain_2in'],
+    defaultFixtures: { lavatory_public: 1, water_closet_valve_public: 1, floor_drain_2in: 1 },
+    visibleFixtures: ['lavatory_public', 'water_closet_valve_public', 'urinal_3_4in_valve', 'floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.80,
       receptacle_va_sf: 2,
@@ -539,8 +539,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Thermal',
     defaultSF: 1500,
     defaultSubType: 'electric',
-    defaultFixtures: { shower: 2, floor_drain_3in: 4 },
-    visibleFixtures: ['shower', 'floor_drain_3in', 'hose_bibb'],
+    defaultFixtures: { shower_public: 2, floor_drain_3in: 4 },
+    visibleFixtures: ['shower_public', 'floor_drain_3in', 'hose_bibb'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 3,
@@ -630,8 +630,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Treatment Room',
     category: 'Pool/Spa',
     defaultSF: 150,
-    defaultFixtures: { lavatory: 1 },
-    visibleFixtures: ['lavatory'],
+    defaultFixtures: { lavatory_public: 1 },
+    visibleFixtures: ['lavatory_public'],
     defaultRates: {
       lighting_w_sf: 0.80,
       receptacle_va_sf: 4,
@@ -649,8 +649,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Massage Room',
     category: 'Pool/Spa',
     defaultSF: 120,
-    defaultFixtures: { lavatory: 1 },
-    visibleFixtures: ['lavatory'],
+    defaultFixtures: { lavatory_public: 1 },
+    visibleFixtures: ['lavatory_public'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 3,
@@ -668,8 +668,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Couples Treatment Room',
     category: 'Pool/Spa',
     defaultSF: 250,
-    defaultFixtures: { lavatory: 1 },
-    visibleFixtures: ['lavatory'],
+    defaultFixtures: { lavatory_public: 1 },
+    visibleFixtures: ['lavatory_public'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 3,
@@ -687,8 +687,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Private Suite',
     category: 'Pool/Spa',
     defaultSF: 400,
-    defaultFixtures: { lavatory: 1, shower: 1, floor_drain_2in: 1 },
-    visibleFixtures: ['lavatory', 'shower', 'floor_drain_2in'],
+    defaultFixtures: { lavatory_public: 1, shower_public: 1, floor_drain_2in: 1 },
+    visibleFixtures: ['lavatory_public', 'shower_public', 'floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.80,
       receptacle_va_sf: 4,
@@ -894,8 +894,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Child Care',
     category: 'Specialty',
     defaultSF: 1200,
-    defaultFixtures: { lavatory: 2, water_closet_tank: 2, floor_drain_2in: 1 },
-    visibleFixtures: ['lavatory', 'water_closet_tank', 'floor_drain_2in', 'drinking_fountain'],
+    defaultFixtures: { lavatory_public: 2, water_closet_tank_public: 2, floor_drain_2in: 1 },
+    visibleFixtures: ['lavatory_public', 'water_closet_tank_public', 'floor_drain_2in', 'drinking_fountain'],
     defaultRates: {
       lighting_w_sf: 1.00,
       receptacle_va_sf: 4,
@@ -913,8 +913,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Recovery & Longevity',
     category: 'Specialty',
     defaultSF: 1600,
-    defaultFixtures: { lavatory: 2, floor_drain_2in: 2 },
-    visibleFixtures: ['lavatory', 'floor_drain_2in'],
+    defaultFixtures: { lavatory_public: 2, floor_drain_2in: 2 },
+    visibleFixtures: ['lavatory_public', 'floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.72,
       receptacle_va_sf: 6,
