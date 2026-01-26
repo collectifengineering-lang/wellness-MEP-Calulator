@@ -244,15 +244,14 @@ export interface ResultAdjustments {
   overrides: Record<string, number | string>
 }
 
-export interface ZoneFixtures {
-  showers: number
-  lavs: number
-  wcs: number
-  floorDrains: number
-  serviceSinks: number
-  washingMachines: number
-  dryers: number
-}
+// Dynamic fixture type - keys are fixture IDs from NYC_FIXTURE_DATABASE
+// e.g., { shower: 10, lavatory: 5, water_closet_tank: 6 }
+export type ZoneFixtures = Record<string, number>
+
+// Legacy fixture keys for backwards compatibility
+export const LEGACY_FIXTURE_KEYS = [
+  'showers', 'lavs', 'wcs', 'floorDrains', 'serviceSinks', 'washingMachines', 'dryers'
+] as const
 
 export interface ZoneRates {
   lighting_w_sf: number

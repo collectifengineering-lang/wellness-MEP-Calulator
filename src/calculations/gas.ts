@@ -1,6 +1,7 @@
 import type { Zone, GasCalcResult } from '../types'
 import { getZoneDefaults, calculateLaundryLoads } from '../data/zoneDefaults'
 import { gasDefaults } from '../data/defaults'
+import { getLegacyFixtureCounts } from '../data/fixtureUtils'
 
 export function calculateGas(zones: Zone[], contingency: number): GasCalcResult {
   let totalMBH = 0
@@ -36,19 +37,20 @@ export function calculateGas(zones: Zone[], contingency: number): GasCalcResult 
     const hasDryerLineItem = zone.lineItems.some(li => 
       li.category === 'gas' && li.name.toLowerCase().includes('dryer')
     )
-    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0 && zone.subType === 'gas' && !hasDryerLineItem) {
+    const legacyFixtures = getLegacyFixtureCounts(zone.fixtures)
+    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && legacyFixtures.dryers > 0 && zone.subType === 'gas' && !hasDryerLineItem) {
       const laundryLoads = calculateLaundryLoads(
-        zone.fixtures.washingMachines || 0,
-        zone.fixtures.dryers,
+        legacyFixtures.washingMachines || 0,
+        legacyFixtures.dryers,
         'gas',
         zone.laundryEquipment
       )
       if (laundryLoads.dryer_gas_mbh > 0) {
         totalMBH += laundryLoads.dryer_gas_mbh
-        const pockets = zone.fixtures.dryers * 2
+        const pockets = legacyFixtures.dryers * 2
         const mbhPerPocket = zone.laundryEquipment?.dryer_gas_mbh ?? 95
         equipmentBreakdown.push({
-          name: `${zone.name} - Gas Dryers (${zone.fixtures.dryers} units, ${pockets} pockets @ ${mbhPerPocket} MBH each)`,
+          name: `${zone.name} - Gas Dryers (${legacyFixtures.dryers} units, ${pockets} pockets @ ${mbhPerPocket} MBH each)`,
           mbh: laundryLoads.dryer_gas_mbh,
           cfh: laundryLoads.total_gas_cfh,
         })

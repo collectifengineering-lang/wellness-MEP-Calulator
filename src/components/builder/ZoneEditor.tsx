@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import LineItemsEditor from './LineItemsEditor'
+import { AddFixtureModal } from './AddFixtureModal'
 import { useProjectStore, calculateProcessLoads } from '../../store/useProjectStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { getZoneCategories, getZoneTypesByCategory } from '../../data/zoneDefaults'
+import { getFixtureById, LEGACY_FIXTURE_MAPPING } from '../../data/nycFixtures'
 import type { Zone, ZoneType, ZoneProcessLoads } from '../../types'
 
 interface ZoneEditorProps {
@@ -30,6 +32,7 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
     processLoads: zone.processLoads || defaultProcessLoads
   })
   const [showTypeSelector, setShowTypeSelector] = useState(false)
+  const [showAddFixtureModal, setShowAddFixtureModal] = useState(false)
 
   useEffect(() => {
     setLocalZone({
@@ -91,9 +94,15 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
   const coolingTons = localZone.rates.cooling_sf_ton > 0 ? localZone.sf / localZone.rates.cooling_sf_ton : 0
   const heatingMBH = (localZone.sf * localZone.rates.heating_btuh_sf) / 1000
   
-  // 2. FIXTURE-BASED LOADS
-  const fixtureExhaustCFM = (defaults.exhaust_cfm_toilet || 0) * localZone.fixtures.wcs +
-    (defaults.exhaust_cfm_shower || 0) * localZone.fixtures.showers
+  // 2. FIXTURE-BASED LOADS (using new fixture IDs, with legacy fallback)
+  const getFixtureCount = (newId: string, legacyId?: string): number => {
+    // Try new ID first, then legacy ID for backwards compatibility
+    return localZone.fixtures[newId] || (legacyId ? localZone.fixtures[legacyId] : 0) || 0
+  }
+  const wcCount = getFixtureCount('water_closet_tank', 'wcs') + getFixtureCount('water_closet_valve')
+  const showerCount = getFixtureCount('shower', 'showers')
+  const fixtureExhaustCFM = (defaults.exhaust_cfm_toilet || 0) * wcCount +
+    (defaults.exhaust_cfm_shower || 0) * showerCount
   
   // 3. LINE ITEM TOTALS (the visible equipment!) - SIMPLE MATH!
   const lineItemKW = localZone.lineItems
@@ -290,44 +299,14 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
             )}
           </div>
 
-          {/* Fixtures - hide washers/dryers for laundry zones (they're in Equipment section) */}
-          <div>
-            <h4 className="text-sm font-medium text-surface-300 mb-3">🚿 Fixtures</h4>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { key: 'showers', label: 'Showers', icon: '🚿' },
-                { key: 'lavs', label: 'Lavs', icon: '🚰' },
-                { key: 'wcs', label: 'WCs', icon: '🚽' },
-                { key: 'floorDrains', label: 'Floor Drains', icon: '🕳️' },
-                { key: 'serviceSinks', label: 'Svc Sinks', icon: '🧹' },
-                // Only show washers/dryers if NOT a laundry zone (laundry uses Equipment section)
-                ...(!defaults.laundry_equipment ? [
-                  { key: 'washingMachines', label: 'Washers', icon: '🧺' },
-                  { key: 'dryers', label: 'Dryers', icon: '♨️' },
-                ] : []),
-              ].map(fixture => (
-                <div key={fixture.key}>
-                  <label className="text-xs text-surface-400 flex items-center gap-1">
-                    <span>{fixture.icon}</span> {fixture.label}
-                  </label>
-                  <input
-                    type="number"
-                    value={localZone.fixtures[fixture.key as keyof typeof localZone.fixtures]}
-                    onChange={(e) => handleUpdate({
-                      fixtures: { ...localZone.fixtures, [fixture.key]: Number(e.target.value) }
-                    })}
-                    min={0}
-                    className="w-full px-2 py-1.5 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                  />
-                </div>
-              ))}
-            </div>
-            {defaults.laundry_equipment && (
-              <p className="text-xs text-surface-500 mt-2 italic">
-                ℹ️ Washers/Dryers are in the Equipment section above
-              </p>
-            )}
-          </div>
+          {/* Fixtures - Dynamic based on zone type and existing fixtures */}
+          <DynamicFixturesSection
+            fixtures={localZone.fixtures}
+            visibleFixtures={defaults.visibleFixtures || []}
+            onUpdate={(newFixtures) => handleUpdate({ fixtures: newFixtures })}
+            onShowAddModal={() => setShowAddFixtureModal(true)}
+            hasLaundryEquipment={!!defaults.laundry_equipment}
+          />
 
           {/* Line Items */}
           <LineItemsEditor zone={localZone} onUpdate={handleUpdate} />
@@ -487,6 +466,150 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
           </div>
         </div>
       </div>
+
+      {/* Add Fixture Modal */}
+      <AddFixtureModal
+        isOpen={showAddFixtureModal}
+        onClose={() => setShowAddFixtureModal(false)}
+        existingFixtures={localZone.fixtures}
+        onAddFixture={(fixtureId, count) => {
+          const newFixtures = { ...localZone.fixtures }
+          if (count > 0) {
+            newFixtures[fixtureId] = count
+          } else {
+            delete newFixtures[fixtureId]
+          }
+          handleUpdate({ fixtures: newFixtures })
+        }}
+      />
     </>
+  )
+}
+
+// Dynamic Fixtures Section Component
+interface DynamicFixturesSectionProps {
+  fixtures: Record<string, number>
+  visibleFixtures: string[]
+  onUpdate: (fixtures: Record<string, number>) => void
+  onShowAddModal: () => void
+  hasLaundryEquipment: boolean
+}
+
+function DynamicFixturesSection({ 
+  fixtures, 
+  visibleFixtures, 
+  onUpdate, 
+  onShowAddModal,
+  hasLaundryEquipment 
+}: DynamicFixturesSectionProps) {
+  // Get all fixture IDs to display:
+  // 1. Fixtures that have counts > 0
+  // 2. Fixtures in visibleFixtures (even if count is 0)
+  // 3. Legacy fixture IDs with counts > 0 (for backwards compatibility)
+  const displayedFixtureIds = useMemo(() => {
+    const ids = new Set<string>()
+    
+    // Add visible fixtures from zone defaults
+    visibleFixtures.forEach(id => ids.add(id))
+    
+    // Add fixtures with counts > 0
+    Object.entries(fixtures).forEach(([id, count]) => {
+      if (count > 0) {
+        // Check if it's a legacy ID and convert to new ID
+        const newId = LEGACY_FIXTURE_MAPPING[id] || id
+        ids.add(newId)
+      }
+    })
+    
+    return Array.from(ids)
+  }, [fixtures, visibleFixtures])
+
+  // Get fixture info for display
+  const displayedFixtures = displayedFixtureIds
+    .map(id => {
+      const def = getFixtureById(id)
+      if (!def) return null
+      // Get count from new ID or legacy ID
+      const legacyId = Object.entries(LEGACY_FIXTURE_MAPPING).find(([_, newId]) => newId === id)?.[0]
+      const count = fixtures[id] || (legacyId ? fixtures[legacyId] : 0) || 0
+      return { ...def, count }
+    })
+    .filter(Boolean) as Array<{ id: string; name: string; icon: string; count: number; wsfu: number; dfu: number }>
+
+  // Handle fixture removal (set to 0)
+  const handleRemoveFixture = (fixtureId: string) => {
+    const newFixtures = { ...fixtures }
+    delete newFixtures[fixtureId]
+    // Also check for legacy ID
+    const legacyId = Object.entries(LEGACY_FIXTURE_MAPPING).find(([_, newId]) => newId === fixtureId)?.[0]
+    if (legacyId) delete newFixtures[legacyId]
+    onUpdate(newFixtures)
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-sm font-medium text-surface-300">🚿 Fixtures</h4>
+        <button
+          onClick={onShowAddModal}
+          className="px-2 py-1 text-xs bg-primary-600/20 hover:bg-primary-600/30 text-primary-400 rounded flex items-center gap-1"
+        >
+          <span>+</span> Add Fixture
+        </button>
+      </div>
+      
+      {displayedFixtures.length > 0 ? (
+        <div className="grid grid-cols-2 gap-2">
+          {displayedFixtures.map(fixture => (
+            <div key={fixture.id} className="flex items-center gap-2 bg-surface-800 rounded-lg p-2">
+              <span className="text-lg">{fixture.icon}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-white truncate">{fixture.name}</div>
+                <div className="text-[10px] text-surface-500">
+                  WSFU: {fixture.wsfu} | DFU: {fixture.dfu}
+                </div>
+              </div>
+              <input
+                type="number"
+                value={fixture.count}
+                onChange={(e) => {
+                  const newCount = Math.max(0, parseInt(e.target.value) || 0)
+                  if (newCount > 0) {
+                    onUpdate({ ...fixtures, [fixture.id]: newCount })
+                  } else {
+                    handleRemoveFixture(fixture.id)
+                  }
+                }}
+                min={0}
+                className="w-14 px-2 py-1 bg-surface-900 border border-surface-600 rounded text-white text-sm text-center"
+              />
+              <button
+                onClick={() => handleRemoveFixture(fixture.id)}
+                className="p-1 hover:bg-surface-700 rounded text-surface-500 hover:text-red-400"
+                title="Remove fixture"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-4 text-surface-500 text-sm">
+          <p>No fixtures assigned</p>
+          <button
+            onClick={onShowAddModal}
+            className="mt-2 text-primary-400 hover:text-primary-300 underline"
+          >
+            Add fixtures from NYC Plumbing Code
+          </button>
+        </div>
+      )}
+      
+      {hasLaundryEquipment && (
+        <p className="text-xs text-surface-500 mt-2 italic">
+          ℹ️ Commercial washers/dryers should be added via Equipment line items
+        </p>
+      )}
+    </div>
   )
 }

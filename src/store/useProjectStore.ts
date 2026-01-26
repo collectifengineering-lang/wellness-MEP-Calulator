@@ -4,6 +4,7 @@ import type { Project, Zone, DHWSettings, ResultAdjustments, ClimateType, ZoneTy
 import { getZoneColor, calculateFixturesFromSF, type ZoneDefaults } from '../data/zoneDefaults'
 import { useSettingsStore } from './useSettingsStore'
 import { getDefaultDHWSettings, getDefaultResultAdjustments, getDefaultElectricalSettings, getDefaultMechanicalSettings } from '../data/defaults'
+import { getLegacyFixtureCounts, mergeFixtures } from '../data/fixtureUtils'
 
 // Default process loads (all zeros)
 const defaultProcessLoads: ZoneProcessLoads = {
@@ -463,18 +464,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   
   getAggregatedFixtures: () => {
     const zones = get().zones
-    return zones.reduce(
-      (acc, z) => ({
-        showers: acc.showers + (z.fixtures.showers || 0),
-        lavs: acc.lavs + (z.fixtures.lavs || 0),
-        wcs: acc.wcs + (z.fixtures.wcs || 0),
-        floorDrains: acc.floorDrains + (z.fixtures.floorDrains || 0),
-        serviceSinks: acc.serviceSinks + (z.fixtures.serviceSinks || 0),
-        washingMachines: acc.washingMachines + (z.fixtures.washingMachines || 0),
-        dryers: acc.dryers + (z.fixtures.dryers || 0),
-      }),
-      { showers: 0, lavs: 0, wcs: 0, floorDrains: 0, serviceSinks: 0, washingMachines: 0, dryers: 0 }
-    )
+    // Merge all fixtures dynamically, then convert to legacy format for backwards compatibility
+    const mergedFixtures = mergeFixtures(...zones.map(z => z.fixtures))
+    return getLegacyFixtureCounts(mergedFixtures)
   },
 }))
 

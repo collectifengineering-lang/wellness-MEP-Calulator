@@ -1,6 +1,7 @@
 import type { Zone, HVACCalcResult, ClimateType } from '../types'
 import { getZoneDefaults, calculateLaundryLoads } from '../data/zoneDefaults'
 import { climateFactors } from '../data/defaults'
+import { getLegacyFixtureCounts } from '../data/fixtureUtils'
 
 export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: number): HVACCalcResult {
   const factors = climateFactors[climate]
@@ -48,11 +49,12 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
     }
     
     // 3. FIXTURE-BASED exhaust (toilets, showers)
+    const legacyFixtures = getLegacyFixtureCounts(zone.fixtures)
     if (defaults.exhaust_cfm_toilet) {
-      totalExhaustCFM += zone.fixtures.wcs * defaults.exhaust_cfm_toilet
+      totalExhaustCFM += legacyFixtures.wcs * defaults.exhaust_cfm_toilet
     }
     if (defaults.exhaust_cfm_shower) {
-      totalExhaustCFM += zone.fixtures.showers * defaults.exhaust_cfm_shower
+      totalExhaustCFM += legacyFixtures.showers * defaults.exhaust_cfm_shower
     }
     
     // 4. LINE ITEMS - All fixed ventilation/exhaust/dehumidification/cooling equipment!
@@ -95,10 +97,10 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
     })
     
     // 5. LAUNDRY exhaust (calculated from fixture counts)
-    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0) {
+    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && legacyFixtures.dryers > 0) {
       const laundryLoads = calculateLaundryLoads(
-        zone.fixtures.washingMachines || 0,
-        zone.fixtures.dryers,
+        legacyFixtures.washingMachines || 0,
+        legacyFixtures.dryers,
         zone.subType === 'gas' ? 'gas' : 'electric',
         zone.laundryEquipment
       )
@@ -162,14 +164,15 @@ export function getHVACBreakdown(zones: Zone[], climate: ClimateType): {
     let exhaustCFM = zone.sf * zone.rates.exhaust_cfm_sf
     const fixedExhaustCFM = processLoads.exhaust_cfm ?? defaults.exhaust_cfm ?? 0
     if (fixedExhaustCFM > 0) exhaustCFM += fixedExhaustCFM
-    if (defaults.exhaust_cfm_toilet) exhaustCFM += zone.fixtures.wcs * defaults.exhaust_cfm_toilet
-    if (defaults.exhaust_cfm_shower) exhaustCFM += zone.fixtures.showers * defaults.exhaust_cfm_shower
+    const zoneLegacyFixtures = getLegacyFixtureCounts(zone.fixtures)
+    if (defaults.exhaust_cfm_toilet) exhaustCFM += zoneLegacyFixtures.wcs * defaults.exhaust_cfm_toilet
+    if (defaults.exhaust_cfm_shower) exhaustCFM += zoneLegacyFixtures.showers * defaults.exhaust_cfm_shower
     
     // Laundry exhaust - uses zone's custom specs
-    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0) {
+    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zoneLegacyFixtures.dryers > 0) {
       const laundryLoads = calculateLaundryLoads(
-        zone.fixtures.washingMachines || 0, 
-        zone.fixtures.dryers, 
+        zoneLegacyFixtures.washingMachines || 0, 
+        zoneLegacyFixtures.dryers, 
         zone.subType === 'gas' ? 'gas' : 'electric',
         zone.laundryEquipment
       )
@@ -188,8 +191,8 @@ export function getHVACBreakdown(zones: Zone[], climate: ClimateType): {
     if (defaults.mau_cfm) {
       notes.push(`MAU: ${defaults.mau_cfm} CFM`)
     }
-    if (zone.type === 'laundry_commercial' && zone.fixtures.dryers > 0) {
-      notes.push(`${zone.fixtures.dryers} dryers @ 1,200 CFM each`)
+    if (zone.type === 'laundry_commercial' && zoneLegacyFixtures.dryers > 0) {
+      notes.push(`${zoneLegacyFixtures.dryers} dryers @ 1,200 CFM each`)
     }
     if (defaults.requires_standby_power) {
       notes.push('Standby power required')

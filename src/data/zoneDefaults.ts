@@ -18,6 +18,7 @@ export interface ZoneDefaults {
   defaultSubType?: 'electric' | 'gas'
   switchable?: boolean
   defaultFixtures: ZoneFixtures
+  visibleFixtures?: string[]  // Fixture IDs to show in editor (even if count is 0)
   defaultRates: ZoneRates
   // Fixed loads (not per SF)
   fixed_kw?: number
@@ -86,15 +87,7 @@ export interface ZoneDefaults {
   }>
 }
 
-const defaultFixtures: ZoneFixtures = {
-  showers: 0,
-  lavs: 0,
-  wcs: 0,
-  floorDrains: 0,
-  serviceSinks: 0,
-  washingMachines: 0,
-  dryers: 0,
-}
+// Note: Each zone specifies its own defaultFixtures, no global default needed
 
 // Default rates (used for custom zones)
 export const defaultRates: ZoneRates = {
@@ -115,7 +108,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Reception / Lounge',
     category: 'Support',
     defaultSF: 1500,
-    defaultFixtures: { ...defaultFixtures, lavs: 2, wcs: 2 },
+    defaultFixtures: { lavatory: 2, water_closet_tank: 2 },
+    visibleFixtures: ['lavatory', 'water_closet_tank'],
     defaultRates: {
       lighting_w_sf: 0.90,
       receptacle_va_sf: 4,
@@ -130,7 +124,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Mechanical Room',
     category: 'Support',
     defaultSF: 500,
-    defaultFixtures: { ...defaultFixtures, floorDrains: 2 },
+    defaultFixtures: { floor_drain_2in: 2 },
+    visibleFixtures: ['floor_drain_2in', 'hose_bibb'],
     defaultRates: {
       lighting_w_sf: 0.50,
       receptacle_va_sf: 5,
@@ -147,7 +142,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Retail',
     category: 'Support',
     defaultSF: 800,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: [],
     defaultRates: {
       lighting_w_sf: 1.10,
       receptacle_va_sf: 5,
@@ -165,7 +161,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Office / Admin',
     category: 'Support',
     defaultSF: 400,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: [],
     defaultRates: {
       lighting_w_sf: 0.78,
       receptacle_va_sf: 6,
@@ -183,7 +180,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Storage',
     category: 'Support',
     defaultSF: 300,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: [],
     defaultRates: {
       lighting_w_sf: 0.40,
       receptacle_va_sf: 2,
@@ -199,10 +197,10 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Support',
     defaultSF: 500,
     defaultFixtures: {
-      ...defaultFixtures,
-      lavs: 1,        // Hand sink / pantry sink
-      floorDrains: 1, // Floor drain for spills
+      lavatory: 1,        // Hand sink / pantry sink
+      floor_drain_2in: 1, // Floor drain for spills
     },
+    visibleFixtures: ['lavatory', 'floor_drain_2in', 'drinking_fountain'],
     defaultRates: {
       lighting_w_sf: 0.90,       // NYCECC dining/lounge
       receptacle_va_sf: 10,      // Higher for microwave, fridge, coffee maker, vending
@@ -224,7 +222,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Open Gym / Fitness Floor',
     category: 'Fitness',
     defaultSF: 5000,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: ['drinking_fountain', 'bottle_filler'],
     defaultRates: {
       lighting_w_sf: 0.72,
       receptacle_va_sf: 12,
@@ -242,7 +241,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Group Fitness Studio',
     category: 'Fitness',
     defaultSF: 2000,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: ['drinking_fountain'],
     defaultRates: {
       lighting_w_sf: 0.72,
       receptacle_va_sf: 8,
@@ -260,7 +260,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'MMA / Boxing Studio',
     category: 'Fitness',
     defaultSF: 2400,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: ['drinking_fountain'],
     defaultRates: {
       lighting_w_sf: 0.72,
       receptacle_va_sf: 8,
@@ -278,7 +279,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Yoga Studio',
     category: 'Fitness',
     defaultSF: 800,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: [],
     defaultRates: {
       lighting_w_sf: 0.65,
       receptacle_va_sf: 4,
@@ -296,7 +298,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Pilates Studio',
     category: 'Fitness',
     defaultSF: 600,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: [],
     defaultRates: {
       lighting_w_sf: 0.65,
       receptacle_va_sf: 5,
@@ -314,7 +317,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Stretching / Recovery Area',
     category: 'Fitness',
     defaultSF: 500,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: [],
     defaultRates: {
       lighting_w_sf: 0.65,
       receptacle_va_sf: 5,
@@ -336,7 +340,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Locker Room',
     category: 'Locker/Hygiene',
     defaultSF: 2500,
-    defaultFixtures: { ...defaultFixtures, showers: 10, lavs: 5, wcs: 6, floorDrains: 4 },
+    defaultFixtures: { shower: 10, lavatory: 5, water_closet_tank: 6, floor_drain_2in: 4 },
+    visibleFixtures: ['shower', 'lavatory', 'water_closet_tank', 'urinal_flush_valve', 'floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 3,
@@ -362,7 +367,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Restroom',
     category: 'Locker/Hygiene',
     defaultSF: 150,
-    defaultFixtures: { ...defaultFixtures, lavs: 1, wcs: 1, floorDrains: 1 },
+    defaultFixtures: { lavatory: 1, water_closet_tank: 1, floor_drain_2in: 1 },
+    visibleFixtures: ['lavatory', 'water_closet_tank', 'urinal_flush_valve', 'floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.80,
       receptacle_va_sf: 2,
@@ -391,7 +397,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 500,
     defaultSubType: 'gas',
     switchable: false,
-    defaultFixtures: { ...defaultFixtures, floorDrains: 2 },
+    defaultFixtures: { floor_drain_3in: 2 },
+    visibleFixtures: ['floor_drain_3in', 'hose_bibb'],
     defaultRates: {
       lighting_w_sf: 0.50,
       receptacle_va_sf: 2,
@@ -417,7 +424,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 200,
     defaultSubType: 'gas',
     switchable: true,
-    defaultFixtures: { ...defaultFixtures, floorDrains: 1 },
+    defaultFixtures: { floor_drain_2in: 1 },
+    visibleFixtures: ['floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.50,
       receptacle_va_sf: 2,
@@ -442,7 +450,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 200,
     defaultSubType: 'electric',
     switchable: true,
-    defaultFixtures: { ...defaultFixtures, floorDrains: 1 },
+    defaultFixtures: { floor_drain_2in: 1 },
+    visibleFixtures: ['floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.50,
       receptacle_va_sf: 2,
@@ -466,7 +475,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Thermal',
     defaultSF: 200,
     defaultSubType: 'electric',
-    defaultFixtures: { ...defaultFixtures, floorDrains: 2 },
+    defaultFixtures: { floor_drain_2in: 2 },
+    visibleFixtures: ['floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.50,
       receptacle_va_sf: 2,
@@ -491,7 +501,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Thermal',
     defaultSF: 150,
     defaultSubType: 'electric',
-    defaultFixtures: { ...defaultFixtures, floorDrains: 1 },
+    defaultFixtures: { floor_drain_2in: 1 },
+    visibleFixtures: ['floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 3,
@@ -510,7 +521,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Thermal',
     defaultSF: 100,
     defaultSubType: 'electric',
-    defaultFixtures: { ...defaultFixtures, floorDrains: 1 },
+    defaultFixtures: { floor_drain_2in: 1 },
+    visibleFixtures: ['floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 3,
@@ -527,7 +539,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Thermal',
     defaultSF: 1500,
     defaultSubType: 'electric',
-    defaultFixtures: { ...defaultFixtures, showers: 2, floorDrains: 4 },
+    defaultFixtures: { shower: 2, floor_drain_3in: 4 },
+    visibleFixtures: ['shower', 'floor_drain_3in', 'hose_bibb'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 3,
@@ -553,7 +566,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 3000,
     defaultSubType: 'gas',
     switchable: true,
-    defaultFixtures: { ...defaultFixtures, floorDrains: 4 },
+    defaultFixtures: { floor_drain_3in: 4 },
+    visibleFixtures: ['floor_drain_3in', 'trench_drain', 'pool_fill', 'hose_bibb'],
     defaultRates: {
       lighting_w_sf: 0.90,
       receptacle_va_sf: 3,
@@ -579,7 +593,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 2000,
     defaultSubType: 'gas',
     switchable: true,
-    defaultFixtures: { ...defaultFixtures, floorDrains: 2 },
+    defaultFixtures: { floor_drain_3in: 2 },
+    visibleFixtures: ['floor_drain_3in', 'pool_fill', 'hose_bibb'],
     defaultRates: {
       lighting_w_sf: 0.50,
       receptacle_va_sf: 2,
@@ -597,7 +612,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 200,
     defaultSubType: 'gas',
     switchable: true,
-    defaultFixtures: { ...defaultFixtures, floorDrains: 1 },
+    defaultFixtures: { floor_drain_2in: 1 },
+    visibleFixtures: ['floor_drain_2in', 'hot_tub_fill'],
     defaultRates: {
       lighting_w_sf: 0.80,
       receptacle_va_sf: 3,
@@ -614,7 +630,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Treatment Room',
     category: 'Pool/Spa',
     defaultSF: 150,
-    defaultFixtures: { ...defaultFixtures, lavs: 1 },
+    defaultFixtures: { lavatory: 1 },
+    visibleFixtures: ['lavatory'],
     defaultRates: {
       lighting_w_sf: 0.80,
       receptacle_va_sf: 4,
@@ -632,7 +649,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Massage Room',
     category: 'Pool/Spa',
     defaultSF: 120,
-    defaultFixtures: { ...defaultFixtures, lavs: 1 },
+    defaultFixtures: { lavatory: 1 },
+    visibleFixtures: ['lavatory'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 3,
@@ -650,7 +668,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Couples Treatment Room',
     category: 'Pool/Spa',
     defaultSF: 250,
-    defaultFixtures: { ...defaultFixtures, lavs: 1 },
+    defaultFixtures: { lavatory: 1 },
+    visibleFixtures: ['lavatory'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 3,
@@ -668,7 +687,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Private Suite',
     category: 'Pool/Spa',
     defaultSF: 400,
-    defaultFixtures: { ...defaultFixtures, lavs: 1, showers: 1, floorDrains: 1 },
+    defaultFixtures: { lavatory: 1, shower: 1, floor_drain_2in: 1 },
+    visibleFixtures: ['lavatory', 'shower', 'floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.80,
       receptacle_va_sf: 4,
@@ -691,7 +711,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Kitchen/Laundry',
     defaultSF: 600,
     defaultSubType: 'gas',
-    defaultFixtures: { ...defaultFixtures, floorDrains: 2, serviceSinks: 1, washingMachines: 4, dryers: 4 },
+    defaultFixtures: { floor_drain_3in: 2, service_sink: 1, washing_machine_commercial: 4, dryer_condensate: 4 },
+    visibleFixtures: ['floor_drain_3in', 'service_sink', 'washing_machine_commercial', 'dryer_condensate'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 4,
@@ -727,7 +748,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Kitchen/Laundry',
     defaultSF: 150,
     defaultSubType: 'electric',
-    defaultFixtures: { ...defaultFixtures, floorDrains: 1, washingMachines: 1, dryers: 1 },
+    defaultFixtures: { floor_drain_2in: 1, washing_machine_residential: 1, dryer_condensate: 1 },
+    visibleFixtures: ['floor_drain_2in', 'washing_machine_residential', 'dryer_condensate'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 5,
@@ -746,7 +768,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Kitchen/Laundry',
     defaultSF: 700,
     defaultSubType: 'gas',
-    defaultFixtures: { ...defaultFixtures, lavs: 2, floorDrains: 2 },
+    defaultFixtures: { hand_sink: 2, floor_drain_3in: 2 },
+    visibleFixtures: ['hand_sink', 'floor_drain_3in', 'pot_sink_3comp', 'prep_sink', 'dishwasher_commercial', 'grease_interceptor'],
     defaultRates: {
       lighting_w_sf: 1.00,
       receptacle_va_sf: 12,
@@ -767,7 +790,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Kitchen/Laundry',
     defaultSF: 300,
     defaultSubType: 'electric',
-    defaultFixtures: { ...defaultFixtures, lavs: 1, floorDrains: 1 },
+    defaultFixtures: { hand_sink: 1, floor_drain_2in: 1 },
+    visibleFixtures: ['hand_sink', 'floor_drain_2in', 'dishwasher_commercial'],
     defaultRates: {
       lighting_w_sf: 0.90,
       receptacle_va_sf: 8,
@@ -789,7 +813,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Co-Work Space',
     category: 'Event/CoWork',
     defaultSF: 4000,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: ['drinking_fountain', 'bottle_filler'],
     defaultRates: {
       lighting_w_sf: 0.78,
       receptacle_va_sf: 8,
@@ -807,7 +832,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Conference Room',
     category: 'Event/CoWork',
     defaultSF: 500,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: [],
     defaultRates: {
       lighting_w_sf: 1.00,
       receptacle_va_sf: 6,
@@ -825,7 +851,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Event Space / Studio',
     category: 'Event/CoWork',
     defaultSF: 6000,
-    defaultFixtures: { ...defaultFixtures, floorDrains: 2 },
+    defaultFixtures: { floor_drain_2in: 2 },
+    visibleFixtures: ['floor_drain_2in', 'hose_bibb'],
     defaultRates: {
       lighting_w_sf: 1.20,
       receptacle_va_sf: 6,
@@ -843,7 +870,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Screening Room / Theater',
     category: 'Event/CoWork',
     defaultSF: 1000,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: [],
     defaultRates: {
       lighting_w_sf: 0.80,
       receptacle_va_sf: 5,
@@ -866,7 +894,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Child Care',
     category: 'Specialty',
     defaultSF: 1200,
-    defaultFixtures: { ...defaultFixtures, lavs: 2, wcs: 2, floorDrains: 1 },
+    defaultFixtures: { lavatory: 2, water_closet_tank: 2, floor_drain_2in: 1 },
+    visibleFixtures: ['lavatory', 'water_closet_tank', 'floor_drain_2in', 'drinking_fountain'],
     defaultRates: {
       lighting_w_sf: 1.00,
       receptacle_va_sf: 4,
@@ -884,7 +913,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Recovery & Longevity',
     category: 'Specialty',
     defaultSF: 1600,
-    defaultFixtures: { ...defaultFixtures, lavs: 2, floorDrains: 2 },
+    defaultFixtures: { lavatory: 2, floor_drain_2in: 2 },
+    visibleFixtures: ['lavatory', 'floor_drain_2in'],
     defaultRates: {
       lighting_w_sf: 0.72,
       receptacle_va_sf: 6,
@@ -907,7 +937,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Basketball Court (Half)',
     category: 'Sports',
     defaultSF: 2400,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: ['drinking_fountain'],
     defaultRates: {
       lighting_w_sf: 1.00,
       receptacle_va_sf: 3,
@@ -925,7 +956,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Padel Court',
     category: 'Sports',
     defaultSF: 2200,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: ['drinking_fountain'],
     defaultRates: {
       lighting_w_sf: 1.00,
       receptacle_va_sf: 3,
@@ -948,7 +980,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'F&B',
     defaultSF: 1200,
     defaultSubType: 'electric',
-    defaultFixtures: { ...defaultFixtures, lavs: 1, floorDrains: 1 },
+    defaultFixtures: { hand_sink: 1, floor_drain_2in: 1 },
+    visibleFixtures: ['hand_sink', 'floor_drain_2in', 'dishwasher_commercial'],
     defaultRates: {
       lighting_w_sf: 1.00,
       receptacle_va_sf: 8,
@@ -971,7 +1004,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Terrace / Outdoor',
     category: 'Outdoor',
     defaultSF: 2500,
-    defaultFixtures: { ...defaultFixtures, floorDrains: 2 },
+    defaultFixtures: { area_drain: 2 },
+    visibleFixtures: ['area_drain', 'hose_bibb'],
     defaultRates: {
       lighting_w_sf: 0.50,
       receptacle_va_sf: 2,
@@ -990,7 +1024,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Custom Zone',
     category: 'Custom',
     defaultSF: 1000,
-    defaultFixtures: { ...defaultFixtures },
+    defaultFixtures: {},
+    visibleFixtures: ['lavatory', 'water_closet_tank', 'floor_drain_2in'],
     defaultRates: { ...defaultRates },
     source_notes: 'User override',
   },
@@ -1035,23 +1070,32 @@ export function getZoneTypesByCategory(category: string): ZoneType[] {
 export function calculateFixturesFromSF(
   type: ZoneType, 
   sf: number
-): Partial<ZoneFixtures> {
+): ZoneFixtures {
   const defaults = getZoneDefaults(type)
   const fixturesPerSF = defaults.fixtures_per_sf
   
   if (!fixturesPerSF) {
-    return defaults.defaultFixtures
+    return { ...defaults.defaultFixtures }
   }
   
-  return {
-    wcs: fixturesPerSF.wcs ? Math.max(1, Math.ceil(sf / fixturesPerSF.wcs)) : defaults.defaultFixtures.wcs,
-    lavs: fixturesPerSF.lavs ? Math.max(1, Math.ceil(sf / fixturesPerSF.lavs)) : defaults.defaultFixtures.lavs,
-    showers: fixturesPerSF.showers ? Math.ceil(sf / fixturesPerSF.showers) : defaults.defaultFixtures.showers,
-    floorDrains: fixturesPerSF.floorDrains ? Math.max(1, Math.ceil(sf / fixturesPerSF.floorDrains)) : defaults.defaultFixtures.floorDrains,
-    serviceSinks: defaults.defaultFixtures.serviceSinks,
-    washingMachines: defaults.defaultFixtures.washingMachines,
-    dryers: defaults.defaultFixtures.dryers,
+  // Start with default fixtures
+  const fixtures: ZoneFixtures = { ...defaults.defaultFixtures }
+  
+  // Override with SF-calculated values (using new fixture IDs)
+  if (fixturesPerSF.wcs) {
+    fixtures['water_closet_tank'] = Math.max(1, Math.ceil(sf / fixturesPerSF.wcs))
   }
+  if (fixturesPerSF.lavs) {
+    fixtures['lavatory'] = Math.max(1, Math.ceil(sf / fixturesPerSF.lavs))
+  }
+  if (fixturesPerSF.showers) {
+    fixtures['shower'] = Math.ceil(sf / fixturesPerSF.showers)
+  }
+  if (fixturesPerSF.floorDrains) {
+    fixtures['floor_drain_2in'] = Math.max(1, Math.ceil(sf / fixturesPerSF.floorDrains))
+  }
+  
+  return fixtures
 }
 
 // Calculate laundry loads based on equipment counts

@@ -2,6 +2,7 @@ import type { Zone, ElectricalCalcResult } from '../types'
 import { getZoneDefaults, calculateLaundryLoads } from '../data/zoneDefaults'
 import { electricalDefaults, getStandardServiceSize, exceedsMaxServiceSize } from '../data/defaults'
 import type { ElectricalSettings } from '../store/useSettingsStore'
+import { getLegacyFixtureCounts } from '../data/fixtureUtils'
 
 export interface ElectricalCalcOptions {
   settings?: Partial<ElectricalSettings>
@@ -42,8 +43,9 @@ export function calculateElectrical(
     // 3. Laundry equipment (calculated from fixture counts)
     let laundryKW = 0
     if (zone.type === 'laundry_commercial' && defaults.laundry_equipment) {
-      const washers = zone.fixtures.washingMachines || 0
-      const dryers = zone.fixtures.dryers || 0
+      const legacyFixtures = getLegacyFixtureCounts(zone.fixtures)
+      const washers = legacyFixtures.washingMachines || 0
+      const dryers = legacyFixtures.dryers || 0
       const dryerType = zone.subType === 'gas' ? 'gas' : 'electric'
       const laundryLoads = calculateLaundryLoads(washers, dryers, dryerType, zone.laundryEquipment)
       laundryKW = laundryLoads.washer_kw + (dryerType === 'electric' ? laundryLoads.dryer_kw : 0)
@@ -123,8 +125,9 @@ export function getElectricalBreakdown(zones: Zone[]): { zoneName: string; kW: n
     // Include laundry equipment loads - same logic as main calculation
     let laundryKW = 0
     if (zone.type === 'laundry_commercial' && defaults.laundry_equipment) {
-      const washers = zone.fixtures.washingMachines || 0
-      const dryers = zone.fixtures.dryers || 0
+      const zoneLegacyFixtures = getLegacyFixtureCounts(zone.fixtures)
+      const washers = zoneLegacyFixtures.washingMachines || 0
+      const dryers = zoneLegacyFixtures.dryers || 0
       const dryerType = zone.subType === 'gas' ? 'gas' : 'electric'
       const laundryLoads = calculateLaundryLoads(washers, dryers, dryerType, zone.laundryEquipment)
       laundryKW = laundryLoads.washer_kw + (dryerType === 'electric' ? laundryLoads.dryer_kw : 0)

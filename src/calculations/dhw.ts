@@ -1,5 +1,6 @@
 import type { DHWSettings, DHWCalcResult, ZoneFixtures } from '../types'
 import { dhwDefaults, dhwBuildingTypeFactors, fixtureUnits } from '../data/defaults'
+import { getFixtureById, LEGACY_FIXTURE_MAPPING } from '../data/nycFixtures'
 
 export interface DHWCalcBreakdown {
   // Fixture demand
@@ -37,18 +38,58 @@ export function calculateDHW(
   // Get building type factors
   const buildingFactors = dhwBuildingTypeFactors[settings.buildingType] || dhwBuildingTypeFactors.gymnasium
   
-  // Use building-specific GPH values if not custom, otherwise use defaults
+  // Use building-specific GPH values if not custom, otherwise use defaults from NYC fixture database
   const showerGPH = settings.buildingType !== 'custom' ? buildingFactors.showerGPH : fixtureUnits.shower.hot_gph
   const lavGPH = settings.buildingType !== 'custom' ? buildingFactors.lavGPH : fixtureUnits.lavatory.hot_gph
   
-  // Calculate individual fixture demands
-  const showerDemandGPH = fixtures.showers * showerGPH
-  const lavDemandGPH = fixtures.lavs * lavGPH
-  const serviceSinkDemandGPH = fixtures.serviceSinks * fixtureUnits.service_sink.hot_gph
-  const washerDemandGPH = fixtures.washingMachines * fixtureUnits.washing_machine.hot_gph
+  // Helper to get fixture count (supports both new and legacy IDs)
+  const getFixtureCount = (newIds: string[], legacyIds: string[]): number => {
+    let count = 0
+    // Try new IDs
+    for (const id of newIds) {
+      count += fixtures[id] || 0
+    }
+    // Try legacy IDs
+    for (const id of legacyIds) {
+      count += fixtures[id] || 0
+    }
+    return count
+  }
+  
+  // Calculate individual fixture demands (using both new and legacy fixture IDs)
+  const showerCount = getFixtureCount(['shower', 'shower_gang'], ['showers'])
+  const lavCount = getFixtureCount(['lavatory', 'lavatory_public'], ['lavs'])
+  const serviceSinkCount = getFixtureCount(['service_sink'], ['serviceSinks'])
+  const washerCount = getFixtureCount(['washing_machine_residential', 'washing_machine_commercial'], ['washingMachines'])
+  
+  const showerDemandGPH = showerCount * showerGPH
+  const lavDemandGPH = lavCount * lavGPH
+  const serviceSinkDemandGPH = serviceSinkCount * fixtureUnits.service_sink.hot_gph
+  const washerDemandGPH = washerCount * fixtureUnits.washing_machine.hot_gph
+  
+  // Calculate hot water demand from all fixtures in NYC database
+  let additionalHotWaterGPH = 0
+  for (const [fixtureId, count] of Object.entries(fixtures)) {
+    if (count <= 0) continue
+    
+    // Skip fixtures we've already counted above
+    if (['shower', 'shower_gang', 'showers', 'lavatory', 'lavatory_public', 'lavs',
+         'service_sink', 'serviceSinks', 'washing_machine_residential', 
+         'washing_machine_commercial', 'washingMachines'].includes(fixtureId)) {
+      continue
+    }
+    
+    // Map legacy IDs to new IDs
+    const mappedId = LEGACY_FIXTURE_MAPPING[fixtureId] || fixtureId
+    const fixtureDef = getFixtureById(mappedId)
+    
+    if (fixtureDef && fixtureDef.hotWaterGPH > 0) {
+      additionalHotWaterGPH += count * fixtureDef.hotWaterGPH
+    }
+  }
   
   // Total fixture demand (unadjusted)
-  const totalFixtureDemandGPH = showerDemandGPH + lavDemandGPH + serviceSinkDemandGPH + washerDemandGPH
+  const totalFixtureDemandGPH = showerDemandGPH + lavDemandGPH + serviceSinkDemandGPH + washerDemandGPH + additionalHotWaterGPH
   
   // Apply demand/diversity factor
   const demandFactor = settings.demandFactor ?? buildingFactors.demandDiversity

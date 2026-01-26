@@ -1,5 +1,6 @@
 import type { ZoneFixtures, PlumbingCalcResult } from '../types'
-import { fixtureUnits, sanitarySizing, waterMeterSizing } from '../data/defaults'
+import { getFixtureById, LEGACY_FIXTURE_MAPPING } from '../data/nycFixtures'
+import { sanitarySizing, waterMeterSizing } from '../data/defaults'
 
 // Standard pipe sizes (inches) for water supply
 const STANDARD_PIPE_SIZES = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 6, 8]
@@ -15,32 +16,38 @@ interface PlumbingCalcOptions {
   hotWaterDemandFactor?: number   // @deprecated - use hotWaterFlowRatio
 }
 
+/**
+ * Calculate plumbing loads from dynamic fixtures using NYC Plumbing Code database
+ */
 export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalcOptions): PlumbingCalcResult {
-  const useCommercialWasher = options?.useCommercialLaundry ?? false
   // Use new fields or fall back to legacy fields
   const coldWaterVelocity = options?.coldWaterVelocityFPS ?? options?.designVelocityFPS ?? 5
   const hotWaterVelocity = options?.hotWaterVelocityFPS ?? options?.designVelocityFPS ?? 4
   const hotWaterFactor = options?.hotWaterFlowRatio ?? options?.hotWaterDemandFactor ?? 0.6
   
-  const washerUnits = useCommercialWasher ? fixtureUnits.washing_machine_commercial : fixtureUnits.washing_machine
+  let totalWSFU = 0
+  let totalDFU = 0
   
-  // Calculate total Water Supply Fixture Units (WSFU)
-  const totalWSFU =
-    fixtures.showers * fixtureUnits.shower.wsfu +
-    fixtures.lavs * fixtureUnits.lavatory.wsfu +
-    fixtures.wcs * fixtureUnits.water_closet.wsfu +
-    fixtures.serviceSinks * fixtureUnits.service_sink.wsfu +
-    fixtures.washingMachines * washerUnits.wsfu
-
-  // Calculate total Drainage Fixture Units (DFU)
-  const totalDFU =
-    fixtures.showers * fixtureUnits.shower.dfu +
-    fixtures.lavs * fixtureUnits.lavatory.dfu +
-    fixtures.wcs * fixtureUnits.water_closet.dfu +
-    fixtures.floorDrains * fixtureUnits.floor_drain.dfu +
-    fixtures.serviceSinks * fixtureUnits.service_sink.dfu +
-    fixtures.washingMachines * washerUnits.dfu +
-    fixtures.dryers * fixtureUnits.dryer.dfu // Add dryer condensate DFU
+  // Iterate over all fixtures and calculate totals
+  for (const [fixtureId, count] of Object.entries(fixtures)) {
+    if (count <= 0) continue
+    
+    // Map legacy IDs to new IDs
+    const mappedId = LEGACY_FIXTURE_MAPPING[fixtureId] || fixtureId
+    
+    // Look up fixture in database
+    const fixtureDef = getFixtureById(mappedId)
+    
+    if (fixtureDef) {
+      totalWSFU += count * fixtureDef.wsfu
+      totalDFU += count * fixtureDef.dfu
+    } else {
+      // Fallback for unknown fixtures - use conservative estimates
+      console.warn(`Unknown fixture type: ${fixtureId}, using default values`)
+      totalWSFU += count * 2  // Conservative default WSFU
+      totalDFU += count * 2   // Conservative default DFU
+    }
+  }
 
   // Convert WSFU to GPM using Hunter's Curve approximation
   const peakGPM = wsfuToGPM(totalWSFU)
@@ -140,14 +147,48 @@ function wsfuToGPM(wsfu: number): number {
   return 207.5 + (wsfu - 500) * 0.2
 }
 
-// Get fixture count summary
+/**
+ * Get fixture count summary for display (dynamic version)
+ */
 export function getFixtureSummary(fixtures: ZoneFixtures): string[] {
   const summary: string[] = []
-  if (fixtures.showers > 0) summary.push(`${fixtures.showers} Showers`)
-  if (fixtures.lavs > 0) summary.push(`${fixtures.lavs} Lavatories`)
-  if (fixtures.wcs > 0) summary.push(`${fixtures.wcs} Water Closets`)
-  if (fixtures.floorDrains > 0) summary.push(`${fixtures.floorDrains} Floor Drains`)
-  if (fixtures.serviceSinks > 0) summary.push(`${fixtures.serviceSinks} Service Sinks`)
-  if (fixtures.washingMachines > 0) summary.push(`${fixtures.washingMachines} Washing Machines`)
+  
+  for (const [fixtureId, count] of Object.entries(fixtures)) {
+    if (count <= 0) continue
+    
+    // Map legacy IDs to new IDs
+    const mappedId = LEGACY_FIXTURE_MAPPING[fixtureId] || fixtureId
+    const fixtureDef = getFixtureById(mappedId)
+    
+    if (fixtureDef) {
+      summary.push(`${count} ${fixtureDef.name}${count > 1 ? 's' : ''}`)
+    } else {
+      // Fallback for legacy IDs
+      const legacyName = fixtureId.replace(/([A-Z])/g, ' $1').trim()
+      summary.push(`${count} ${legacyName}`)
+    }
+  }
+  
   return summary
+}
+
+/**
+ * Calculate total hot water demand in GPH from fixtures
+ */
+export function calculateHotWaterDemand(fixtures: ZoneFixtures): number {
+  let totalGPH = 0
+  
+  for (const [fixtureId, count] of Object.entries(fixtures)) {
+    if (count <= 0) continue
+    
+    // Map legacy IDs to new IDs
+    const mappedId = LEGACY_FIXTURE_MAPPING[fixtureId] || fixtureId
+    const fixtureDef = getFixtureById(mappedId)
+    
+    if (fixtureDef && fixtureDef.hotWaterGPH > 0) {
+      totalGPH += count * fixtureDef.hotWaterGPH
+    }
+  }
+  
+  return totalGPH
 }
