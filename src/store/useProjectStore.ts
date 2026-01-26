@@ -51,6 +51,10 @@ export function calculateProcessLoads(defaults: ZoneDefaults, sf: number, subTyp
 /**
  * Generate default LINE ITEMS from zone defaults
  * ALL equipment loads are now LINE ITEMS - visible, editable, simple math!
+ * 
+ * Priority:
+ * 1. If zone has customized `defaultEquipment`, use that
+ * 2. Otherwise, generate from legacy fixed load fields
  */
 export function generateDefaultLineItems(
   defaults: ZoneDefaults, 
@@ -58,6 +62,20 @@ export function generateDefaultLineItems(
   subType: 'electric' | 'gas',
   _zoneName?: string  // Reserved for future use
 ): LineItem[] {
+  // If zone type has custom default equipment defined, use that!
+  if (defaults.defaultEquipment && defaults.defaultEquipment.length > 0) {
+    return defaults.defaultEquipment.map(item => ({
+      id: uuidv4(),
+      category: item.category,
+      name: item.name,
+      quantity: item.quantity,
+      unit: item.unit,
+      value: item.value,
+      notes: item.notes,
+    }))
+  }
+
+  // Otherwise, generate from legacy fields (backwards compatibility)
   const items: LineItem[] = []
   const ceilingHeight = defaults.ceiling_height_ft || 10
   

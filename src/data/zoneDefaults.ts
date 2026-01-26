@@ -74,6 +74,16 @@ export interface ZoneDefaults {
     dryer_mua_sqin: number      // Make-up air opening sq.in. per dryer
   }
   source_notes?: string
+  // Default equipment line items - will be added to new zones of this type
+  defaultEquipment?: Array<{
+    id?: string  // Optional - generated at runtime if not present
+    category: 'power' | 'lighting' | 'gas' | 'ventilation' | 'exhaust' | 'cooling' | 'heating' | 'other'
+    name: string
+    quantity: number
+    unit: string
+    value: number
+    notes?: string
+  }>
 }
 
 const defaultFixtures: ZoneFixtures = {

@@ -1,7 +1,257 @@
 import { useState, useEffect } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { zoneDefaults as builtInDefaults } from '../../data/zoneDefaults'
 import type { ZoneDefaults } from '../../data/zoneDefaults'
+
+// Equipment categories with display info
+const equipmentCategories = [
+  { value: 'power', label: '⚡ Power (kW)', defaultUnit: 'kW' },
+  { value: 'lighting', label: '💡 Lighting (kW)', defaultUnit: 'kW' },
+  { value: 'gas', label: '🔥 Gas (MBH)', defaultUnit: 'MBH' },
+  { value: 'ventilation', label: '🌬️ Ventilation (CFM)', defaultUnit: 'CFM' },
+  { value: 'exhaust', label: '💨 Exhaust (CFM)', defaultUnit: 'CFM' },
+  { value: 'cooling', label: '❄️ Cooling (Tons)', defaultUnit: 'Tons' },
+  { value: 'heating', label: '🔥 Heating (MBH)', defaultUnit: 'MBH' },
+  { value: 'other', label: '📦 Other', defaultUnit: '' },
+] as const
+
+type EquipmentCategory = typeof equipmentCategories[number]['value']
+
+interface DefaultEquipmentItem {
+  id: string
+  category: EquipmentCategory
+  name: string
+  quantity: number
+  unit: string
+  value: number
+  notes?: string
+}
+
+// Sub-component for editing default equipment
+function DefaultEquipmentEditor({ 
+  equipment, 
+  onChange,
+  zoneName 
+}: { 
+  equipment: DefaultEquipmentItem[]
+  onChange: (equipment: DefaultEquipmentItem[]) => void
+  zoneName: string
+}) {
+  const [isAdding, setIsAdding] = useState(false)
+  const [newItem, setNewItem] = useState<Omit<DefaultEquipmentItem, 'id'>>({
+    category: 'power',
+    name: '',
+    quantity: 1,
+    unit: 'kW',
+    value: 0,
+  })
+
+  const handleAdd = () => {
+    if (!newItem.name.trim()) return
+    onChange([...equipment, { ...newItem, id: uuidv4() }])
+    setNewItem({ category: 'power', name: '', quantity: 1, unit: 'kW', value: 0 })
+    setIsAdding(false)
+  }
+
+  const handleDelete = (id: string) => {
+    onChange(equipment.filter(e => e.id !== id))
+  }
+
+  const handleUpdate = (id: string, updates: Partial<DefaultEquipmentItem>) => {
+    onChange(equipment.map(e => e.id === id ? { ...e, ...updates } : e))
+  }
+
+  const handleCategoryChange = (category: EquipmentCategory) => {
+    const defaultUnit = equipmentCategories.find(c => c.value === category)?.defaultUnit || ''
+    setNewItem({ ...newItem, category, unit: defaultUnit })
+  }
+
+  return (
+    <div className="bg-gradient-to-br from-primary-900/30 to-surface-900 border border-primary-500/30 rounded-lg p-4">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-sm font-semibold text-primary-400">📦 Default Equipment</h3>
+          <p className="text-xs text-surface-400 mt-0.5">Equipment auto-added when creating new "{zoneName}" zones</p>
+        </div>
+        {!isAdding && (
+          <button
+            onClick={() => setIsAdding(true)}
+            className="text-xs px-3 py-1.5 bg-primary-600 hover:bg-primary-500 text-white rounded font-medium flex items-center gap-1"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Add Equipment
+          </button>
+        )}
+      </div>
+
+      {/* Existing Equipment */}
+      {equipment.length > 0 ? (
+        <div className="space-y-2 mb-3">
+          {equipment.map((item) => (
+            <div key={item.id} className="flex items-center gap-2 p-2 bg-surface-900 rounded-lg">
+              <span className="text-xs px-2 py-1 bg-surface-700 rounded">
+                {equipmentCategories.find(c => c.value === item.category)?.label.split(' ')[0]}
+              </span>
+              <input
+                type="text"
+                value={item.name}
+                onChange={(e) => handleUpdate(item.id, { name: e.target.value })}
+                className="flex-1 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm"
+              />
+              <input
+                type="number"
+                value={item.quantity}
+                onChange={(e) => handleUpdate(item.id, { quantity: Number(e.target.value) })}
+                min={1}
+                className="w-14 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm text-center"
+              />
+              <span className="text-surface-500 text-sm">×</span>
+              <input
+                type="number"
+                value={item.value}
+                onChange={(e) => handleUpdate(item.id, { value: Number(e.target.value) })}
+                min={0}
+                step={0.1}
+                className="w-20 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm text-right"
+              />
+              <span className="text-surface-400 text-sm w-12">{item.unit}</span>
+              <button
+                onClick={() => handleDelete(item.id)}
+                className="p-1 hover:bg-surface-700 rounded"
+              >
+                <svg className="w-4 h-4 text-surface-500 hover:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : !isAdding && (
+        <p className="text-xs text-surface-500 italic mb-3">
+          No default equipment. Equipment will be generated from fixed load fields above.
+        </p>
+      )}
+
+      {/* Add New Item Form */}
+      {isAdding && (
+        <div className="p-3 bg-surface-900 rounded-lg border border-surface-600 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-surface-400 mb-1 block">Category</label>
+              <select
+                value={newItem.category}
+                onChange={(e) => handleCategoryChange(e.target.value as EquipmentCategory)}
+                className="w-full px-3 py-2 bg-surface-800 border border-surface-600 rounded-lg text-white text-sm"
+              >
+                {equipmentCategories.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-surface-400 mb-1 block">Equipment Name</label>
+              <input
+                type="text"
+                value={newItem.name}
+                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                placeholder="e.g., Pool Heater"
+                className="w-full px-3 py-2 bg-surface-800 border border-surface-600 rounded-lg text-white text-sm"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="text-xs text-surface-400 mb-1 block">Quantity</label>
+              <input
+                type="number"
+                value={newItem.quantity}
+                onChange={(e) => setNewItem({ ...newItem, quantity: Number(e.target.value) })}
+                min={1}
+                className="w-full px-3 py-2 bg-surface-800 border border-surface-600 rounded-lg text-white text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-surface-400 mb-1 block">Value</label>
+              <input
+                type="number"
+                value={newItem.value}
+                onChange={(e) => setNewItem({ ...newItem, value: Number(e.target.value) })}
+                min={0}
+                step={0.1}
+                className="w-full px-3 py-2 bg-surface-800 border border-surface-600 rounded-lg text-white text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-surface-400 mb-1 block">Unit</label>
+              <select
+                value={newItem.unit}
+                onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+                className="w-full px-3 py-2 bg-surface-800 border border-surface-600 rounded-lg text-white text-sm"
+              >
+                <option value="kW">kW</option>
+                <option value="W">W</option>
+                <option value="MBH">MBH</option>
+                <option value="CFM">CFM</option>
+                <option value="Tons">Tons</option>
+                <option value="GPM">GPM</option>
+                <option value="lb/hr">lb/hr</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={() => setIsAdding(false)}
+              className="flex-1 px-3 py-2 bg-surface-700 hover:bg-surface-600 text-surface-300 rounded-lg text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleAdd}
+              disabled={!newItem.name.trim()}
+              className="flex-1 px-3 py-2 bg-primary-600 hover:bg-primary-500 disabled:bg-primary-800 text-white rounded-lg text-sm"
+            >
+              Add Equipment
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Equipment Total Preview */}
+      {equipment.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-surface-700">
+          <div className="text-xs text-surface-500 mb-2">Total Default Loads:</div>
+          <div className="grid grid-cols-4 gap-2 text-xs">
+            {(() => {
+              const elecKW = equipment
+                .filter(e => e.category === 'power' || e.category === 'lighting')
+                .reduce((sum, e) => sum + (e.unit === 'kW' ? e.quantity * e.value : (e.quantity * e.value) / 1000), 0)
+              const gasMBH = equipment
+                .filter(e => e.category === 'gas')
+                .reduce((sum, e) => sum + e.quantity * e.value, 0)
+              const ventCFM = equipment
+                .filter(e => e.category === 'ventilation')
+                .reduce((sum, e) => sum + e.quantity * e.value, 0)
+              const exhCFM = equipment
+                .filter(e => e.category === 'exhaust')
+                .reduce((sum, e) => sum + e.quantity * e.value, 0)
+              return (
+                <>
+                  {elecKW > 0 && <span className="text-amber-400">⚡ {elecKW.toFixed(1)} kW</span>}
+                  {gasMBH > 0 && <span className="text-orange-400">🔥 {gasMBH.toFixed(0)} MBH</span>}
+                  {ventCFM > 0 && <span className="text-emerald-400">🌬️ {Math.round(ventCFM)} CFM</span>}
+                  {exhCFM > 0 && <span className="text-cyan-400">💨 {Math.round(exhCFM)} CFM</span>}
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface ZoneDefaultsEditorProps {
   zoneTypeId: string
@@ -340,6 +590,13 @@ export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaults
               </label>
             </div>
           </div>
+
+          {/* DEFAULT EQUIPMENT - Most Important Section! */}
+          <DefaultEquipmentEditor 
+            equipment={(localDefaults.defaultEquipment || []).map(e => ({ ...e, id: e.id || uuidv4() }))}
+            onChange={(equipment) => updateField('defaultEquipment', equipment.length > 0 ? equipment : undefined)}
+            zoneName={localDefaults.displayName}
+          />
         </div>
 
         {/* Footer */}
