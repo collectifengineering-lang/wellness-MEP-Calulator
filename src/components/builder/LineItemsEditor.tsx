@@ -16,6 +16,7 @@ const categoryOptions = [
   { value: 'cooling', label: '❄️ Cooling', unit: 'Tons' },
   { value: 'heating', label: '🔥 Heating', unit: 'MBH' },
   { value: 'gas', label: '⛽ Gas', unit: 'MBH' },
+  { value: 'dehumidification', label: '💧 Dehumidification', unit: 'lb/hr' },
   { value: 'other', label: '📦 Other', unit: '' },
 ] as const
 

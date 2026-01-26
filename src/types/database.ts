@@ -175,7 +175,7 @@ export interface ZoneRates {
 
 export interface LineItem {
   id: string
-  category: 'lighting' | 'power' | 'ventilation' | 'exhaust' | 'cooling' | 'heating' | 'gas' | 'other'
+  category: 'lighting' | 'power' | 'ventilation' | 'exhaust' | 'cooling' | 'heating' | 'gas' | 'dehumidification' | 'other'
   name: string
   quantity: number
   unit: string

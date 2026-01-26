@@ -13,6 +13,7 @@ const equipmentCategories = [
   { value: 'exhaust', label: '💨 Exhaust (CFM)', defaultUnit: 'CFM' },
   { value: 'cooling', label: '❄️ Cooling (Tons)', defaultUnit: 'Tons' },
   { value: 'heating', label: '🔥 Heating (MBH)', defaultUnit: 'MBH' },
+  { value: 'dehumidification', label: '💧 Dehumidification (lb/hr)', defaultUnit: 'lb/hr' },
   { value: 'other', label: '📦 Other', defaultUnit: '' },
 ] as const
 
@@ -488,68 +489,6 @@ export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaults
                   type="number"
                   value={localDefaults.defaultRates.heating_btuh_sf}
                   onChange={(e) => updateRate('heating_btuh_sf', Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Fixed Loads */}
-          <div>
-            <h3 className="text-sm font-semibold text-white mb-3">Fixed Loads (not per SF)</h3>
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Fixed kW</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={localDefaults.fixed_kw || 0}
-                  onChange={(e) => updateField('fixed_kw', Number(e.target.value) || undefined)}
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Gas (MBH)</label>
-                <input
-                  type="number"
-                  value={localDefaults.gas_mbh || 0}
-                  onChange={(e) => updateField('gas_mbh', Number(e.target.value) || undefined)}
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Ventilation (CFM)</label>
-                <input
-                  type="number"
-                  value={localDefaults.ventilation_cfm || 0}
-                  onChange={(e) => updateField('ventilation_cfm', Number(e.target.value) || undefined)}
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Exhaust (CFM)</label>
-                <input
-                  type="number"
-                  value={localDefaults.exhaust_cfm || 0}
-                  onChange={(e) => updateField('exhaust_cfm', Number(e.target.value) || undefined)}
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Pool Heater (MBH)</label>
-                <input
-                  type="number"
-                  value={localDefaults.pool_heater_gas_mbh || 0}
-                  onChange={(e) => updateField('pool_heater_gas_mbh', Number(e.target.value) || undefined)}
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Dehumid (lb/hr)</label>
-                <input
-                  type="number"
-                  value={localDefaults.dehumidification_lb_hr || 0}
-                  onChange={(e) => updateField('dehumidification_lb_hr', Number(e.target.value) || undefined)}
                   className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
                 />
               </div>
