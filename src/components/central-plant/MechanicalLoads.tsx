@@ -320,6 +320,34 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
             Adjust conversion factors based on actual equipment specifications when available.
           </p>
         </div>
+        
+        {/* Debug: Show line items that should contribute */}
+        <details className="mt-4 text-xs">
+          <summary className="text-surface-400 cursor-pointer hover:text-surface-300">
+            🔍 Debug: Zone Line Items ({zones.reduce((sum, z) => sum + (z.lineItems?.length || 0), 0)} total)
+          </summary>
+          <div className="mt-2 bg-surface-900 rounded p-3 max-h-48 overflow-auto">
+            {zones.map(z => (
+              <div key={z.id} className="mb-2">
+                <div className="text-surface-300 font-medium">{z.name}:</div>
+                {z.lineItems && z.lineItems.length > 0 ? (
+                  <ul className="ml-4 text-surface-400">
+                    {z.lineItems.map(li => (
+                      <li key={li.id} className={
+                        li.category === 'pool_chiller' ? 'text-cyan-400' :
+                        li.category === 'dehumidification' ? 'text-blue-400' : ''
+                      }>
+                        [{li.category}] {li.name}: {li.quantity} × {li.value} {li.unit}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span className="ml-4 text-surface-500">No line items</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
       </div>
     </div>
   )
