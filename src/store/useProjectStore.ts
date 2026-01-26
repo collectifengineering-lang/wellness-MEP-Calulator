@@ -1,9 +1,9 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { Project, Zone, DHWSettings, ResultAdjustments, ClimateType, ZoneType, LineItem, ZoneFixtures, ZoneProcessLoads, PoolRoomDesign } from '../types'
+import type { Project, Zone, DHWSettings, ResultAdjustments, ClimateType, ZoneType, LineItem, ZoneFixtures, ZoneProcessLoads, PoolRoomDesign, MechanicalElectricalSettings } from '../types'
 import { getZoneColor, calculateFixturesFromSF, type ZoneDefaults } from '../data/zoneDefaults'
 import { useSettingsStore } from './useSettingsStore'
-import { getDefaultDHWSettings, getDefaultResultAdjustments, getDefaultElectricalSettings } from '../data/defaults'
+import { getDefaultDHWSettings, getDefaultResultAdjustments, getDefaultElectricalSettings, getDefaultMechanicalSettings } from '../data/defaults'
 
 // Default process loads (all zeros)
 const defaultProcessLoads: ZoneProcessLoads = {
@@ -268,6 +268,9 @@ interface ProjectState {
   // DHW settings
   updateDHWSettings: (settings: Partial<DHWSettings>) => void
   
+  // Mechanical settings
+  updateMechanicalSettings: (settings: Partial<MechanicalElectricalSettings>) => void
+  
   // Result adjustments
   updateResultAdjustments: (adjustments: Partial<ResultAdjustments>) => void
   
@@ -424,6 +427,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       : null
   })),
   
+  updateMechanicalSettings: (settings) => set((state) => ({
+    currentProject: state.currentProject 
+      ? { 
+          ...state.currentProject, 
+          mechanicalSettings: { ...state.currentProject.mechanicalSettings, ...settings },
+          updatedAt: new Date()
+        }
+      : null
+  })),
+  
   updateResultAdjustments: (adjustments) => set((state) => ({
     currentProject: state.currentProject 
       ? { 
@@ -482,6 +495,7 @@ export function createNewProject(
     electricPrimary,
     dhwSettings: getDefaultDHWSettings(climate),
     electricalSettings: getDefaultElectricalSettings(),
+    mechanicalSettings: getDefaultMechanicalSettings(),
     contingency: 0.25,
     resultAdjustments: getDefaultResultAdjustments(),
     createdAt: new Date(),

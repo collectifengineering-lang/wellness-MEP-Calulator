@@ -237,6 +237,17 @@ function dbProjectToProject(db: Record<string, unknown>): Project {
       powerFactor: 0.85,
       spareCapacity: 0.20,
     },
+    mechanicalSettings: (db.mechanical_settings as Project['mechanicalSettings']) || {
+      coolingKvaPerTon: 1.2,
+      heatingKvaPerMbh: 0.293,
+      poolChillerKvaPerTon: 1.5,
+      dehumidKvaPerLbHr: 0.05,
+      includeChiller: true,
+      includeHeating: true,
+      includePoolChiller: true,
+      includeDehumid: true,
+      includeDhw: true,
+    },
     contingency: (db.contingency as number) || 0.25,
     resultAdjustments: (db.result_adjustments as Project['resultAdjustments']) || {
       hvacNotes: '',
@@ -262,6 +273,7 @@ function projectToDbProject(project: Project): Record<string, unknown> {
     electric_primary: project.electricPrimary,
     dhw_settings: project.dhwSettings,
     electrical_settings: project.electricalSettings,
+    mechanical_settings: project.mechanicalSettings,
     contingency: project.contingency,
     result_adjustments: project.resultAdjustments,
   }

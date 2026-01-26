@@ -1,6 +1,7 @@
 import { useProjectStore } from '../../store/useProjectStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
-import { getStandardServiceSize, standardServiceSizes } from '../../data/defaults'
+import { getStandardServiceSize, standardServiceSizes, getDefaultMechanicalSettings } from '../../data/defaults'
+import { calculateMechanicalKVA } from './MechanicalLoads'
 import type { CalculationResults } from '../../types'
 
 interface ElectricalServiceSettingsProps {
@@ -14,6 +15,7 @@ export default function ElectricalServiceSettings({ results }: ElectricalService
   if (!currentProject) return null
   
   const settings = currentProject.electricalSettings
+  const mechanicalSettings = currentProject.mechanicalSettings || getDefaultMechanicalSettings()
   
   const handleUpdate = (field: keyof typeof settings, value: number) => {
     updateProject({
@@ -24,11 +26,26 @@ export default function ElectricalServiceSettings({ results }: ElectricalService
     })
   }
 
-  // Calculate demand load
+  // Calculate mechanical equipment kVA
+  const mechanical = calculateMechanicalKVA(
+    results.hvac,
+    results.dhw,
+    mechanicalSettings,
+    currentProject.dhwSettings.heaterType,
+    settings.powerFactor,
+    currentProject.electricPrimary
+  )
+
+  // Calculate demand load (connected + mechanical)
   const connectedKW = results.electrical.totalKW
+  const mechanicalKVA = mechanical.total
+  const totalConnectedKVA = (connectedKW / settings.powerFactor) + mechanicalKVA
+  
   const demandKW = connectedKW * settings.demandFactor
   const demandKVA = demandKW / settings.powerFactor
-  const withSpare = demandKVA * (1 + settings.spareCapacity)
+  const mechanicalDemandKVA = mechanicalKVA * settings.demandFactor // Apply demand factor to mechanical too
+  const totalDemandKVA = demandKVA + mechanicalDemandKVA
+  const withSpare = totalDemandKVA * (1 + settings.spareCapacity)
   
   // Calculate amps based on project voltage/phase
   const sqrtFactor = settings.phase === 3 ? Math.sqrt(3) : 1
@@ -168,18 +185,45 @@ export default function ElectricalServiceSettings({ results }: ElectricalService
         <div className="bg-surface-900 rounded-lg p-4">
           <h4 className="text-sm font-medium text-surface-400 mb-3">Load Calculation Breakdown</h4>
           <div className="space-y-2 text-sm">
+            {/* Building Connected Load */}
             <div className="flex justify-between">
-              <span className="text-surface-400">Connected Load:</span>
+              <span className="text-surface-400">Building Connected Load:</span>
               <span className="text-white font-mono">{connectedKW.toLocaleString()} kW</span>
             </div>
+            <div className="flex justify-between pl-4 text-surface-500">
+              <span>÷ Power Factor ({settings.powerFactor}):</span>
+              <span className="font-mono">{Math.round(connectedKW / settings.powerFactor).toLocaleString()} kVA</span>
+            </div>
+            
+            {/* Mechanical Equipment Loads */}
+            {mechanicalKVA > 0 && (
+              <>
+                <div className="flex justify-between text-cyan-400 pt-2">
+                  <span>+ Mechanical Equipment:</span>
+                  <span className="font-mono">{Math.round(mechanicalKVA).toLocaleString()} kVA</span>
+                </div>
+                {mechanical.breakdown.map((item, idx) => (
+                  <div key={idx} className="flex justify-between pl-4 text-surface-500">
+                    <span>{item.name}:</span>
+                    <span className="font-mono">{Math.round(item.kva).toLocaleString()} kVA</span>
+                  </div>
+                ))}
+              </>
+            )}
+            
+            {/* Total Connected */}
+            <div className="flex justify-between border-t border-surface-700 pt-2 mt-2">
+              <span className="text-surface-300 font-medium">Total Connected:</span>
+              <span className="text-white font-mono font-medium">{Math.round(totalConnectedKVA).toLocaleString()} kVA</span>
+            </div>
+            
+            {/* Apply Demand Factor */}
             <div className="flex justify-between text-amber-400">
               <span>× Demand Factor ({(settings.demandFactor * 100).toFixed(0)}%):</span>
-              <span className="font-mono">{Math.round(demandKW).toLocaleString()} kW</span>
+              <span className="font-mono">{Math.round(totalDemandKVA).toLocaleString()} kVA</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-400">÷ Power Factor ({settings.powerFactor}):</span>
-              <span className="text-white font-mono">{Math.round(demandKVA).toLocaleString()} kVA</span>
-            </div>
+            
+            {/* Add Spare Capacity */}
             <div className="flex justify-between">
               <span className="text-surface-400">+ Spare ({(settings.spareCapacity * 100).toFixed(0)}%):</span>
               <span className="text-white font-mono">{Math.round(withSpare).toLocaleString()} kVA</span>

@@ -3,6 +3,7 @@ import DHWCalculator from './DHWCalculator'
 import PlumbingCalcs from './PlumbingCalcs'
 import SystemSizing from './SystemSizing'
 import ElectricalServiceSettings from './ElectricalServiceSettings'
+import MechanicalLoads from './MechanicalLoads'
 import type { CalculationResults, ZoneFixtures } from '../../types'
 
 interface CentralPlantTabProps {
@@ -36,6 +37,9 @@ export default function CentralPlantTab({ calculations }: CentralPlantTabProps) 
 
         {/* Electrical Service Settings */}
         <ElectricalServiceSettings results={results} />
+
+        {/* Mechanical Equipment Loads */}
+        <MechanicalLoads results={results} />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* DHW System */}

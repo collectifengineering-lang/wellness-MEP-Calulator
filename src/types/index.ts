@@ -57,6 +57,7 @@ export interface Project {
   electricPrimary: boolean
   dhwSettings: DHWSettings
   electricalSettings: ProjectElectricalSettings
+  mechanicalSettings: MechanicalElectricalSettings  // Mechanical equipment electrical loads
   contingency: number
   resultAdjustments: ResultAdjustments
   poolRoomDesign?: PoolRoomDesign  // Pool room calculator state
@@ -71,6 +72,22 @@ export interface ProjectElectricalSettings {
   demandFactor: number      // Demand factor (0.5 - 1.0), default 0.90
   powerFactor: number       // Power factor (0.7 - 1.0)
   spareCapacity: number     // Spare capacity % (0 - 0.50)
+}
+
+// Mechanical equipment electrical load settings
+export interface MechanicalElectricalSettings {
+  // Conversion factors - adjustable per project
+  coolingKvaPerTon: number       // Default: 1.2 (typical air-cooled chiller)
+  heatingKvaPerMbh: number       // Default: 0.293 (1 MBH = 293W electric resistance)
+  poolChillerKvaPerTon: number   // Default: 1.5 (water-cooled, slightly less efficient)
+  dehumidKvaPerLbHr: number      // Default: 0.05 (5 kW per 100 lb/hr)
+  
+  // Include/exclude flags
+  includeChiller: boolean        // Include HVAC cooling load
+  includeHeating: boolean        // Include electric heating load (if not gas)
+  includePoolChiller: boolean    // Include pool water heating/chilling
+  includeDehumid: boolean        // Include dehumidification
+  includeDhw: boolean            // Include DHW if electric
 }
 
 // Process loads that are fixed per zone (not per SF)

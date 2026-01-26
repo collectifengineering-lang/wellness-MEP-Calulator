@@ -6,6 +6,8 @@ import { calculateHVAC, getHVACBreakdown } from '../calculations/hvac'
 import { calculateGas } from '../calculations/gas'
 import { calculateDHW } from '../calculations/dhw'
 import { calculatePlumbing } from '../calculations/plumbing'
+import { calculateMechanicalKVA } from '../components/central-plant/MechanicalLoads'
+import { getDefaultMechanicalSettings } from '../data/defaults'
 import type { CalculationResults, ZoneFixtures } from '../types'
 
 export function useCalculations() {
@@ -21,6 +23,7 @@ export function useCalculations() {
         } as ZoneFixtures,
         electricalBreakdown: [],
         hvacBreakdown: [],
+        mechanicalKVA: { total: 0, breakdown: [] },
         totalSF: 0,
         settings: { electrical: electricalSettings, gas: gasSettings, dhw: dhwSettings, plumbing: plumbingSettings }
       }
@@ -80,11 +83,23 @@ export function useCalculations() {
       plumbing,
     }
 
+    // Calculate mechanical equipment electrical loads
+    const mechanicalSettings = currentProject.mechanicalSettings || getDefaultMechanicalSettings()
+    const mechanicalKVA = calculateMechanicalKVA(
+      hvac,
+      dhw,
+      mechanicalSettings,
+      currentProject.dhwSettings.heaterType,
+      projectElectrical.powerFactor,
+      currentProject.electricPrimary
+    )
+
     return {
       results,
       aggregatedFixtures,
       electricalBreakdown,
       hvacBreakdown,
+      mechanicalKVA,
       totalSF,
       settings: { electrical: electricalSettings, gas: gasSettings, dhw: dhwSettings, plumbing: plumbingSettings }
     }

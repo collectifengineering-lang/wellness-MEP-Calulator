@@ -1,4 +1,4 @@
-import type { DHWSettings, ResultAdjustments, ClimateType, ProjectElectricalSettings } from '../types'
+import type { DHWSettings, ResultAdjustments, ClimateType, ProjectElectricalSettings, MechanicalElectricalSettings } from '../types'
 
 // Cold water temperature by climate zone (°F)
 export const coldWaterTempByClimate: Record<ClimateType, number> = {
@@ -277,6 +277,25 @@ export function getDefaultElectricalSettings(): ProjectElectricalSettings {
     demandFactor: 1.0,      // 100% of connected load (conservative default)
     powerFactor: 0.85,      // Typical commercial power factor
     spareCapacity: 0.20,    // 20% spare capacity
+  }
+}
+
+// Default mechanical equipment electrical load conversion factors
+// These convert HVAC loads to kVA for electrical service sizing
+export function getDefaultMechanicalSettings(): MechanicalElectricalSettings {
+  return {
+    // Conversion factors
+    coolingKvaPerTon: 1.2,       // Air-cooled chiller: ~1.2 kW/ton efficiency
+    heatingKvaPerMbh: 0.293,     // 1 MBH = 1000 BTU/hr = 293W = 0.293 kW
+    poolChillerKvaPerTon: 1.5,   // Water-cooled, slightly less efficient
+    dehumidKvaPerLbHr: 0.05,     // ~5 kW per 100 lb/hr dehumidification capacity
+    
+    // Include/exclude flags - all included by default
+    includeChiller: true,
+    includeHeating: true,        // Will only apply if not using gas heating
+    includePoolChiller: true,
+    includeDehumid: true,
+    includeDhw: true,            // Will only apply if DHW heater type is electric
   }
 }
 

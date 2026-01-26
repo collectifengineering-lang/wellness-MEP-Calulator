@@ -8,7 +8,7 @@ import ResultsTab from './results/ResultsTab'
 import { useProjectStore } from '../store/useProjectStore'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { useCalculations } from '../hooks/useCalculations'
-import { getDefaultDHWSettings, getDefaultElectricalSettings, getDefaultResultAdjustments } from '../data/defaults'
+import { getDefaultDHWSettings, getDefaultElectricalSettings, getDefaultResultAdjustments, getDefaultMechanicalSettings } from '../data/defaults'
 
 type TabType = 'builder' | 'pool' | 'central' | 'results'
 
@@ -69,6 +69,14 @@ export default function ProjectWorkspace() {
           ...savedAdjustments,
         }
         
+        // Merge saved mechanical settings with defaults
+        const defaultMechanical = getDefaultMechanicalSettings()
+        const savedMechanical = pd.mechanical_settings as Partial<import('../types').MechanicalElectricalSettings> | null
+        const mergedMechanical = {
+          ...defaultMechanical,
+          ...savedMechanical,
+        }
+        
         setCurrentProject({
           id: pd.id as string,
           userId: pd.user_id as string,
@@ -77,6 +85,7 @@ export default function ProjectWorkspace() {
           climate,
           electricPrimary: pd.electric_primary as boolean ?? true,
           electricalSettings: mergedElectrical,
+          mechanicalSettings: mergedMechanical,
           dhwSettings: mergedDHW,
           contingency: (pd.contingency as number) || 0.25,
           resultAdjustments: mergedAdjustments,
@@ -165,6 +174,10 @@ export default function ProjectWorkspace() {
             const savedElectrical = pd.electrical_settings as Partial<import('../types').ProjectElectricalSettings> | null
             const mergedElectrical = { ...defaultElectrical, ...savedElectrical }
             
+            const defaultMechanical = getDefaultMechanicalSettings()
+            const savedMechanical = pd.mechanical_settings as Partial<import('../types').MechanicalElectricalSettings> | null
+            const mergedMechanical = { ...defaultMechanical, ...savedMechanical }
+            
             const defaultAdjustments = getDefaultResultAdjustments()
             const savedAdjustments = pd.result_adjustments as Partial<import('../types').ResultAdjustments> | null
             const mergedAdjustments = { ...defaultAdjustments, ...savedAdjustments }
@@ -177,6 +190,7 @@ export default function ProjectWorkspace() {
               climate,
               electricPrimary: pd.electric_primary as boolean ?? true,
               electricalSettings: mergedElectrical,
+              mechanicalSettings: mergedMechanical,
               dhwSettings: mergedDHW,
               contingency: (pd.contingency as number) || 0.25,
               resultAdjustments: mergedAdjustments,
@@ -276,6 +290,7 @@ export default function ProjectWorkspace() {
           climate: currentProject.climate,
           electric_primary: currentProject.electricPrimary,
           electrical_settings: currentProject.electricalSettings as unknown as Record<string, unknown>,
+          mechanical_settings: currentProject.mechanicalSettings as unknown as Record<string, unknown>,
           dhw_settings: currentProject.dhwSettings as unknown as Record<string, unknown>,
           contingency: currentProject.contingency,
           result_adjustments: currentProject.resultAdjustments as unknown as Record<string, unknown>,
