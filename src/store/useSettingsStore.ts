@@ -134,6 +134,12 @@ const defaultClimate: ClimateMultipliers = {
 // Settings ID for the single shared settings row
 const SHARED_SETTINGS_ID = 'shared-settings'
 
+// Helper to merge persisted state with defaults (handles new fields)
+function mergeWithDefaults<T>(persisted: Partial<T> | undefined, defaults: T): T {
+  if (!persisted) return defaults
+  return { ...defaults, ...persisted }
+}
+
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
@@ -380,6 +386,25 @@ export const useSettingsStore = create<SettingsState>()(
         plumbing: state.plumbing,
         climate: state.climate,
       }),
+      // Merge persisted state with defaults to handle new fields
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<SettingsState> | undefined
+        return {
+          ...currentState,
+          customZoneDefaults: persisted?.customZoneDefaults ?? currentState.customZoneDefaults,
+          customZoneTypes: persisted?.customZoneTypes ?? currentState.customZoneTypes,
+          // Deep merge each settings object to ensure new fields get defaults
+          electrical: mergeWithDefaults<ElectricalSettings>(persisted?.electrical, defaultElectrical),
+          gas: mergeWithDefaults<GasSettings>(persisted?.gas, defaultGas),
+          dhw: mergeWithDefaults<DHWGlobalSettings>(persisted?.dhw, defaultDHW),
+          plumbing: mergeWithDefaults<PlumbingSettings>(persisted?.plumbing, defaultPlumbing),
+          climate: persisted?.climate ? {
+            hot_humid: mergeWithDefaults(persisted.climate.hot_humid, defaultClimate.hot_humid),
+            cold_dry: mergeWithDefaults(persisted.climate.cold_dry, defaultClimate.cold_dry),
+            temperate: mergeWithDefaults(persisted.climate.temperate, defaultClimate.temperate),
+          } : currentState.climate,
+        } as SettingsState
+      },
     }
   )
 )

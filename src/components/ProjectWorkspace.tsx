@@ -272,6 +272,7 @@ export default function ProjectWorkspace() {
           target_sf: currentProject.targetSF,
           climate: currentProject.climate,
           electric_primary: currentProject.electricPrimary,
+          electrical_settings: currentProject.electricalSettings as unknown as Record<string, unknown>,
           dhw_settings: currentProject.dhwSettings as unknown as Record<string, unknown>,
           contingency: currentProject.contingency,
           result_adjustments: currentProject.resultAdjustments as unknown as Record<string, unknown>,
