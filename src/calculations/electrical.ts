@@ -28,12 +28,14 @@ export function calculateElectrical(
     const lightingKW = zone.sf * zone.rates.lighting_w_sf / 1000
     const receptacleKW = zone.sf * zone.rates.receptacle_va_sf / 1000
     
-    // 2. Line items - ALL equipment loads should be here!
+    // 2. Line items - ALL equipment with kW/W units count as electrical
     const lineItemsKW = zone.lineItems
-      .filter(li => li.category === 'lighting' || li.category === 'power')
       .reduce((sum, li) => {
-        if (li.unit === 'kW') return sum + li.quantity * li.value
-        if (li.unit === 'W') return sum + (li.quantity * li.value) / 1000
+        const unit = li.unit?.toLowerCase() || ''
+        if (unit === 'kw') return sum + li.quantity * li.value
+        if (unit === 'w') return sum + (li.quantity * li.value) / 1000
+        // Also count HP (horsepower) - 1 HP ≈ 0.746 kW
+        if (unit === 'hp') return sum + li.quantity * li.value * 0.746
         return sum
       }, 0)
     
@@ -129,8 +131,13 @@ export function getElectricalBreakdown(zones: Zone[]): { zoneName: string; kW: n
     }
     
     const lineItemsKW = zone.lineItems
-      .filter(li => li.category === 'lighting' || li.category === 'power')
-      .reduce((sum, li) => li.unit === 'kW' ? sum + li.quantity * li.value : sum + (li.quantity * li.value) / 1000, 0)
+      .reduce((sum, li) => {
+        const unit = li.unit?.toLowerCase() || ''
+        if (unit === 'kw') return sum + li.quantity * li.value
+        if (unit === 'w') return sum + (li.quantity * li.value) / 1000
+        if (unit === 'hp') return sum + li.quantity * li.value * 0.746
+        return sum
+      }, 0)
     
     const totalKW = lightingKW + receptacleKW + fixedKW + laundryKW + lineItemsKW
     
