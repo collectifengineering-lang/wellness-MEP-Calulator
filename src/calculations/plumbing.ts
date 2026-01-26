@@ -7,14 +7,20 @@ const STANDARD_PIPE_SIZES = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 6, 8]
 // Extended interface to handle commercial laundry and velocity settings
 interface PlumbingCalcOptions {
   useCommercialLaundry?: boolean
-  designVelocityFPS?: number  // Design velocity in feet per second (default 5)
-  hotWaterDemandFactor?: number  // Hot water as % of cold (default 0.6)
+  coldWaterVelocityFPS?: number   // Design velocity for cold water (default 5 FPS)
+  hotWaterVelocityFPS?: number    // Design velocity for hot water (default 4 FPS)
+  hotWaterFlowRatio?: number      // Hot water flow as fraction of cold (default 0.6)
+  // Legacy fields for backwards compatibility
+  designVelocityFPS?: number      // @deprecated - use coldWaterVelocityFPS
+  hotWaterDemandFactor?: number   // @deprecated - use hotWaterFlowRatio
 }
 
 export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalcOptions): PlumbingCalcResult {
   const useCommercialWasher = options?.useCommercialLaundry ?? false
-  const designVelocity = options?.designVelocityFPS ?? 5  // Default 5 FPS
-  const hotWaterFactor = options?.hotWaterDemandFactor ?? 0.6
+  // Use new fields or fall back to legacy fields
+  const coldWaterVelocity = options?.coldWaterVelocityFPS ?? options?.designVelocityFPS ?? 5
+  const hotWaterVelocity = options?.hotWaterVelocityFPS ?? options?.designVelocityFPS ?? 4
+  const hotWaterFactor = options?.hotWaterFlowRatio ?? options?.hotWaterDemandFactor ?? 0.6
   
   const washerUnits = useCommercialWasher ? fixtureUnits.washing_machine_commercial : fixtureUnits.washing_machine
   
@@ -57,12 +63,12 @@ export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalc
     }
   }
 
-  // Cold water main size (velocity-based)
-  const coldWaterMainSize = getPipeSizeByVelocity(peakGPM, designVelocity)
+  // Cold water main size (velocity-based with COLD WATER velocity)
+  const coldWaterMainSize = getPipeSizeByVelocity(peakGPM, coldWaterVelocity)
   
-  // Hot water main (typically smaller, based on demand factor)
+  // Hot water main (based on flow ratio and HOT WATER velocity)
   const hotWaterGPM = peakGPM * hotWaterFactor
-  const hotWaterMainSize = getPipeSizeByVelocity(hotWaterGPM, designVelocity)
+  const hotWaterMainSize = getPipeSizeByVelocity(hotWaterGPM, hotWaterVelocity)
   
   // Calculate actual velocities for the selected pipe sizes
   const coldPipeDia = parseFloat(coldWaterMainSize.replace('"', ''))
@@ -78,8 +84,10 @@ export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalc
     recommendedDrainSize,
     coldWaterMainSize,
     hotWaterMainSize,
-    // Velocity-based sizing details
-    designVelocityFPS: designVelocity,
+    // Velocity-based sizing details - now separate for hot and cold
+    coldWaterDesignVelocityFPS: coldWaterVelocity,
+    hotWaterDesignVelocityFPS: hotWaterVelocity,
+    hotWaterFlowRatio: hotWaterFactor,
     coldWaterGPM: Math.round(peakGPM),
     hotWaterGPM: Math.round(hotWaterGPM),
     coldActualVelocityFPS: Math.round(coldActualVelocity * 10) / 10,

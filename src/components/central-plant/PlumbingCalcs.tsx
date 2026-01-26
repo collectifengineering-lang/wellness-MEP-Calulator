@@ -29,17 +29,18 @@ export default function PlumbingCalcs({ results, fixtures }: PlumbingCalcsProps)
       </div>
 
       <div className="p-6 space-y-6">
-        {/* Pipe Sizing Settings */}
+        {/* Pipe Sizing Settings - Separate for Hot and Cold */}
         <div className="bg-surface-900/50 rounded-lg p-4">
           <h4 className="text-sm font-medium text-surface-300 mb-3">🔧 Pipe Sizing Parameters</h4>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
+            {/* Cold Water Velocity */}
             <div>
-              <label className="block text-xs text-surface-400 mb-1">Design Velocity</label>
+              <label className="block text-xs text-surface-400 mb-1">Cold Water Velocity</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  value={plumbingSettings.design_velocity_fps}
-                  onChange={(e) => updatePlumbingSettings({ design_velocity_fps: Number(e.target.value) })}
+                  value={plumbingSettings.cold_water_velocity_fps}
+                  onChange={(e) => updatePlumbingSettings({ cold_water_velocity_fps: Number(e.target.value) })}
                   min={2}
                   max={10}
                   step={0.5}
@@ -47,15 +48,35 @@ export default function PlumbingCalcs({ results, fixtures }: PlumbingCalcsProps)
                 />
                 <span className="text-surface-400 text-sm">FPS</span>
               </div>
-              <p className="text-xs text-surface-500 mt-1">Typical: 4-8 FPS. Lower = quieter, larger pipes</p>
+              <p className="text-xs text-surface-500 mt-1">Typical: 5-8 FPS</p>
             </div>
+            
+            {/* Hot Water Velocity */}
             <div>
-              <label className="block text-xs text-surface-400 mb-1">Hot Water Demand Factor</label>
+              <label className="block text-xs text-surface-400 mb-1">Hot Water Velocity</label>
               <div className="flex items-center gap-2">
                 <input
                   type="number"
-                  value={plumbingSettings.hot_water_demand_factor}
-                  onChange={(e) => updatePlumbingSettings({ hot_water_demand_factor: Number(e.target.value) })}
+                  value={plumbingSettings.hot_water_velocity_fps}
+                  onChange={(e) => updatePlumbingSettings({ hot_water_velocity_fps: Number(e.target.value) })}
+                  min={2}
+                  max={8}
+                  step={0.5}
+                  className="flex-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+                />
+                <span className="text-surface-400 text-sm">FPS</span>
+              </div>
+              <p className="text-xs text-surface-500 mt-1">Typical: 3-5 FPS (lower for HW)</p>
+            </div>
+            
+            {/* HW/CW Flow Ratio */}
+            <div>
+              <label className="block text-xs text-surface-400 mb-1">HW/CW Flow Ratio</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={plumbingSettings.hot_water_flow_ratio}
+                  onChange={(e) => updatePlumbingSettings({ hot_water_flow_ratio: Number(e.target.value) })}
                   min={0.3}
                   max={0.9}
                   step={0.05}
@@ -63,8 +84,14 @@ export default function PlumbingCalcs({ results, fixtures }: PlumbingCalcsProps)
                 />
                 <span className="text-surface-400 text-sm">×</span>
               </div>
-              <p className="text-xs text-surface-500 mt-1">Hot water as fraction of cold water flow</p>
+              <p className="text-xs text-surface-500 mt-1">HW flow = CW × ratio</p>
             </div>
+          </div>
+          
+          {/* Explanation */}
+          <div className="mt-3 text-xs text-surface-500 bg-surface-900 rounded p-2">
+            <strong className="text-surface-400">Note:</strong> Hot water pipes use lower velocity (3-5 FPS) to reduce erosion and noise.
+            Flow ratio determines HW pipe size based on CW flow (e.g., 0.6 = HW flow is 60% of CW).
           </div>
         </div>
 
@@ -193,7 +220,9 @@ export default function PlumbingCalcs({ results, fixtures }: PlumbingCalcsProps)
           <p>* WSFU values based on IPC/UPC public use fixtures</p>
           <p>* GPM conversion uses Hunter's Curve approximation</p>
           <p>* Pipe sizing formula: d = √(GPM × 0.408 / V)</p>
-          <p>* Design velocity: {plumbingSettings.design_velocity_fps} FPS</p>
+          <p>* Cold water design velocity: {plumbingSettings.cold_water_velocity_fps} FPS</p>
+          <p>* Hot water design velocity: {plumbingSettings.hot_water_velocity_fps} FPS</p>
+          <p>* HW/CW flow ratio: {plumbingSettings.hot_water_flow_ratio}</p>
         </div>
       </div>
     </div>

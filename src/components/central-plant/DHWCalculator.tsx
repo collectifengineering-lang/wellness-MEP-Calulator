@@ -171,7 +171,7 @@ export default function DHWCalculator({ results, fixtures }: DHWCalculatorProps)
               />
             </div>
             <div>
-              <label className="block text-xs text-surface-400 mb-1">Demand Factor</label>
+              <label className="block text-xs text-surface-400 mb-1">Simultaneity Factor</label>
               <input
                 type="number"
                 value={dhwSettings.demandFactor}
@@ -181,7 +181,7 @@ export default function DHWCalculator({ results, fixtures }: DHWCalculatorProps)
                 step={0.05}
                 className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
               />
-              <p className="text-xs text-surface-500 mt-1">Simultaneity/diversity</p>
+              <p className="text-xs text-surface-500 mt-1">% of fixtures operating at once</p>
             </div>
             <div>
               <label className="block text-xs text-surface-400 mb-1">Storage Factor</label>

@@ -264,8 +264,10 @@ export interface PlumbingCalcResult {
   recommendedDrainSize: string
   coldWaterMainSize: string
   hotWaterMainSize: string
-  // Velocity-based sizing details
-  designVelocityFPS?: number
+  // Velocity-based sizing details - separate for hot and cold
+  coldWaterDesignVelocityFPS?: number
+  hotWaterDesignVelocityFPS?: number
+  hotWaterFlowRatio?: number
   coldWaterGPM?: number
   hotWaterGPM?: number
   coldActualVelocityFPS?: number

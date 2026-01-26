@@ -52,8 +52,9 @@ export function useCalculations() {
     const dhw = calculateDHW(aggregatedFixtures, currentProject.dhwSettings, contingency)
     const plumbing = calculatePlumbing(aggregatedFixtures, { 
       useCommercialLaundry: hasCommercialLaundry,
-      designVelocityFPS: plumbingSettings.design_velocity_fps,
-      hotWaterDemandFactor: plumbingSettings.hot_water_demand_factor,
+      coldWaterVelocityFPS: plumbingSettings.cold_water_velocity_fps,
+      hotWaterVelocityFPS: plumbingSettings.hot_water_velocity_fps,
+      hotWaterFlowRatio: plumbingSettings.hot_water_flow_ratio,
     })
 
     // Add DHW gas load to total gas if using gas heaters
