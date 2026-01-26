@@ -6,7 +6,13 @@ interface MechanicalLoadsProps {
 }
 
 export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
-  const { currentProject, updateMechanicalSettings } = useProjectStore()
+  const { currentProject, zones, updateMechanicalSettings } = useProjectStore()
+  
+  // Debug: Log what we're receiving
+  console.log('⚡ MechanicalLoads rendering:')
+  console.log(`   - results.hvac.dehumidLbHr: ${results.hvac.dehumidLbHr}`)
+  console.log(`   - results.hvac.poolChillerTons: ${results.hvac.poolChillerTons}`)
+  console.log(`   - Zone line items:`, zones.map(z => ({ name: z.name, items: z.lineItems?.length || 0 })))
   
   if (!currentProject) return null
   
