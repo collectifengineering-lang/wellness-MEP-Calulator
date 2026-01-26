@@ -280,6 +280,10 @@ function projectToDbProject(project: Project): Record<string, unknown> {
 }
 
 function dbZoneToZone(db: Record<string, unknown>): import('../../types').Zone {
+  // DEBUG: Log what we're loading from DB
+  const lineItems = (db.line_items as import('../../types').LineItem[]) || []
+  console.log(`📥 Loading zone "${db.name}": ${lineItems.length} line items from DB`)
+  
   return {
     id: db.id as string,
     projectId: db.project_id as string,
@@ -297,7 +301,8 @@ function dbZoneToZone(db: Record<string, unknown>): import('../../types').Zone {
     processLoads: (db.process_loads as import('../../types').ZoneProcessLoads) || {
       fixed_kw: 0, gas_mbh: 0, ventilation_cfm: 0, exhaust_cfm: 0, pool_heater_mbh: 0, dehumid_lb_hr: 0, flue_size_in: 0, ceiling_height_ft: 10
     },
-    lineItems: (db.line_items as import('../../types').LineItem[]) || [],
+    laundryEquipment: db.laundry_equipment as import('../../types').LaundryEquipment | undefined,
+    lineItems,
     sortOrder: (db.sort_order as number) || 0,
   }
 }

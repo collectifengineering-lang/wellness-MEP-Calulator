@@ -125,21 +125,27 @@ export default function ProjectWorkspace() {
           .order('sort_order')
 
         if (zonesData) {
-          setZones((zonesData as Record<string, unknown>[]).map(z => ({
-            id: z.id as string,
-            projectId: z.project_id as string,
-            name: (z.name as string) || 'Untitled',
-            type: (z.zone_type as import('../types').ZoneType) || 'custom',
-            subType: (z.sub_type as 'electric' | 'gas') || 'electric',
-            sf: (z.sf as number) || 0,
-            color: (z.color as string) || '#64748b',
-            fixtures: (z.fixtures as import('../types').ZoneFixtures) || { showers: 0, lavs: 0, wcs: 0, floorDrains: 0, serviceSinks: 0, washingMachines: 0, dryers: 0 },
-            rates: (z.rates as import('../types').ZoneRates) || { lighting_w_sf: 1, receptacle_va_sf: 3, ventilation_cfm_sf: 0.15, exhaust_cfm_sf: 0, cooling_sf_ton: 400, heating_btuh_sf: 25 },
-            processLoads: (z.process_loads as import('../types').ZoneProcessLoads) || { fixed_kw: 0, gas_mbh: 0, ventilation_cfm: 0, exhaust_cfm: 0, pool_heater_mbh: 0, dehumid_lb_hr: 0, flue_size_in: 0, ceiling_height_ft: 10 },
-            laundryEquipment: z.laundry_equipment as import('../types').LaundryEquipment | undefined,
-            lineItems: (z.line_items as import('../types').LineItem[]) || [],
-            sortOrder: (z.sort_order as number) || 0,
-          } as import('../types').Zone)))
+          console.log('📥 LOADING ZONES FROM DB:')
+          const loadedZones = (zonesData as Record<string, unknown>[]).map(z => {
+            const lineItems = (z.line_items as import('../types').LineItem[]) || []
+            console.log(`  📦 "${z.name}": ${lineItems.length} line items, laundryEquipment:`, z.laundry_equipment ? 'YES' : 'NO')
+            return {
+              id: z.id as string,
+              projectId: z.project_id as string,
+              name: (z.name as string) || 'Untitled',
+              type: (z.zone_type as import('../types').ZoneType) || 'custom',
+              subType: (z.sub_type as 'electric' | 'gas') || 'electric',
+              sf: (z.sf as number) || 0,
+              color: (z.color as string) || '#64748b',
+              fixtures: (z.fixtures as import('../types').ZoneFixtures) || { showers: 0, lavs: 0, wcs: 0, floorDrains: 0, serviceSinks: 0, washingMachines: 0, dryers: 0 },
+              rates: (z.rates as import('../types').ZoneRates) || { lighting_w_sf: 1, receptacle_va_sf: 3, ventilation_cfm_sf: 0.15, exhaust_cfm_sf: 0, cooling_sf_ton: 400, heating_btuh_sf: 25 },
+              processLoads: (z.process_loads as import('../types').ZoneProcessLoads) || { fixed_kw: 0, gas_mbh: 0, ventilation_cfm: 0, exhaust_cfm: 0, pool_heater_mbh: 0, dehumid_lb_hr: 0, flue_size_in: 0, ceiling_height_ft: 10 },
+              laundryEquipment: z.laundry_equipment as import('../types').LaundryEquipment | undefined,
+              lineItems,
+              sortOrder: (z.sort_order as number) || 0,
+            } as import('../types').Zone
+          })
+          setZones(loadedZones)
         }
         
         // Mark loading complete AFTER both project and zones are loaded
@@ -306,17 +312,31 @@ export default function ProjectWorkspace() {
     
     // CRITICAL: Don't auto-save while loading from database - this prevents wiping data!
     if (isLoadingProject.current) {
-      console.log('Skipping auto-save - still loading project')
+      console.log('🚫 Skipping auto-save - still loading project')
       return
     }
     
+    // Debug: Log what's being saved
+    const totalLineItems = zones.reduce((sum, z) => sum + (z.lineItems?.length || 0), 0)
+    console.log(`📝 Auto-save triggered: ${zones.length} zones, ${totalLineItems} total line items`)
+    
     setSynced(false)
-    const timer = setTimeout(() => saveProject(), 1000)
+    const timer = setTimeout(() => {
+      console.log('💾 Executing auto-save now...')
+      saveProject()
+    }, 1000)
     return () => clearTimeout(timer)
   }, [currentProject, zones])
 
   const saveProject = useCallback(async () => {
     if (!currentProject) return
+    
+    // DEBUG: Log exactly what we're about to save
+    console.log('💾 SAVING PROJECT - Zone details:')
+    zones.forEach(z => {
+      console.log(`  📦 ${z.name}: ${z.lineItems?.length || 0} line items`, z.lineItems?.map(li => li.name))
+    })
+    
     setSaving(true)
     isSaving.current = true
 
@@ -433,13 +453,13 @@ export default function ProjectWorkspace() {
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-surface-400">{currentProject.targetSF.toLocaleString()} SF target</span>
                   {saving && (
-                    <span className="text-primary-400 animate-pulse">Saving...</span>
+                    <span className="text-primary-400 animate-pulse">💾 Saving...</span>
                   )}
                   {!saving && synced && isSupabaseConfigured() && (
-                    <span className="text-emerald-400 cursor-pointer" onClick={() => saveProject()} title="Click to force save">✓ Synced</span>
+                    <span className="text-emerald-400">✓ Synced</span>
                   )}
                   {!saving && !synced && isSupabaseConfigured() && (
-                    <span className="text-amber-400 cursor-pointer" onClick={() => saveProject()} title="Click to save now">• Unsaved - click to save</span>
+                    <span className="text-amber-400 animate-pulse">• Unsaved</span>
                   )}
                   {otherUserEditing && (
                     <span className="text-cyan-400 animate-pulse">• Another user editing</span>
@@ -471,6 +491,27 @@ export default function ProjectWorkspace() {
             </nav>
 
             <div className="flex items-center gap-4">
+              {/* Manual Save Button */}
+              <button
+                onClick={() => {
+                  console.log('🔘 Manual save button clicked')
+                  saveProject()
+                }}
+                disabled={saving}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
+                  saving 
+                    ? 'bg-surface-700 text-surface-400 cursor-not-allowed'
+                    : synced 
+                      ? 'bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30'
+                      : 'bg-amber-600 text-white hover:bg-amber-500 animate-pulse'
+                }`}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                </svg>
+                {saving ? 'Saving...' : synced ? 'Saved' : 'SAVE NOW'}
+              </button>
+              
               {/* SF Status */}
               <div className={`px-3 py-1.5 rounded-lg text-sm font-mono ${
                 sfStatus === 'match' ? 'bg-emerald-500/10 text-emerald-400' :
