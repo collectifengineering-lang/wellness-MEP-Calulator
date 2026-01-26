@@ -118,23 +118,39 @@ export function calculateElectrical(
   }
 }
 
-// Get electrical breakdown by zone
+// Get electrical breakdown by zone - must match calculateElectrical logic!
 export function getElectricalBreakdown(zones: Zone[]): { zoneName: string; kW: number; description: string }[] {
   return zones.map(zone => {
     const defaults = getZoneDefaults(zone.type)
     const lightingKW = zone.sf * zone.rates.lighting_w_sf / 1000
     const receptacleKW = zone.sf * zone.rates.receptacle_va_sf / 1000
-    const fixedKW = zone.processLoads?.fixed_kw ?? defaults.fixed_kw ?? 0
+    let fixedKW = zone.processLoads?.fixed_kw ?? defaults.fixed_kw ?? 0
+    
+    // Include laundry equipment loads - same logic as main calculation
+    let laundryKW = 0
+    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment) {
+      const washers = zone.fixtures.washingMachines || 0
+      const dryers = zone.fixtures.dryers || 0
+      const dryerType = zone.subType === 'gas' ? 'gas' : 'electric'
+      const laundryLoads = calculateLaundryLoads(washers, dryers, dryerType, zone.laundryEquipment)
+      laundryKW = laundryLoads.washer_kw + (dryerType === 'electric' ? laundryLoads.dryer_kw : 0)
+    }
+    
     const lineItemsKW = zone.lineItems
       .filter(li => li.category === 'lighting' || li.category === 'power')
       .reduce((sum, li) => li.unit === 'kW' ? sum + li.quantity * li.value : sum + (li.quantity * li.value) / 1000, 0)
     
-    const totalKW = lightingKW + receptacleKW + fixedKW + lineItemsKW
+    const totalKW = lightingKW + receptacleKW + fixedKW + laundryKW + lineItemsKW
+    
+    // Build description
+    let desc = `${zone.sf.toLocaleString()} SF @ ${zone.rates.lighting_w_sf} W/SF + ${zone.rates.receptacle_va_sf} VA/SF`
+    if (fixedKW > 0) desc += ` + ${fixedKW} kW equip`
+    if (laundryKW > 0) desc += ` + ${laundryKW.toFixed(1)} kW laundry`
     
     return {
       zoneName: zone.name,
       kW: Math.round(totalKW * 10) / 10,
-      description: `${zone.sf.toLocaleString()} SF @ ${zone.rates.lighting_w_sf} W/SF lighting + ${zone.rates.receptacle_va_sf} VA/SF receptacle${fixedKW > 0 ? ` + ${fixedKW} kW equipment` : ''}`,
+      description: desc,
     }
   })
 }

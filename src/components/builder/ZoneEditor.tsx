@@ -87,30 +87,34 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
   const hasPoolHeater = isPoolZone || processLoads.pool_heater_mbh > 0
   const hasDehumid = (defaults.dehumidification_lb_hr || 0) > 0 || processLoads.dehumid_lb_hr > 0
 
-  // Calculate zone totals
+  // Calculate zone totals - MUST MATCH central plant calculations exactly!
   const lightingKW = (localZone.sf * localZone.rates.lighting_w_sf) / 1000
-  const receptacleKVA = (localZone.sf * localZone.rates.receptacle_va_sf) / 1000
+  const receptacleKW = (localZone.sf * localZone.rates.receptacle_va_sf) / 1000 // VA ≈ W for resistive loads
   const rateVentCFM = localZone.sf * localZone.rates.ventilation_cfm_sf
   const rateExhaustCFM = localZone.sf * localZone.rates.exhaust_cfm_sf
   const fixtureExhaustCFM = (defaults.exhaust_cfm_toilet || 0) * localZone.fixtures.wcs +
     (defaults.exhaust_cfm_shower || 0) * localZone.fixtures.showers
   
-  // Include laundry equipment exhaust and electrical
+  // Include laundry equipment exhaust and electrical (matches electrical.ts logic)
   let laundryExhaustCFM = 0
   let laundryVentCFM = 0
   let laundryKW = 0
   let laundryGasMBH = 0
-  if (defaults.laundry_equipment && localZone.fixtures.dryers > 0) {
+  const isGasDryers = localZone.subType === 'gas'
+  
+  if (defaults.laundry_equipment && (localZone.fixtures.washingMachines > 0 || localZone.fixtures.dryers > 0)) {
     const laundryLoads = calculateLaundryLoads(
       localZone.fixtures.washingMachines || 0,
-      localZone.fixtures.dryers,
-      localZone.subType === 'gas' ? 'gas' : 'electric',
+      localZone.fixtures.dryers || 0,
+      isGasDryers ? 'gas' : 'electric',
       localZone.laundryEquipment
     )
     laundryExhaustCFM = laundryLoads.exhaust_cfm
     laundryVentCFM = laundryLoads.exhaust_cfm // MUA = exhaust
-    laundryKW = laundryLoads.total_kw
-    laundryGasMBH = laundryLoads.dryer_gas_mbh
+    // Electrical: washers always electric + dryers if electric type
+    laundryKW = laundryLoads.washer_kw + (isGasDryers ? 0 : laundryLoads.dryer_kw)
+    // Gas: only if gas dryers
+    laundryGasMBH = isGasDryers ? laundryLoads.dryer_gas_mbh : 0
   }
   
   const totalVentCFM = rateVentCFM + processLoads.ventilation_cfm + laundryVentCFM
@@ -118,9 +122,12 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
   const coolingTons = localZone.rates.cooling_sf_ton > 0 ? localZone.sf / localZone.rates.cooling_sf_ton : 0
   const heatingMBH = (localZone.sf * localZone.rates.heating_btuh_sf) / 1000
 
-  // Total electrical = lighting + receptacle + fixed equipment + laundry
-  const totalElecKW = lightingKW + (receptacleKVA * 0.85) + processLoads.fixed_kw + laundryKW
-  const totalGasMBH = processLoads.gas_mbh + processLoads.pool_heater_mbh + laundryGasMBH
+  // Total electrical = lighting + receptacle + fixed equipment + laundry (matches electrical.ts)
+  const totalElecKW = lightingKW + receptacleKW + processLoads.fixed_kw + laundryKW
+  
+  // Total gas = zone gas + pool heater + laundry gas (only if gas subtype for zone gas)
+  const zoneGasMBH = localZone.subType === 'gas' ? processLoads.gas_mbh : 0
+  const totalGasMBH = zoneGasMBH + processLoads.pool_heater_mbh + laundryGasMBH
 
   return (
     <>
@@ -758,7 +765,7 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
             <div className="space-y-2">
               {[
                 { key: 'lighting_w_sf', label: 'Lighting', unit: 'W/SF', result: `${lightingKW.toFixed(2)} kW` },
-                { key: 'receptacle_va_sf', label: 'Receptacle', unit: 'VA/SF', result: `${receptacleKVA.toFixed(2)} kVA` },
+                { key: 'receptacle_va_sf', label: 'Receptacle', unit: 'VA/SF', result: `${receptacleKW.toFixed(2)} kW` },
                 { key: 'ventilation_cfm_sf', label: 'Ventilation', unit: 'CFM/SF', result: `${Math.round(rateVentCFM)} CFM` },
                 { key: 'exhaust_cfm_sf', label: 'Exhaust', unit: 'CFM/SF', result: `${Math.round(rateExhaustCFM)} CFM` },
                 { key: 'cooling_sf_ton', label: 'Cooling', unit: 'SF/Ton', result: coolingTons > 0 ? `${coolingTons.toFixed(2)} Tons` : '—' },
@@ -830,46 +837,94 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
           {/* Line Items */}
           <LineItemsEditor zone={localZone} onUpdate={handleUpdate} />
 
-          {/* Zone Totals Summary */}
+          {/* Zone Totals Summary - Shows detailed breakdown matching central plant calcs */}
           <div className="bg-gradient-to-br from-primary-900/30 to-surface-900 rounded-lg p-4 border border-primary-500/20">
-            <h4 className="text-sm font-semibold text-primary-400 mb-3">📊 Zone Totals</h4>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-surface-400">Electrical:</span>
-                <span className="text-white font-mono">{totalElecKW.toFixed(1)} kW</span>
-              </div>
-              {totalGasMBH > 0 && (
+            <h4 className="text-sm font-semibold text-primary-400 mb-3">📊 Zone Totals (matches Central Plant)</h4>
+            
+            {/* Electrical Breakdown */}
+            <div className="mb-3">
+              <div className="text-xs text-surface-500 mb-1 uppercase tracking-wider">Electrical</div>
+              <div className="bg-surface-900/50 rounded p-2 text-xs space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-surface-400">Gas:</span>
-                  <span className="text-white font-mono">{totalGasMBH.toFixed(0)} MBH</span>
+                  <span className="text-surface-400">Lighting ({localZone.rates.lighting_w_sf} W/SF × {localZone.sf} SF):</span>
+                  <span className="text-surface-300 font-mono">{lightingKW.toFixed(2)} kW</span>
                 </div>
-              )}
+                <div className="flex justify-between">
+                  <span className="text-surface-400">Receptacle ({localZone.rates.receptacle_va_sf} VA/SF × {localZone.sf} SF):</span>
+                  <span className="text-surface-300 font-mono">{receptacleKW.toFixed(2)} kW</span>
+                </div>
+                {processLoads.fixed_kw > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-surface-400">Equipment (fixed):</span>
+                    <span className="text-amber-400 font-mono">{processLoads.fixed_kw.toFixed(2)} kW</span>
+                  </div>
+                )}
+                {laundryKW > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-surface-400">Laundry ({isGasDryers ? 'washers only' : 'washers+dryers'}):</span>
+                    <span className="text-purple-400 font-mono">{laundryKW.toFixed(2)} kW</span>
+                  </div>
+                )}
+                <div className="flex justify-between pt-1 border-t border-surface-700 font-medium">
+                  <span className="text-white">Total Electrical:</span>
+                  <span className="text-white font-mono">{totalElecKW.toFixed(1)} kW</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Gas Breakdown */}
+            {(totalGasMBH > 0 || zoneGasMBH > 0 || processLoads.pool_heater_mbh > 0) && (
+              <div className="mb-3">
+                <div className="text-xs text-surface-500 mb-1 uppercase tracking-wider">Gas</div>
+                <div className="bg-surface-900/50 rounded p-2 text-xs space-y-1">
+                  {zoneGasMBH > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-surface-400">Zone Equipment ({localZone.subType}):</span>
+                      <span className="text-orange-400 font-mono">{zoneGasMBH.toFixed(0)} MBH</span>
+                    </div>
+                  )}
+                  {processLoads.pool_heater_mbh > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-surface-400">Pool Heater:</span>
+                      <span className="text-orange-400 font-mono">{processLoads.pool_heater_mbh.toFixed(0)} MBH</span>
+                    </div>
+                  )}
+                  {laundryGasMBH > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-surface-400">Laundry Dryers (gas):</span>
+                      <span className="text-orange-400 font-mono">{laundryGasMBH.toFixed(0)} MBH</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between pt-1 border-t border-surface-700 font-medium">
+                    <span className="text-white">Total Gas:</span>
+                    <span className="text-orange-400 font-mono">{totalGasMBH.toFixed(0)} MBH</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* HVAC Summary */}
+            <div className="grid grid-cols-2 gap-2 text-sm">
               {coolingTons > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-surface-400">HVAC Cooling:</span>
-                  <span className="text-white font-mono">{coolingTons.toFixed(1)} Tons</span>
+                  <span className="text-surface-400">Cooling:</span>
+                  <span className="text-cyan-400 font-mono">{coolingTons.toFixed(1)} Tons</span>
                 </div>
               )}
               {heatingMBH > 0 && (
                 <div className="flex justify-between">
-                  <span className="text-surface-400">HVAC Heating:</span>
-                  <span className="text-white font-mono">{heatingMBH.toFixed(1)} MBH</span>
+                  <span className="text-surface-400">Heating:</span>
+                  <span className="text-red-400 font-mono">{heatingMBH.toFixed(1)} MBH</span>
                 </div>
               )}
               <div className="flex justify-between">
                 <span className="text-surface-400">Ventilation:</span>
-                <span className="text-white font-mono">{totalVentCFM.toLocaleString()} CFM</span>
+                <span className="text-emerald-400 font-mono">{totalVentCFM.toLocaleString()} CFM</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-surface-400">Exhaust:</span>
-                <span className="text-white font-mono">{totalExhaustCFM.toLocaleString()} CFM</span>
+                <span className="text-amber-400 font-mono">{totalExhaustCFM.toLocaleString()} CFM</span>
               </div>
-              {processLoads.fixed_kw > 0 && (
-                <div className="flex justify-between col-span-2 pt-2 border-t border-surface-700">
-                  <span className="text-amber-400">Equipment Load:</span>
-                  <span className="text-amber-400 font-mono">{processLoads.fixed_kw} kW</span>
-                </div>
-              )}
             </div>
           </div>
 
