@@ -25,10 +25,14 @@ export default function ProjectWorkspace() {
   // Track if we're the one making changes (to avoid reacting to our own changes)
   const isSaving = useRef(false)
   const lastUpdateTimestamp = useRef<string | null>(null)
+  
+  // CRITICAL: Track if initial load is complete to prevent auto-save from wiping data
+  const isLoadingProject = useRef(true)
 
   // Load project if not already loaded
   useEffect(() => {
     if (!currentProject && projectId) {
+      isLoadingProject.current = true
       loadProject(projectId)
     }
   }, [projectId, currentProject])
@@ -117,6 +121,13 @@ export default function ProjectWorkspace() {
             sortOrder: (z.sort_order as number) || 0,
           } as import('../types').Zone)))
         }
+        
+        // Mark loading complete AFTER both project and zones are loaded
+        // Use setTimeout to allow React state to settle before enabling auto-save
+        setTimeout(() => {
+          isLoadingProject.current = false
+          console.log('Project load complete - auto-save enabled')
+        }, 500)
       }
     } else {
       // Dev mode: load from localStorage
@@ -132,6 +143,11 @@ export default function ProjectWorkspace() {
           }
         }
       }
+      // Mark loading complete for localStorage path too
+      setTimeout(() => {
+        isLoadingProject.current = false
+        console.log('Project load complete (localStorage) - auto-save enabled')
+      }, 500)
     }
   }
 
@@ -264,9 +280,16 @@ export default function ProjectWorkspace() {
     }
   }, [projectId, setCurrentProject, setZones])
 
-  // Auto-save on changes
+  // Auto-save on changes - BUT NOT during initial load!
   useEffect(() => {
     if (!currentProject) return
+    
+    // CRITICAL: Don't auto-save while loading from database - this prevents wiping data!
+    if (isLoadingProject.current) {
+      console.log('Skipping auto-save - still loading project')
+      return
+    }
+    
     setSynced(false)
     const timer = setTimeout(() => saveProject(), 1000)
     return () => clearTimeout(timer)

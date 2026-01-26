@@ -308,6 +308,7 @@ export type PoolType =
   | 'kids' 
   | 'waterpark' 
   | 'residential'
+  | 'cold_plunge'
 
 export interface PoolConfig {
   id: string

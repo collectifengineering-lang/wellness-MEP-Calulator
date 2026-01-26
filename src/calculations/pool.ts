@@ -84,6 +84,13 @@ export const POOL_TYPE_PRESETS = {
     activityFactor: 0.5,
     description: 'Home pool'
   },
+  cold_plunge: {
+    name: 'Cold Plunge',
+    waterTempRange: { min: 38, max: 60, default: 50 },
+    airTempRange: { min: 75, max: 85, default: 80 },
+    activityFactor: 0.5,  // Still water, minimal splashing
+    description: 'Cold plunge pool (absorbs humidity)'
+  },
 } as const
 
 export type PoolType = keyof typeof POOL_TYPE_PRESETS
@@ -188,10 +195,14 @@ export function calculateActualVaporPressure(tempF: number, relativeHumidity: nu
  * - Pw = saturation vapor pressure at water surface temperature
  * - Pa = partial vapor pressure at room air conditions
  * 
+ * COLD POOLS: When water temperature is below room dew point (Pw < Pa),
+ * condensation occurs on the water surface, ABSORBING moisture from the air.
+ * This gives a NEGATIVE lb/hr which reduces total dehumidification load.
+ * 
  * @param pool - Pool configuration
  * @param airTempF - Room air temperature (°F)
  * @param relativeHumidity - Room relative humidity (%)
- * @returns Evaporation rate in lb/hr
+ * @returns Evaporation rate in lb/hr (negative for cold pools = condensation/absorption)
  */
 export function calculatePoolEvaporation(
   pool: PoolConfig,
@@ -206,10 +217,11 @@ export function calculatePoolEvaporation(
   
   // Evaporation formula from ASHRAE/Dectron
   // wp = 0.1 × A × Fa × (Pw - Pa)
+  // POSITIVE = evaporation (hot pool adds moisture)
+  // NEGATIVE = condensation (cold pool absorbs moisture)
   const evaporationLbHr = 0.1 * pool.surfaceAreaSF * pool.activityFactor * (Pw - Pa)
   
-  // Ensure non-negative (condensation can occur if Pa > Pw, but we return 0)
-  return Math.max(0, evaporationLbHr)
+  return evaporationLbHr
 }
 
 /**

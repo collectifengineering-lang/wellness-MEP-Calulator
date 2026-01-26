@@ -16,32 +16,44 @@ import {
 export default function PoolRoomTab() {
   const { currentProject, zones, updateZone, addLineItem, updatePoolRoomDesign } = useProjectStore()
   
-  // State for target zone selection - initialized from saved design
-  const [targetZoneId, setTargetZoneId] = useState<string | null>(
-    currentProject?.poolRoomDesign?.targetZoneId || null
-  )
+  // Track if we've loaded from saved design
+  const [hasLoadedSavedDesign, setHasLoadedSavedDesign] = useState(false)
   
-  // State for pools - initialized from saved design
-  const [pools, setPools] = useState<PoolConfig[]>(
-    currentProject?.poolRoomDesign?.pools || []
-  )
+  // State for target zone selection
+  const [targetZoneId, setTargetZoneId] = useState<string | null>(null)
   
-  // State for room parameters - initialized from saved design or defaults
-  const [params, setParams] = useState<PoolRoomParams>(
-    currentProject?.poolRoomDesign?.params || getDefaultPoolRoomParams(2000)
-  )
+  // State for pools
+  const [pools, setPools] = useState<PoolConfig[]>([])
+  
+  // State for room parameters
+  const [params, setParams] = useState<PoolRoomParams>(getDefaultPoolRoomParams(2000))
   
   // State for editing pool
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null)
   
+  // Load saved design when currentProject becomes available
+  // This fixes the issue where state initializes before project loads from DB
+  useEffect(() => {
+    if (currentProject?.poolRoomDesign && !hasLoadedSavedDesign) {
+      const saved = currentProject.poolRoomDesign
+      if (saved.targetZoneId) setTargetZoneId(saved.targetZoneId)
+      if (saved.pools && saved.pools.length > 0) setPools(saved.pools)
+      if (saved.params) setParams(saved.params)
+      setHasLoadedSavedDesign(true)
+    }
+  }, [currentProject?.poolRoomDesign, hasLoadedSavedDesign])
+  
   // Save to store whenever design changes (debounced via auto-save in ProjectWorkspace)
   const saveDesign = useCallback(() => {
+    // Only save after we've had a chance to load
+    if (!hasLoadedSavedDesign && currentProject?.poolRoomDesign) return
+    
     updatePoolRoomDesign({
       targetZoneId,
       pools,
       params,
     })
-  }, [targetZoneId, pools, params, updatePoolRoomDesign])
+  }, [targetZoneId, pools, params, updatePoolRoomDesign, hasLoadedSavedDesign, currentProject?.poolRoomDesign])
   
   // Auto-save whenever pools, params, or target zone changes
   useEffect(() => {
@@ -370,11 +382,17 @@ export default function PoolRoomTab() {
                         </div>
                       </div>
                       <div className="text-right">
-                        {results && (
-                          <div className="text-cyan-400 font-mono">
-                            {results.poolBreakdown.find(p => p.id === pool.id)?.lbHr.toFixed(1)} lb/hr
-                          </div>
-                        )}
+                        {results && (() => {
+                          const poolResult = results.poolBreakdown.find(p => p.id === pool.id)
+                          const lbHr = poolResult?.lbHr || 0
+                          const isCondensation = lbHr < 0
+                          return (
+                            <div className={`font-mono ${isCondensation ? 'text-blue-400' : 'text-cyan-400'}`}>
+                              {lbHr > 0 ? '+' : ''}{lbHr.toFixed(1)} lb/hr
+                              {isCondensation && <span className="text-xs ml-1">(absorbs)</span>}
+                            </div>
+                          )
+                        })()}
                         <div className="text-xs text-surface-500">Click to edit</div>
                       </div>
                     </div>
@@ -430,35 +448,52 @@ export default function PoolRoomTab() {
             
             {/* Pool Breakdown */}
             <div className="mb-6">
-              <h4 className="text-sm font-medium text-surface-300 mb-2">Pool Evaporation Breakdown</h4>
+              <h4 className="text-sm font-medium text-surface-300 mb-2">Pool Moisture Contribution</h4>
+              <p className="text-xs text-surface-500 mb-2">
+                Positive = evaporation (adds moisture) • Negative = condensation (absorbs moisture from cold pools)
+              </p>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-surface-700">
                       <th className="text-left py-2 text-surface-400">Pool</th>
                       <th className="text-right py-2 text-surface-400">Area (SF)</th>
-                      <th className="text-right py-2 text-surface-400">Evaporation (lb/hr)</th>
-                      <th className="text-right py-2 text-surface-400">% of Total</th>
+                      <th className="text-right py-2 text-surface-400">Water Temp</th>
+                      <th className="text-right py-2 text-surface-400">lb/hr</th>
+                      <th className="text-right py-2 text-surface-400">Effect</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {results.poolBreakdown.map(pool => (
-                      <tr key={pool.id} className="border-b border-surface-700/50">
-                        <td className="py-2 text-white">{pool.name}</td>
-                        <td className="py-2 text-right text-surface-300 font-mono">{pool.surfaceAreaSF.toLocaleString()}</td>
-                        <td className="py-2 text-right text-cyan-400 font-mono">{pool.lbHr.toFixed(1)}</td>
-                        <td className="py-2 text-right text-surface-400 font-mono">
-                          {((pool.lbHr / results.totalEvaporationLbHr) * 100).toFixed(0)}%
-                        </td>
-                      </tr>
-                    ))}
+                    {results.poolBreakdown.map(pool => {
+                      const isCondensation = pool.lbHr < 0
+                      return (
+                        <tr key={pool.id} className="border-b border-surface-700/50">
+                          <td className="py-2 text-white">{pool.name}</td>
+                          <td className="py-2 text-right text-surface-300 font-mono">{pool.surfaceAreaSF.toLocaleString()}</td>
+                          <td className="py-2 text-right text-surface-300 font-mono">
+                            {pools.find(p => p.id === pool.id)?.waterTempF}°F
+                          </td>
+                          <td className={`py-2 text-right font-mono font-medium ${isCondensation ? 'text-blue-400' : 'text-cyan-400'}`}>
+                            {pool.lbHr > 0 ? '+' : ''}{pool.lbHr.toFixed(1)}
+                          </td>
+                          <td className={`py-2 text-right text-xs ${isCondensation ? 'text-blue-400' : 'text-cyan-400'}`}>
+                            {isCondensation ? '❄️ Absorbs' : '💨 Evaporates'}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                   <tfoot>
                     <tr className="bg-surface-900/50">
-                      <td className="py-2 font-semibold text-white">Total</td>
+                      <td className="py-2 font-semibold text-white">Net Total</td>
                       <td className="py-2 text-right text-white font-mono">{results.totalPoolAreaSF.toLocaleString()}</td>
-                      <td className="py-2 text-right text-cyan-400 font-mono font-semibold">{results.totalEvaporationLbHr.toFixed(1)}</td>
-                      <td className="py-2 text-right text-surface-400 font-mono">100%</td>
+                      <td className="py-2"></td>
+                      <td className={`py-2 text-right font-mono font-bold ${results.totalEvaporationLbHr < 0 ? 'text-blue-400' : 'text-cyan-400'}`}>
+                        {results.totalEvaporationLbHr > 0 ? '+' : ''}{results.totalEvaporationLbHr.toFixed(1)}
+                      </td>
+                      <td className="py-2 text-right text-xs text-surface-400">
+                        {results.totalEvaporationLbHr < 0 ? 'Net absorption' : 'Net evaporation'}
+                      </td>
                     </tr>
                   </tfoot>
                 </table>
@@ -467,7 +502,9 @@ export default function PoolRoomTab() {
             
             {/* Calculation Notes */}
             <div className="text-xs text-surface-500 space-y-1 mb-4">
-              <p>• Evaporation: 0.1 × Area × Activity Factor × (Pw - Pa) per ASHRAE</p>
+              <p>• Moisture: 0.1 × Area × Activity Factor × (Pw - Pa) per ASHRAE</p>
+              <p className="pl-3">→ Positive when water temp {">"} dew point (evaporation)</p>
+              <p className="pl-3">→ <span className="text-blue-400">Negative when water temp {"<"} dew point (condensation - cold pools absorb moisture!)</span></p>
               <p>• Supply Air: Room Volume ({results.roomVolumeCF.toLocaleString()} CF) × {params.airChangesPerHour} ACH ÷ 60</p>
               <p>• Outdoor Air: 0.48 CFM/ft² × ({results.totalPoolAreaSF} + {params.wetDeckAreaSF} SF) + 7.5 × {params.spectatorCount} spectators</p>
               <p>• Exhaust: 110% of Outdoor Air (maintain negative pressure)</p>
