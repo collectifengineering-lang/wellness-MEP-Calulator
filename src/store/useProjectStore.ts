@@ -18,6 +18,36 @@ const defaultProcessLoads: ZoneProcessLoads = {
   ceiling_height_ft: 10,
 }
 
+/**
+ * Scale fixtures based on the ratio of actual zone SF to template defaultSF
+ * Rounds to nearest whole number, preserving at least 1 if the template had any
+ */
+export function scaleFixturesForSF(
+  templateFixtures: ZoneFixtures,
+  templateDefaultSF: number,
+  actualSF: number
+): ZoneFixtures {
+  // If SFs are the same or template has no SF, return fixtures unchanged
+  if (actualSF === templateDefaultSF || templateDefaultSF <= 0) {
+    return { ...templateFixtures }
+  }
+  
+  const scaleRatio = actualSF / templateDefaultSF
+  const scaledFixtures: ZoneFixtures = {}
+  
+  for (const [fixtureId, count] of Object.entries(templateFixtures)) {
+    if (count <= 0) continue
+    
+    // Scale and round to nearest whole number
+    const scaledCount = Math.round(count * scaleRatio)
+    
+    // Ensure at least 1 if the template originally had fixtures
+    scaledFixtures[fixtureId] = Math.max(1, scaledCount)
+  }
+  
+  return scaledFixtures
+}
+
 // Calculate process loads from zone defaults and square footage
 export function calculateProcessLoads(defaults: ZoneDefaults, sf: number, subType: 'electric' | 'gas'): ZoneProcessLoads {
   const ceilingHeight = defaults.ceiling_height_ft || 10
@@ -305,7 +335,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const subType = defaults.defaultSubType || 'electric'
     const zoneName = name || defaults.displayName
     
-    // Auto-calculate fixtures for restroom/locker_room based on SF
+    // Scale fixtures based on the ratio of actual SF to template defaultSF
+    // This ensures fixture counts scale up/down proportionally with zone size
+    const scaledFixtures = scaleFixturesForSF(
+      defaults.defaultFixtures,
+      defaults.defaultSF || 1000,
+      zoneSF
+    )
+    
+    // Auto-calculate fixtures for restroom/locker_room based on SF (fixture_per_sf formula)
+    // These override the scaled values for zones with explicit fixture-per-SF ratios
     const autoFixtures = calculateFixturesFromSF(type, zoneSF)
     
     // Calculate process loads (still used for backwards compatibility)
@@ -322,7 +361,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       subType,
       sf: zoneSF,
       color: getZoneColor(type),
-      fixtures: { ...defaults.defaultFixtures, ...autoFixtures },
+      fixtures: { ...scaledFixtures, ...autoFixtures },
       rates: { ...defaults.defaultRates },
       processLoads,
       lineItems: defaultLineItems,  // Pre-populated with default equipment!

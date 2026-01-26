@@ -142,11 +142,11 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     visibleFixtures: ['floor_drain_2in', 'floor_drain_3in', 'hose_bibb'],
     defaultRates: {
       lighting_w_sf: 0.50,
-      receptacle_va_sf: 1,      // Minimal - just maintenance tools
+      receptacle_va_sf: 3,      // Controls, monitoring equipment
       ventilation_cfm_sf: 0.12,
-      exhaust_cfm_sf: 0,
-      cooling_sf_ton: 0,
-      heating_btuh_sf: 0,
+      exhaust_cfm_sf: 0.12,
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 15,
     },
     ventilation_cfm: 500,
     exhaust_cfm: 400,
@@ -182,7 +182,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 4,      // Computers, monitors, printers, chargers
       ventilation_cfm_sf: 0.18,
       exhaust_cfm_sf: 0,
-      cooling_sf_ton: 400,
+      cooling_sf_ton: 300,
       heating_btuh_sf: 25,
     },
     occupants_per_1000sf: 5,
@@ -199,10 +199,10 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultRates: {
       lighting_w_sf: 0.40,
       receptacle_va_sf: 0.5,    // Minimal - occasional equipment
-      ventilation_cfm_sf: 0.06,
+      ventilation_cfm_sf: 0.12,
       exhaust_cfm_sf: 0,
-      cooling_sf_ton: 0,
-      heating_btuh_sf: 0,
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 15,
     },
     source_notes: 'NYCECC storage 0.40-0.60',
   },
@@ -214,6 +214,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       kitchen_sink_commercial: 1,   // Pantry sink
       floor_drain_2in: 1,
       drinking_fountain: 1,
+      dishwasher_private: 1,
     },
     visibleFixtures: ['kitchen_sink_commercial', 'floor_drain_2in', 'drinking_fountain', 'dishwasher_private'],
     defaultRates: {
@@ -247,7 +248,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 2,      // Equipment controls/displays only - motors via line items
       ventilation_cfm_sf: 0.50,
       exhaust_cfm_sf: 0,
-      cooling_sf_ton: 400,
+      cooling_sf_ton: 250,
       heating_btuh_sf: 25,
     },
     occupants_per_1000sf: 20,
@@ -268,7 +269,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 2,      // AV system, instructor mic, sound
       ventilation_cfm_sf: 0.90,
       exhaust_cfm_sf: 0,
-      cooling_sf_ton: 350,
+      cooling_sf_ton: 200,
       heating_btuh_sf: 25,
     },
     occupants_per_1000sf: 40,
@@ -309,7 +310,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 1.5,    // Minimal - sound system only
       ventilation_cfm_sf: 0.40,
       exhaust_cfm_sf: 0,
-      cooling_sf_ton: 400,
+      cooling_sf_ton: 200,
       heating_btuh_sf: 30,
     },
     occupants_per_1000sf: 15,
@@ -328,7 +329,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 2,      // Reformer equipment minimal
       ventilation_cfm_sf: 0.30,
       exhaust_cfm_sf: 0,
-      cooling_sf_ton: 400,
+      cooling_sf_ton: 200,
       heating_btuh_sf: 25,
     },
     occupants_per_1000sf: 10,
@@ -583,22 +584,27 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultFixtures: { 
       shower_public: 2,        // Rinse between contrasts
       floor_drain_3in: 4,
-      hose_bibb: 1,
     },
     visibleFixtures: ['shower_public', 'floor_drain_3in', 'hose_bibb', 'pool_fill'],
     defaultRates: {
       lighting_w_sf: 0.60,
-      receptacle_va_sf: 2,
+      receptacle_va_sf: 3,
       ventilation_cfm_sf: 0.40,
       exhaust_cfm_sf: 1.50,
       cooling_sf_ton: 0,
       heating_btuh_sf: 0,
     },
-    fixed_kw: 50,
     ventilation_cfm: 1500,
     exhaust_cfm: 1500,
     rp_cfm_person: 15,
     ra_cfm_sf: 0.06,
+    defaultEquipment: [
+      { category: 'power', name: 'Steam Room - 300 sqft', quantity: 1, unit: 'kW', value: 50 },
+      { category: 'power', name: 'Pool Heater', quantity: 1, unit: 'kW', value: 50 },
+      { category: 'power', name: 'Sauna - 300 sqft', quantity: 1, unit: 'kW', value: 75 },
+      { category: 'power', name: 'Pool Pumps', quantity: 1, unit: 'kW', value: 7 },
+      { category: 'pool_chiller', name: 'Pool Chiller', quantity: 1, unit: 'Tons', value: 5 },
+    ],
     source_notes: 'Combined sauna + cold plunge; Natatorium-like',
   },
 
@@ -644,20 +650,20 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSubType: 'gas',
     switchable: true,
     defaultFixtures: { 
-      floor_drain_3in: 2,
-      pool_fill: 1,
-      hose_bibb: 2,
+      trench_drain: 4,
     },
-    visibleFixtures: ['floor_drain_3in', 'pool_fill', 'hose_bibb'],
+    visibleFixtures: ['trench_drain', 'pool_fill', 'hose_bibb'],
     defaultRates: {
       lighting_w_sf: 0.50,
-      receptacle_va_sf: 1,
+      receptacle_va_sf: 0,
       ventilation_cfm_sf: 0,
       exhaust_cfm_sf: 0,
       cooling_sf_ton: 0,
       heating_btuh_sf: 0,
     },
-    pool_heater_gas_mbh: 600,
+    defaultEquipment: [
+      { category: 'gas', name: 'Pool Heater', quantity: 1, unit: 'MBH', value: 1000 },
+    ],
     source_notes: 'Unconditioned outdoor',
   },
   hot_tub: {
@@ -694,7 +700,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 2,      // Treatment equipment, warmer, steamer
       ventilation_cfm_sf: 0.18,
       exhaust_cfm_sf: 0,
-      cooling_sf_ton: 400,
+      cooling_sf_ton: 350,
       heating_btuh_sf: 25,
     },
     occupants_per_1000sf: 13,
@@ -713,7 +719,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 1.5,    // Oil warmer, music
       ventilation_cfm_sf: 0.15,
       exhaust_cfm_sf: 0,
-      cooling_sf_ton: 400,
+      cooling_sf_ton: 350,
       heating_btuh_sf: 30,
     },
     occupants_per_1000sf: 17,
@@ -777,19 +783,18 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 600,
     defaultSubType: 'gas',
     defaultFixtures: { 
-      floor_drain_3in: 2, 
-      service_sink: 1, 
-      washing_machine_commercial: 4, 
-      dryer_condensate: 4,
+      service_sink: 1,
+      trench_drain: 3,
+      washing_machine_commercial: 4,
     },
-    visibleFixtures: ['floor_drain_3in', 'service_sink', 'washing_machine_commercial', 'dryer_condensate'],
+    visibleFixtures: ['service_sink', 'washing_machine_commercial', 'trench_drain'],
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 2,      // Washer controls only - motors via line items
-      ventilation_cfm_sf: 0.18,
+      ventilation_cfm_sf: 0,
       exhaust_cfm_sf: 0,
-      cooling_sf_ton: 400,
-      heating_btuh_sf: 25,
+      cooling_sf_ton: 200,
+      heating_btuh_sf: 24,
     },
     requires_standby_power: true,
     ra_cfm_sf: 0.12,
@@ -847,6 +852,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       prep_sink: 1,
       floor_drain_3in: 4,
       grease_interceptor: 1,
+      dishwasher_commercial: 1,
     },
     visibleFixtures: ['hand_sink', 'pot_sink_3comp', 'prep_sink', 'floor_drain_3in', 'dishwasher_commercial', 'grease_interceptor'],
     defaultRates: {
@@ -873,8 +879,10 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       hand_sink: 1, 
       bar_sink: 1,
       floor_drain_2in: 1,
+      pot_sink_3comp: 1,
+      dishwasher_commercial: 1,
     },
-    visibleFixtures: ['hand_sink', 'bar_sink', 'floor_drain_2in', 'dishwasher_commercial'],
+    visibleFixtures: ['hand_sink', 'bar_sink', 'floor_drain_2in', 'dishwasher_commercial', 'pot_sink_3comp'],
     defaultRates: {
       lighting_w_sf: 0.90,
       receptacle_va_sf: 5,
@@ -925,7 +933,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 3,      // AV system, displays, chargers
       ventilation_cfm_sf: 0.30,
       exhaust_cfm_sf: 0,
-      cooling_sf_ton: 300,
+      cooling_sf_ton: 225,
       heating_btuh_sf: 25,
     },
     occupants_per_1000sf: 15,
@@ -995,7 +1003,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       receptacle_va_sf: 3,      // Bottle warmers, small appliances
       ventilation_cfm_sf: 0.30,
       exhaust_cfm_sf: 0,
-      cooling_sf_ton: 350,
+      cooling_sf_ton: 300,
       heating_btuh_sf: 30,
     },
     occupants_per_1000sf: 50,
@@ -1085,8 +1093,9 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       hand_sink: 1, 
       bar_sink: 1,
       floor_drain_2in: 1,
+      pot_sink_3comp: 1,
     },
-    visibleFixtures: ['hand_sink', 'bar_sink', 'floor_drain_2in', 'dishwasher_commercial'],
+    visibleFixtures: ['hand_sink', 'bar_sink', 'floor_drain_2in', 'dishwasher_commercial', 'pot_sink_3comp'],
     defaultRates: {
       lighting_w_sf: 1.00,
       receptacle_va_sf: 5,      // Espresso machines, refrigeration, POS
@@ -1112,8 +1121,9 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultFixtures: { 
       area_drain: 4,
       hose_bibb: 2,
+      shower_public: 3,
     },
-    visibleFixtures: ['area_drain', 'hose_bibb'],
+    visibleFixtures: ['area_drain', 'hose_bibb', 'shower_public'],
     defaultRates: {
       lighting_w_sf: 0.50,
       receptacle_va_sf: 1,      // Occasional outdoor outlet
