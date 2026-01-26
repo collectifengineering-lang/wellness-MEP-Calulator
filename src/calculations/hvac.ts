@@ -56,7 +56,14 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
     }
     
     // 4. LINE ITEMS - All fixed ventilation/exhaust/dehumidification/cooling equipment!
-    zone.lineItems.forEach(li => {
+    if (zone.lineItems && zone.lineItems.length > 0) {
+      console.log(`🔧 HVAC calc - Zone "${zone.name}" has ${zone.lineItems.length} line items:`)
+      zone.lineItems.forEach(li => {
+        console.log(`   - ${li.category}: ${li.name} = ${li.quantity} × ${li.value} ${li.unit}`)
+      })
+    }
+    
+    (zone.lineItems || []).forEach(li => {
       if (li.category === 'ventilation' && li.unit === 'CFM') {
         totalVentCFM += li.quantity * li.value
       }
@@ -65,6 +72,7 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
       }
       // Sum up dehumidification from line items (e.g., from pool room calculator)
       if (li.category === 'dehumidification' && (li.unit === 'lb/hr' || li.unit === 'lbs/hr')) {
+        console.log(`   ✅ Adding dehumidification: ${li.quantity} × ${li.value} = ${li.quantity * li.value} lb/hr`)
         dehumidLbHr += li.quantity * li.value
       }
       // Sum up cooling from line items
@@ -73,6 +81,7 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
       }
       // Sum up pool chiller from line items (tracked separately for mechanical loads)
       if (li.category === 'pool_chiller' && li.unit === 'tons') {
+        console.log(`   ✅ Adding pool chiller: ${li.quantity} × ${li.value} = ${li.quantity * li.value} tons`)
         poolChillerTons += li.quantity * li.value
         // Pool chiller also counts toward total cooling
         totalTons += li.quantity * li.value
@@ -109,6 +118,8 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
   // Estimate RTU count (rough: 1 RTU per 10-15 tons)
   const rtuCount = Math.max(Math.ceil(totalTons / 12), 1)
 
+  console.log(`🔧 HVAC Totals: ${totalTons.toFixed(1)} tons, ${dehumidLbHr} lb/hr dehumid, ${poolChillerTons} pool chiller tons`)
+  
   return {
     totalTons: Math.round(totalTons * 10) / 10,
     totalMBH: Math.round(totalMBH * 10) / 10,
