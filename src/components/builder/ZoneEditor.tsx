@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import LineItemsEditor from './LineItemsEditor'
 import { useProjectStore, calculateProcessLoads } from '../../store/useProjectStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
-import { getZoneCategories, getZoneTypesByCategory, calculateLaundryLoads } from '../../data/zoneDefaults'
+import { getZoneCategories, getZoneTypesByCategory } from '../../data/zoneDefaults'
 import type { Zone, ZoneType, ZoneProcessLoads } from '../../types'
 
 interface ZoneEditorProps {
@@ -95,24 +95,6 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
   const fixtureExhaustCFM = (defaults.exhaust_cfm_toilet || 0) * localZone.fixtures.wcs +
     (defaults.exhaust_cfm_shower || 0) * localZone.fixtures.showers
   
-  // Laundry equipment loads (if laundry zone)
-  let laundryKW = 0
-  let laundryGasMBH = 0
-  let laundryExhaustCFM = 0
-  const isGasDryers = localZone.subType === 'gas'
-  
-  if (defaults.laundry_equipment && (localZone.fixtures.washingMachines > 0 || localZone.fixtures.dryers > 0)) {
-    const laundryLoads = calculateLaundryLoads(
-      localZone.fixtures.washingMachines || 0,
-      localZone.fixtures.dryers || 0,
-      isGasDryers ? 'gas' : 'electric',
-      localZone.laundryEquipment
-    )
-    laundryExhaustCFM = laundryLoads.exhaust_cfm
-    laundryKW = laundryLoads.washer_kw + (isGasDryers ? 0 : laundryLoads.dryer_kw)
-    laundryGasMBH = isGasDryers ? laundryLoads.dryer_gas_mbh : 0
-  }
-  
   // 3. LINE ITEM TOTALS (the visible equipment!) - SIMPLE MATH!
   const lineItemKW = localZone.lineItems
     .filter(li => li.category === 'power' || li.category === 'lighting')
@@ -130,11 +112,12 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
     .filter(li => li.category === 'exhaust')
     .reduce((sum, li) => sum + li.quantity * li.value, 0)
   
-  // 4. FINAL TOTALS = Rate-based + Line Items + Fixtures + Laundry
-  const totalElecKW = lightingKW + receptacleKW + lineItemKW + laundryKW
-  const totalGasMBH = lineItemGasMBH + laundryGasMBH
-  const totalVentCFM = rateVentCFM + lineItemVentCFM + laundryExhaustCFM // laundry MUA = exhaust
-  const totalExhaustCFM = rateExhaustCFM + fixtureExhaustCFM + lineItemExhaustCFM + laundryExhaustCFM
+  // 4. FINAL TOTALS = Rate-based + Line Items + Fixtures
+  // ALL equipment (including laundry) should be in Line Items!
+  const totalElecKW = lightingKW + receptacleKW + lineItemKW
+  const totalGasMBH = lineItemGasMBH
+  const totalVentCFM = rateVentCFM + lineItemVentCFM
+  const totalExhaustCFM = rateExhaustCFM + fixtureExhaustCFM + lineItemExhaustCFM
 
   return (
     <>
@@ -351,12 +334,6 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
                     <span className="font-mono">{lineItemKW.toFixed(2)} kW</span>
                   </div>
                 )}
-                {laundryKW > 0 && (
-                  <div className="flex justify-between text-purple-400">
-                    <span>Laundry Equipment:</span>
-                    <span className="font-mono">{laundryKW.toFixed(2)} kW</span>
-                  </div>
-                )}
                 <div className="flex justify-between pt-1 border-t border-surface-700 font-semibold text-white">
                   <span>Total:</span>
                   <span className="font-mono">{totalElecKW.toFixed(1)} kW</span>
@@ -373,12 +350,6 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
                     <div className="flex justify-between text-orange-400">
                       <span>Equipment (Line Items):</span>
                       <span className="font-mono">{lineItemGasMBH.toFixed(0)} MBH</span>
-                    </div>
-                  )}
-                  {laundryGasMBH > 0 && (
-                    <div className="flex justify-between text-orange-400">
-                      <span>Laundry Dryers:</span>
-                      <span className="font-mono">{laundryGasMBH.toFixed(0)} MBH</span>
                     </div>
                   )}
                   <div className="flex justify-between pt-1 border-t border-surface-700 font-semibold text-orange-400">

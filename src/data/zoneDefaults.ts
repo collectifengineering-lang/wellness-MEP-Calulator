@@ -713,6 +713,13 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       dryer_exhaust_cfm: 1200,
       dryer_mua_sqin: 288,
     },
+    // DEFAULT EQUIPMENT - Editable in Settings!
+    defaultEquipment: [
+      { category: 'power', name: 'Commercial Washers (4x)', quantity: 4, unit: 'kW', value: 12.5, notes: 'B&C Tech SP-75 @ 12.5 kW each' },
+      { category: 'gas', name: 'Gas Dryers - Stacked (4 units = 8 pockets)', quantity: 8, unit: 'MBH', value: 95, notes: 'Huebsch HTT45 stacked @ 95 MBH per pocket' },
+      { category: 'exhaust', name: 'Dryer Exhaust', quantity: 4, unit: 'CFM', value: 1200, notes: '1200 CFM per dryer unit' },
+      { category: 'ventilation', name: 'Laundry Make-Up Air', quantity: 4, unit: 'CFM', value: 1200, notes: 'MUA to match exhaust' },
+    ],
     source_notes: 'Standby power required; Exhaust from dryer equipment; See equipment specs',
   },
   laundry_residential: {

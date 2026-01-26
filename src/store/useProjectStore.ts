@@ -180,6 +180,67 @@ export function generateDefaultLineItems(
     })
   }
   
+  // 8. LAUNDRY EQUIPMENT - Generate from default fixture counts
+  if (defaults.laundry_equipment) {
+    const washers = defaults.defaultFixtures.washingMachines || 0
+    const dryers = defaults.defaultFixtures.dryers || 0
+    const equipment = defaults.laundry_equipment
+    
+    // Washers (always electric)
+    if (washers > 0 && equipment.washer_kw) {
+      items.push({
+        id: uuidv4(),
+        category: 'power',
+        name: 'Commercial Washers',
+        quantity: washers,
+        unit: 'kW',
+        value: equipment.washer_kw,
+        notes: `${washers}x washers @ ${equipment.washer_kw} kW each`
+      })
+    }
+    
+    // Dryers - Gas or Electric based on subType
+    if (dryers > 0) {
+      if (subType === 'gas' && equipment.dryer_gas_mbh) {
+        // Gas dryers (stacked = 2 pockets per unit)
+        const pockets = dryers * 2
+        items.push({
+          id: uuidv4(),
+          category: 'gas',
+          name: 'Gas Dryers (Stacked)',
+          quantity: pockets,
+          unit: 'MBH',
+          value: equipment.dryer_gas_mbh,
+          notes: `${dryers} stacked units = ${pockets} pockets @ ${equipment.dryer_gas_mbh} MBH each`
+        })
+      } else if (equipment.dryer_kw_electric) {
+        // Electric dryers
+        items.push({
+          id: uuidv4(),
+          category: 'power',
+          name: 'Electric Dryers',
+          quantity: dryers,
+          unit: 'kW',
+          value: equipment.dryer_kw_electric,
+          notes: `${dryers}x dryers @ ${equipment.dryer_kw_electric} kW each`
+        })
+      }
+      
+      // Dryer exhaust
+      if (equipment.dryer_exhaust_cfm) {
+        items.push({
+          id: uuidv4(),
+          category: 'exhaust',
+          name: 'Dryer Exhaust',
+          quantity: dryers,
+          unit: 'CFM',
+          value: equipment.dryer_exhaust_cfm,
+          notes: `${dryers}x dryers @ ${equipment.dryer_exhaust_cfm} CFM each`
+        })
+      }
+    }
+  }
+  
   return items
 }
 
