@@ -293,7 +293,7 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
                   />
                 </td>
                 <td className="py-3 px-2">
-                  <div className="text-white">Fan Power (Supply + Exhaust)</div>
+                  <div className="text-white">Fan Power (Ventilation + Exhaust)</div>
                   <div className="text-xs text-surface-500 mt-0.5">
                     {hvac.totalVentCFM.toLocaleString()} + {hvac.totalExhaustCFM.toLocaleString()} = {totalCFM.toLocaleString()} CFM
                   </div>
@@ -359,7 +359,7 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
             </div>
             <div>
               <strong className="text-surface-300">Fans:</strong> 0.6 HP/1000 CFM
-              <p className="mt-0.5">Supply + exhaust fans</p>
+              <p className="mt-0.5">Ventilation + exhaust fans</p>
             </div>
           </div>
         </div>
