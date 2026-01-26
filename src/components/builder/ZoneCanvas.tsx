@@ -11,6 +11,7 @@ interface ZoneCanvasProps {
   calculations: {
     results: CalculationResults | null
     aggregatedFixtures: ZoneFixtures
+    mechanicalKVA: { total: number; breakdown: { name: string; kva: number }[] }
     totalSF: number
   }
 }

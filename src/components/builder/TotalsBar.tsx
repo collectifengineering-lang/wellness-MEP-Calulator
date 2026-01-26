@@ -4,12 +4,13 @@ interface TotalsBarProps {
   calculations: {
     results: CalculationResults | null
     aggregatedFixtures: ZoneFixtures
+    mechanicalKVA: { total: number; breakdown: { name: string; kva: number }[] }
     totalSF: number
   }
 }
 
 export default function TotalsBar({ calculations }: TotalsBarProps) {
-  const { results, aggregatedFixtures, totalSF } = calculations
+  const { results, aggregatedFixtures, mechanicalKVA, totalSF } = calculations
 
   if (!results) {
     return (
@@ -30,6 +31,7 @@ export default function TotalsBar({ calculations }: TotalsBarProps) {
       title: 'HVAC',
       items: [
         { label: 'Cooling', value: results.hvac.totalTons.toLocaleString(), unit: 'Tons', color: 'text-cyan-400' },
+        results.hvac.poolChillerTons > 0 && { label: '└ Pool Chiller', value: results.hvac.poolChillerTons.toLocaleString(), unit: 'Tons', color: 'text-blue-400' },
         { label: 'Heating', value: results.hvac.totalMBH.toLocaleString(), unit: 'MBH', color: 'text-orange-400' },
         { label: 'Ventilation', value: results.hvac.totalVentCFM.toLocaleString(), unit: 'CFM', color: 'text-emerald-400' },
         { label: 'Exhaust', value: results.hvac.totalExhaustCFM.toLocaleString(), unit: 'CFM', color: 'text-amber-400' },
@@ -39,11 +41,13 @@ export default function TotalsBar({ calculations }: TotalsBarProps) {
     {
       title: 'Electrical',
       items: [
-        { label: 'Total Load', value: results.electrical.totalKVA.toLocaleString(), unit: 'kVA', color: 'text-amber-400' },
+        { label: 'Building Load', value: results.electrical.totalKVA.toLocaleString(), unit: 'kVA', color: 'text-amber-400' },
+        mechanicalKVA.total > 0 && { label: 'Mech. Equip', value: Math.round(mechanicalKVA.total).toLocaleString(), unit: 'kVA', color: 'text-cyan-400' },
+        { label: 'Total Load', value: Math.round(results.electrical.totalKVA + mechanicalKVA.total).toLocaleString(), unit: 'kVA', color: 'text-yellow-400', bold: true },
         { label: 'Service', value: results.electrical.recommendedService, color: 'text-white' },
         { label: '@ 480V', value: results.electrical.amps_480v.toLocaleString(), unit: 'A', color: 'text-surface-300' },
         { label: '@ 208V', value: results.electrical.amps_208v.toLocaleString(), unit: 'A', color: 'text-surface-300' },
-      ],
+      ].filter(Boolean),
     },
     {
       title: 'Gas',
