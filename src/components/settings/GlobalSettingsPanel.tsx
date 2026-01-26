@@ -247,7 +247,55 @@ export default function GlobalSettingsPanel() {
           </h3>
           <p className="text-sm text-surface-400 mt-1">Water and drainage parameters</p>
         </div>
-        <div className="p-6 grid grid-cols-2 gap-4">
+        <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-surface-300 mb-2">Cold Water Velocity</label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.5"
+                min="2"
+                max="10"
+                value={plumbing.cold_water_velocity_fps}
+                onChange={(e) => updatePlumbingSettings({ cold_water_velocity_fps: Number(e.target.value) })}
+                className="w-full px-4 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white pr-12"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm">FPS</span>
+            </div>
+            <p className="text-xs text-surface-500 mt-1">Design velocity (5-8 FPS)</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-surface-300 mb-2">Hot Water Velocity</label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.5"
+                min="2"
+                max="8"
+                value={plumbing.hot_water_velocity_fps}
+                onChange={(e) => updatePlumbingSettings({ hot_water_velocity_fps: Number(e.target.value) })}
+                className="w-full px-4 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white pr-12"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm">FPS</span>
+            </div>
+            <p className="text-xs text-surface-500 mt-1">Lower for HW (3-5 FPS)</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-surface-300 mb-2">HW/CW Flow Ratio</label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.05"
+                min="0.40"
+                max="0.80"
+                value={plumbing.hot_water_flow_ratio}
+                onChange={(e) => updatePlumbingSettings({ hot_water_flow_ratio: Number(e.target.value) })}
+                className="w-full px-4 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white pr-8"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm">×</span>
+            </div>
+            <p className="text-xs text-surface-500 mt-1">HW flow = CW × ratio</p>
+          </div>
           <div>
             <label className="block text-sm font-medium text-surface-300 mb-2">Backwash Pit Threshold</label>
             <div className="relative">
@@ -263,22 +311,6 @@ export default function GlobalSettingsPanel() {
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm">GPM</span>
             </div>
             <p className="text-xs text-surface-500 mt-1">Above = pit/tank required</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-surface-300 mb-2">Hot Water Demand Factor</label>
-            <div className="relative">
-              <input
-                type="number"
-                step="0.05"
-                min="0.40"
-                max="0.80"
-                value={plumbing.hot_water_demand_factor}
-                onChange={(e) => updatePlumbingSettings({ hot_water_demand_factor: Number(e.target.value) })}
-                className="w-full px-4 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white pr-8"
-              />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 text-sm">×</span>
-            </div>
-            <p className="text-xs text-surface-500 mt-1">HW as % of cold water</p>
           </div>
         </div>
       </div>
