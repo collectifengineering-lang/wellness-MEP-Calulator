@@ -27,35 +27,33 @@ export default function ProjectWorkspace() {
   const lastUpdateTimestamp = useRef<string | null>(null)
   
   // CRITICAL: Track if initial load is complete to prevent auto-save from wiping data
-  const isLoadingProject = useRef(true)
-  
-  // Track if we've already initialized for this project
+  // Using STATE instead of ref so changes trigger re-renders
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState(false)
   const initializedProjectId = useRef<string | null>(null)
 
   // Load project if not already loaded, OR enable auto-save if already loaded
   useEffect(() => {
     if (!projectId) return
     
-    // If we've already initialized for this project, don't do it again
-    if (initializedProjectId.current === projectId) {
-      return
+    // Reset auto-save when project changes
+    if (initializedProjectId.current !== projectId) {
+      setAutoSaveEnabled(false)
+      initializedProjectId.current = projectId
     }
     
     if (!currentProject) {
       // Project not in store - need to load from database
-      isLoadingProject.current = true
-      initializedProjectId.current = projectId
       loadProject(projectId)
-    } else if (currentProject.id === projectId) {
-      // Project already loaded (e.g., from ProjectsGrid) - enable auto-save immediately
-      // but give React a tick to stabilize
-      initializedProjectId.current = projectId
-      setTimeout(() => {
-        isLoadingProject.current = false
-        console.log('Project already loaded - auto-save enabled')
-      }, 100)
+    } else if (currentProject.id === projectId && !autoSaveEnabled) {
+      // Project loaded - enable auto-save after a short delay
+      console.log('🔓 Enabling auto-save in 500ms...')
+      const timer = setTimeout(() => {
+        console.log('✅ Auto-save NOW ENABLED')
+        setAutoSaveEnabled(true)
+      }, 500)
+      return () => clearTimeout(timer)
     }
-  }, [projectId, currentProject])
+  }, [projectId, currentProject, autoSaveEnabled])
 
   const loadProject = async (id: string) => {
     if (isSupabaseConfigured()) {
@@ -149,11 +147,8 @@ export default function ProjectWorkspace() {
         }
         
         // Mark loading complete AFTER both project and zones are loaded
-        // Use setTimeout to allow React state to settle before enabling auto-save
-        setTimeout(() => {
-          isLoadingProject.current = false
-          console.log('Project load complete - auto-save enabled')
-        }, 500)
+        // The useEffect will handle enabling auto-save after project is set
+        console.log('📥 Project and zones loaded from DB')
       }
     } else {
       // Dev mode: load from localStorage
@@ -169,11 +164,8 @@ export default function ProjectWorkspace() {
           }
         }
       }
-      // Mark loading complete for localStorage path too
-      setTimeout(() => {
-        isLoadingProject.current = false
-        console.log('Project load complete (localStorage) - auto-save enabled')
-      }, 500)
+      // The useEffect will handle enabling auto-save after project is set
+      console.log('📥 Project loaded from localStorage')
     }
   }
 
@@ -310,9 +302,9 @@ export default function ProjectWorkspace() {
   useEffect(() => {
     if (!currentProject) return
     
-    // CRITICAL: Don't auto-save while loading from database - this prevents wiping data!
-    if (isLoadingProject.current) {
-      console.log('🚫 Skipping auto-save - still loading project')
+    // CRITICAL: Don't auto-save until enabled (prevents wiping data during load)
+    if (!autoSaveEnabled) {
+      console.log('🚫 Auto-save waiting - not yet enabled')
       return
     }
     
@@ -326,7 +318,7 @@ export default function ProjectWorkspace() {
       saveProject()
     }, 1000)
     return () => clearTimeout(timer)
-  }, [currentProject, zones])
+  }, [currentProject, zones, autoSaveEnabled])
 
   const saveProject = useCallback(async () => {
     if (!currentProject) return
