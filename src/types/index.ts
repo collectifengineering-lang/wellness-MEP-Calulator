@@ -273,3 +273,66 @@ export interface PlumbingCalcResult {
   coldActualVelocityFPS?: number
   hotActualVelocityFPS?: number
 }
+
+// =====================
+// Pool Room Design Types
+// =====================
+
+export type PoolType = 
+  | 'competition' 
+  | 'recreational' 
+  | 'hotel' 
+  | 'therapy' 
+  | 'whirlpool' 
+  | 'dive' 
+  | 'lap' 
+  | 'elderly' 
+  | 'kids' 
+  | 'waterpark' 
+  | 'residential'
+
+export interface PoolConfig {
+  id: string
+  name: string
+  surfaceAreaSF: number
+  waterTempF: number
+  activityFactor: number  // 0.5 to 1.5
+  poolType: PoolType
+}
+
+export interface PoolRoomParams {
+  roomSF: number            // room floor area (SF)
+  ceilingHeightFt: number   // ceiling height (ft), typically 15-25 for natatoriums
+  airTempF: number          // room air temperature, typically 82-86°F
+  relativeHumidity: number  // typically 50-60%
+  wetDeckAreaSF: number     // deck area around pools
+  spectatorCount: number    // number of spectators (not swimmers)
+  airChangesPerHour: number // 4-6 recommended for natatoriums
+}
+
+export interface PoolRoomResults {
+  // Dehumidification
+  totalEvaporationLbHr: number
+  poolBreakdown: Array<{ id: string; name: string; lbHr: number; surfaceAreaSF: number }>
+  
+  // Airflow
+  supplyAirCFM: number
+  outdoorAirCFM: number
+  exhaustAirCFM: number
+  
+  // Room metrics
+  roomVolumeCF: number
+  totalPoolAreaSF: number
+  
+  // Reference values
+  recommendedACH: { min: number; max: number }
+  actualACH: number
+}
+
+// Stored pool room configuration for a zone
+export interface PoolRoomDesign {
+  targetZoneId: string | null
+  pools: PoolConfig[]
+  params: PoolRoomParams
+  lastResults?: PoolRoomResults
+}

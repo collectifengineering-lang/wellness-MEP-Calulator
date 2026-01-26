@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import UserMenu from './auth/UserMenu'
 import ZoneCanvas from './builder/ZoneCanvas'
+import PoolRoomTab from './pool-design/PoolRoomTab'
 import CentralPlantTab from './central-plant/CentralPlantTab'
 import ResultsTab from './results/ResultsTab'
 import { useProjectStore } from '../store/useProjectStore'
@@ -9,7 +10,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { useCalculations } from '../hooks/useCalculations'
 import { getDefaultDHWSettings, getDefaultElectricalSettings, getDefaultResultAdjustments } from '../data/defaults'
 
-type TabType = 'builder' | 'central' | 'results'
+type TabType = 'builder' | 'pool' | 'central' | 'results'
 
 export default function ProjectWorkspace() {
   const { projectId } = useParams()
@@ -390,6 +391,7 @@ export default function ProjectWorkspace() {
             <nav className="flex items-center gap-1 bg-surface-800 rounded-lg p-1">
               {[
                 { id: 'builder', label: 'Zone Builder' },
+                { id: 'pool', label: '🏊 Pool Room' },
                 { id: 'central', label: 'Central Plant' },
                 { id: 'results', label: 'Results' },
               ].map(tab => (
@@ -431,6 +433,9 @@ export default function ProjectWorkspace() {
       <main className="flex-1 overflow-hidden">
         {activeTab === 'builder' && (
           <ZoneCanvas calculations={calculations} />
+        )}
+        {activeTab === 'pool' && (
+          <PoolRoomTab />
         )}
         {activeTab === 'central' && (
           <CentralPlantTab calculations={calculations} />
