@@ -362,63 +362,195 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
             <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-purple-400 mb-3">📋 Equipment Assumptions</h4>
               
-              {/* Laundry Equipment Specs (B&C Tech SP-75, Stacker Dryer) */}
+              {/* Laundry Equipment Specs (Editable) */}
               {defaults.laundry_equipment && (
                 <div className="space-y-3">
+                  {/* Washer Section */}
                   <div className="bg-surface-900/50 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-white">🧺 Washers ({localZone.fixtures.washingMachines})</span>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-medium text-white">🧺 Washers</span>
                       <span className="text-xs text-surface-400">B&C Tech SP-75</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div>
+                        <label className="text-xs text-surface-400">Quantity</label>
+                        <input
+                          type="number"
+                          value={localZone.fixtures.washingMachines}
+                          onChange={(e) => handleUpdate({
+                            fixtures: { ...localZone.fixtures, washingMachines: Number(e.target.value) }
+                          })}
+                          min={0}
+                          className="w-full px-2 py-1.5 bg-surface-900 border border-surface-600 rounded text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-surface-400">kW each</label>
+                        <input
+                          type="number"
+                          value={localZone.laundryEquipment?.washer_kw ?? defaults.laundry_equipment.washer_kw}
+                          onChange={(e) => handleUpdate({
+                            laundryEquipment: { 
+                              ...(localZone.laundryEquipment || defaults.laundry_equipment),
+                              washer_kw: Number(e.target.value)
+                            }
+                          })}
+                          step={0.5}
+                          min={0}
+                          className="w-full px-2 py-1.5 bg-surface-900 border border-surface-600 rounded text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-surface-400">Water GPM</label>
+                        <input
+                          type="number"
+                          value={localZone.laundryEquipment?.washer_water_gpm ?? defaults.laundry_equipment.washer_water_gpm}
+                          onChange={(e) => handleUpdate({
+                            laundryEquipment: { 
+                              ...(localZone.laundryEquipment || defaults.laundry_equipment),
+                              washer_water_gpm: Number(e.target.value)
+                            }
+                          })}
+                          step={1}
+                          min={0}
+                          className="w-full px-2 py-1.5 bg-surface-900 border border-surface-600 rounded text-white text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs bg-surface-800/50 rounded p-2">
                       <div className="flex justify-between">
-                        <span className="text-surface-400">Per unit:</span>
-                        <span className="text-white font-mono">{defaults.laundry_equipment.washer_kw} kW / {defaults.laundry_equipment.washer_amps_208v}A</span>
+                        <span className="text-surface-400">Total kW:</span>
+                        <span className="text-amber-400 font-mono">
+                          {(localZone.fixtures.washingMachines * (localZone.laundryEquipment?.washer_kw ?? defaults.laundry_equipment.washer_kw)).toFixed(1)} kW
+                        </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-surface-400">Total elec:</span>
-                        <span className="text-amber-400 font-mono">{(localZone.fixtures.washingMachines * defaults.laundry_equipment.washer_kw).toFixed(1)} kW</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-surface-400">Water:</span>
-                        <span className="text-white font-mono">{defaults.laundry_equipment.washer_water_gpm} GPM</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-surface-400">Drain:</span>
-                        <span className="text-white font-mono">{defaults.laundry_equipment.washer_drain_gpm} GPM ({defaults.laundry_equipment.washer_dfu} DFU)</span>
+                        <span className="text-surface-400">Total Water:</span>
+                        <span className="text-cyan-400 font-mono">
+                          {(localZone.fixtures.washingMachines * (localZone.laundryEquipment?.washer_water_gpm ?? defaults.laundry_equipment.washer_water_gpm)).toFixed(0)} GPM
+                        </span>
                       </div>
                     </div>
                   </div>
                   
+                  {/* Dryer Section */}
                   <div className="bg-surface-900/50 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-white">♨️ Dryers ({localZone.fixtures.dryers})</span>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-medium text-white">♨️ Dryers</span>
                       <span className="text-xs text-surface-400">Stacker Gas/Electric</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div>
+                        <label className="text-xs text-surface-400">Quantity</label>
+                        <input
+                          type="number"
+                          value={localZone.fixtures.dryers}
+                          onChange={(e) => handleUpdate({
+                            fixtures: { ...localZone.fixtures, dryers: Number(e.target.value) }
+                          })}
+                          min={0}
+                          className="w-full px-2 py-1.5 bg-surface-900 border border-surface-600 rounded text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-surface-400">Gas MBH ea.</label>
+                        <input
+                          type="number"
+                          value={localZone.laundryEquipment?.dryer_gas_mbh ?? defaults.laundry_equipment.dryer_gas_mbh}
+                          onChange={(e) => handleUpdate({
+                            laundryEquipment: { 
+                              ...(localZone.laundryEquipment || defaults.laundry_equipment),
+                              dryer_gas_mbh: Number(e.target.value)
+                            }
+                          })}
+                          step={5}
+                          min={0}
+                          className="w-full px-2 py-1.5 bg-surface-900 border border-surface-600 rounded text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-surface-400">Exhaust CFM</label>
+                        <input
+                          type="number"
+                          value={localZone.laundryEquipment?.dryer_exhaust_cfm ?? defaults.laundry_equipment.dryer_exhaust_cfm}
+                          onChange={(e) => handleUpdate({
+                            laundryEquipment: { 
+                              ...(localZone.laundryEquipment || defaults.laundry_equipment),
+                              dryer_exhaust_cfm: Number(e.target.value)
+                            }
+                          })}
+                          step={50}
+                          min={0}
+                          className="w-full px-2 py-1.5 bg-surface-900 border border-surface-600 rounded text-white text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div>
+                        <label className="text-xs text-surface-400">kW (elec alt)</label>
+                        <input
+                          type="number"
+                          value={localZone.laundryEquipment?.dryer_kw_electric ?? defaults.laundry_equipment.dryer_kw_electric}
+                          onChange={(e) => handleUpdate({
+                            laundryEquipment: { 
+                              ...(localZone.laundryEquipment || defaults.laundry_equipment),
+                              dryer_kw_electric: Number(e.target.value)
+                            }
+                          })}
+                          step={1}
+                          min={0}
+                          className="w-full px-2 py-1.5 bg-surface-900 border border-surface-600 rounded text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-surface-400">MUA sq.in.</label>
+                        <input
+                          type="number"
+                          value={localZone.laundryEquipment?.dryer_mua_sqin ?? defaults.laundry_equipment.dryer_mua_sqin}
+                          onChange={(e) => handleUpdate({
+                            laundryEquipment: { 
+                              ...(localZone.laundryEquipment || defaults.laundry_equipment),
+                              dryer_mua_sqin: Number(e.target.value)
+                            }
+                          })}
+                          step={10}
+                          min={0}
+                          className="w-full px-2 py-1.5 bg-surface-900 border border-surface-600 rounded text-white text-sm"
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <button
+                          onClick={() => handleUpdate({ laundryEquipment: undefined })}
+                          className="w-full px-2 py-1.5 text-xs bg-surface-700 hover:bg-surface-600 text-surface-300 rounded"
+                        >
+                          Reset Defaults
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs bg-surface-800/50 rounded p-2">
                       <div className="flex justify-between">
-                        <span className="text-surface-400">Gas per unit:</span>
-                        <span className="text-white font-mono">{defaults.laundry_equipment.dryer_gas_mbh} MBH</span>
+                        <span className="text-surface-400">Total Gas:</span>
+                        <span className="text-orange-400 font-mono">
+                          {(localZone.fixtures.dryers * (localZone.laundryEquipment?.dryer_gas_mbh ?? defaults.laundry_equipment.dryer_gas_mbh)).toFixed(0)} MBH
+                        </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-surface-400">Total gas:</span>
-                        <span className="text-orange-400 font-mono">{(localZone.fixtures.dryers * defaults.laundry_equipment.dryer_gas_mbh).toFixed(0)} MBH</span>
+                        <span className="text-surface-400">Total Exhaust:</span>
+                        <span className="text-cyan-400 font-mono">
+                          {(localZone.fixtures.dryers * (localZone.laundryEquipment?.dryer_exhaust_cfm ?? defaults.laundry_equipment.dryer_exhaust_cfm)).toLocaleString()} CFM
+                        </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-surface-400">Electric alt:</span>
-                        <span className="text-white font-mono">{defaults.laundry_equipment.dryer_kw_electric} kW each</span>
+                        <span className="text-surface-400">Alt Electric:</span>
+                        <span className="text-amber-400 font-mono">
+                          {(localZone.fixtures.dryers * (localZone.laundryEquipment?.dryer_kw_electric ?? defaults.laundry_equipment.dryer_kw_electric)).toFixed(0)} kW
+                        </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-surface-400">Exhaust:</span>
-                        <span className="text-cyan-400 font-mono">{defaults.laundry_equipment.dryer_exhaust_cfm} CFM each</span>
-                      </div>
-                      <div className="flex justify-between col-span-2">
-                        <span className="text-surface-400">Total dryer exhaust:</span>
-                        <span className="text-cyan-400 font-mono">{(localZone.fixtures.dryers * defaults.laundry_equipment.dryer_exhaust_cfm).toLocaleString()} CFM</span>
-                      </div>
-                      <div className="flex justify-between col-span-2">
-                        <span className="text-surface-400">MUA opening req'd:</span>
-                        <span className="text-white font-mono">{(localZone.fixtures.dryers * defaults.laundry_equipment.dryer_mua_sqin).toLocaleString()} sq.in.</span>
+                        <span className="text-surface-400">MUA Opening:</span>
+                        <span className="text-white font-mono">
+                          {(localZone.fixtures.dryers * (localZone.laundryEquipment?.dryer_mua_sqin ?? defaults.laundry_equipment.dryer_mua_sqin)).toLocaleString()} sq.in.
+                        </span>
                       </div>
                     </div>
                   </div>

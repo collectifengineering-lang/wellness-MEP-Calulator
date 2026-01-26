@@ -84,6 +84,19 @@ export interface ZoneProcessLoads {
   ceiling_height_ft: number  // Ceiling height for ACH calcs
 }
 
+// Laundry equipment specs (editable per zone, all optional for partial overrides)
+export interface LaundryEquipment {
+  washer_kw?: number
+  washer_amps_208v?: number
+  washer_water_gpm?: number
+  washer_drain_gpm?: number
+  washer_dfu?: number
+  dryer_gas_mbh?: number
+  dryer_kw_electric?: number
+  dryer_exhaust_cfm?: number
+  dryer_mua_sqin?: number
+}
+
 export interface Zone {
   id: string
   projectId: string
@@ -97,6 +110,7 @@ export interface Zone {
   processLoads: ZoneProcessLoads
   lineItems: LineItem[]
   sortOrder: number
+  laundryEquipment?: LaundryEquipment  // Optional laundry equipment overrides
 }
 
 // ASHRAE building types for DHW demand factors
