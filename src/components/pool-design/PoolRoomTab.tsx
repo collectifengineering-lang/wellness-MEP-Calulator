@@ -28,6 +28,33 @@ export default function PoolRoomTab() {
   // State for editing pool
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null)
   
+  // Debug: Log what's in poolRoomDesign
+  useEffect(() => {
+    console.log('🏊 Pool Room Design data:', currentProject?.poolRoomDesign)
+  }, [currentProject?.poolRoomDesign])
+  
+  // Migrate old format to new format if needed
+  useEffect(() => {
+    const design = currentProject?.poolRoomDesign
+    if (!design) return
+    
+    // Check if old format (has targetZoneId and pools at root, not zoneConfigs)
+    const oldFormat = design as { targetZoneId?: string; pools?: PoolConfig[]; params?: PoolRoomParams }
+    if (oldFormat.targetZoneId && oldFormat.pools && oldFormat.pools.length > 0 && !design.zoneConfigs) {
+      console.log('🔄 Migrating old pool design format to new per-zone format')
+      // Migrate to new format
+      updatePoolRoomDesign({
+        zoneConfigs: {
+          [oldFormat.targetZoneId]: {
+            pools: oldFormat.pools,
+            params: oldFormat.params || getDefaultPoolRoomParams(2000)
+          }
+        },
+        activeZoneId: oldFormat.targetZoneId
+      })
+    }
+  }, [currentProject?.poolRoomDesign, updatePoolRoomDesign])
+  
   // Load active zone from saved design on mount
   useEffect(() => {
     if (currentProject?.poolRoomDesign?.activeZoneId && !targetZoneId) {
