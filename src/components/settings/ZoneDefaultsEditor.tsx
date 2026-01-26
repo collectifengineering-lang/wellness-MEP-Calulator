@@ -3,8 +3,9 @@ import { v4 as uuidv4 } from 'uuid'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { zoneDefaults as builtInDefaults } from '../../data/zoneDefaults'
 import type { ZoneDefaults } from '../../data/zoneDefaults'
-import { NYC_FIXTURE_DATABASE, FIXTURE_CATEGORIES, getFixtureById, LEGACY_FIXTURE_MAPPING } from '../../data/nycFixtures'
+import { getFixtureById, LEGACY_FIXTURE_MAPPING } from '../../data/nycFixtures'
 import type { ZoneFixtures } from '../../types'
+import { AddFixtureModal } from '../builder/AddFixtureModal'
 
 // Equipment categories with display info
 const equipmentCategories = [
@@ -284,7 +285,10 @@ function DefaultEquipmentEditor({
   )
 }
 
-// Component for editing default fixtures with add/remove functionality
+/**
+ * Component for editing default fixtures - uses SAME UI as ZoneEditor
+ * This is a direct copy of DynamicFixturesSection from ZoneEditor.tsx
+ */
 function DefaultFixturesEditor({ 
   fixtures, 
   visibleFixtures,
@@ -297,19 +301,26 @@ function DefaultFixturesEditor({
   onVisibleChange: (visibleFixtures: string[]) => void
 }) {
   const [showAddModal, setShowAddModal] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(FIXTURE_CATEGORIES))
 
-  // Get fixtures to display (visible + those with counts)
+  // Get all fixture IDs to display:
+  // 1. Fixtures that have counts > 0
+  // 2. Fixtures in visibleFixtures (even if count is 0)
+  // 3. Legacy fixture IDs with counts > 0 (for backwards compatibility)
   const displayedFixtureIds = useMemo(() => {
     const ids = new Set<string>()
+    
+    // Add visible fixtures from zone defaults
     visibleFixtures.forEach(id => ids.add(id))
+    
+    // Add fixtures with counts > 0
     Object.entries(fixtures).forEach(([id, count]) => {
       if (count > 0) {
+        // Check if it's a legacy ID and convert to new ID
         const newId = LEGACY_FIXTURE_MAPPING[id] || id
         ids.add(newId)
       }
     })
+    
     return Array.from(ids)
   }, [fixtures, visibleFixtures])
 
@@ -318,15 +329,18 @@ function DefaultFixturesEditor({
     .map(id => {
       const def = getFixtureById(id)
       if (!def) return null
+      // Get count from new ID or legacy ID
       const legacyId = Object.entries(LEGACY_FIXTURE_MAPPING).find(([_, newId]) => newId === id)?.[0]
       const count = fixtures[id] || (legacyId ? fixtures[legacyId] : 0) || 0
       return { ...def, count }
     })
-    .filter(Boolean) as Array<{ id: string; name: string; icon: string; count: number; wsfuTotal: number; dfu: number; occupancy: string }>
+    .filter(Boolean) as Array<{ id: string; name: string; icon: string; count: number; wsfuTotal: number; dfu: number }>
 
+  // Handle fixture removal (set to 0)
   const handleRemoveFixture = (fixtureId: string) => {
     const newFixtures = { ...fixtures }
     delete newFixtures[fixtureId]
+    // Also check for legacy ID
     const legacyId = Object.entries(LEGACY_FIXTURE_MAPPING).find(([_, newId]) => newId === fixtureId)?.[0]
     if (legacyId) delete newFixtures[legacyId]
     onChange(newFixtures)
@@ -334,46 +348,23 @@ function DefaultFixturesEditor({
     onVisibleChange(visibleFixtures.filter(id => id !== fixtureId))
   }
 
+  // Handle adding fixture from modal
   const handleAddFixture = (fixtureId: string, count: number) => {
-    onChange({ ...fixtures, [fixtureId]: count })
-    // Add to visible fixtures if not already there
-    if (!visibleFixtures.includes(fixtureId)) {
-      onVisibleChange([...visibleFixtures, fixtureId])
+    if (count > 0) {
+      onChange({ ...fixtures, [fixtureId]: count })
+      // Add to visible fixtures if not already there
+      if (!visibleFixtures.includes(fixtureId)) {
+        onVisibleChange([...visibleFixtures, fixtureId])
+      }
+    } else {
+      handleRemoveFixture(fixtureId)
     }
-    setShowAddModal(false)
   }
-
-  const toggleCategory = (cat: string) => {
-    setExpandedCategories(prev => {
-      const next = new Set(prev)
-      if (next.has(cat)) next.delete(cat)
-      else next.add(cat)
-      return next
-    })
-  }
-
-  // Filter fixtures for add modal
-  const filteredFixtures = useMemo(() => {
-    return NYC_FIXTURE_DATABASE.filter(f => {
-      if (searchTerm === '') return true
-      return f.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             f.category.toLowerCase().includes(searchTerm.toLowerCase())
-    })
-  }, [searchTerm])
-
-  const groupedFixtures = useMemo(() => {
-    const groups: Record<string, typeof filteredFixtures> = {}
-    for (const cat of FIXTURE_CATEGORIES) {
-      const items = filteredFixtures.filter(f => f.category === cat)
-      if (items.length > 0) groups[cat] = items
-    }
-    return groups
-  }, [filteredFixtures])
 
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-white">🚿 Default Fixture Counts</h3>
+        <h4 className="text-sm font-medium text-surface-300">🚿 Default Fixtures</h4>
         <button
           onClick={() => setShowAddModal(true)}
           className="px-2 py-1 text-xs bg-primary-600/20 hover:bg-primary-600/30 text-primary-400 rounded flex items-center gap-1"
@@ -391,9 +382,6 @@ function DefaultFixturesEditor({
                 <div className="text-xs text-white truncate">{fixture.name}</div>
                 <div className="text-[10px] text-surface-500">
                   WSFU: {fixture.wsfuTotal} | DFU: {fixture.dfu}
-                  <span className={`ml-1 ${fixture.occupancy === 'public' ? 'text-cyan-400' : 'text-amber-400'}`}>
-                    ({fixture.occupancy})
-                  </span>
                 </div>
               </div>
               <input
@@ -432,92 +420,13 @@ function DefaultFixturesEditor({
         </div>
       )}
 
-      {/* Add Fixture Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="bg-surface-800 rounded-2xl w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl border border-surface-700">
-            <div className="px-6 py-4 border-b border-surface-700 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-white">Add Fixture to Template</h2>
-                <p className="text-sm text-surface-400">ASPE Plumbing Fixture Database</p>
-              </div>
-              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-surface-700 rounded-lg">
-                <svg className="w-5 h-5 text-surface-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="px-6 py-3 border-b border-surface-700">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search fixtures..."
-                className="w-full bg-surface-900 border border-surface-600 rounded-lg py-2 px-4 text-white placeholder-surface-500"
-              />
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-              {Object.entries(groupedFixtures).map(([category, items]) => (
-                <div key={category} className="bg-surface-900/50 rounded-lg overflow-hidden">
-                  <button
-                    onClick={() => toggleCategory(category)}
-                    className="w-full flex items-center justify-between px-4 py-2 hover:bg-surface-700/50"
-                  >
-                    <span className="font-medium text-surface-200">{category}</span>
-                    <svg className={`w-4 h-4 text-surface-400 transition-transform ${expandedCategories.has(category) ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {expandedCategories.has(category) && (
-                    <div className="px-2 pb-2 space-y-1">
-                      {items.map(fixture => {
-                        const isAdded = displayedFixtureIds.includes(fixture.id)
-                        return (
-                          <button
-                            key={fixture.id}
-                            onClick={() => handleAddFixture(fixture.id, 1)}
-                            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                              isAdded 
-                                ? 'bg-emerald-900/30 border border-emerald-600/50'
-                                : 'bg-surface-800 hover:bg-surface-700 border border-transparent'
-                            }`}
-                          >
-                            <span className="text-lg">{fixture.icon}</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm text-white truncate">{fixture.name}</div>
-                              <div className="text-xs text-surface-500">
-                                WSFU: {fixture.wsfuTotal} | DFU: {fixture.dfu}
-                                <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${
-                                  fixture.occupancy === 'public' 
-                                    ? 'bg-cyan-900/50 text-cyan-300' 
-                                    : 'bg-amber-900/50 text-amber-300'
-                                }`}>
-                                  {fixture.occupancy}
-                                </span>
-                              </div>
-                            </div>
-                            {isAdded && (
-                              <span className="text-xs text-emerald-400">✓ Added</span>
-                            )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="px-6 py-3 border-t border-surface-700 flex justify-end">
-              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-surface-300 hover:text-white">
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Use the SAME AddFixtureModal as ZoneEditor */}
+      <AddFixtureModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAddFixture={handleAddFixture}
+        existingFixtures={fixtures}
+      />
     </div>
   )
 }
