@@ -17,7 +17,7 @@ interface ResultsTabProps {
 
 export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTabProps) {
   const { currentProject, zones } = useProjectStore()
-  const { results, aggregatedFixtures, totalSF, mechanicalKVA } = calculations
+  const { results, aggregatedFixtures, totalSF } = calculations
   const [includeDetailed, setIncludeDetailed] = useState(false)
   const [showDetailedReport, setShowDetailedReport] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -53,14 +53,25 @@ export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTab
       
       if (error) throw error
       
-      setSavedReports((data || []).map(r => ({
+      // Cast to any to handle untyped table
+      const reports = (data || []) as Array<{
+        id: string
+        project_id: string
+        name: string
+        version: number
+        created_at: string
+        notes?: string
+        snapshot: SavedReport['snapshot']
+      }>
+      
+      setSavedReports(reports.map(r => ({
         id: r.id,
         projectId: r.project_id,
         name: r.name,
         version: r.version,
         createdAt: new Date(r.created_at),
         notes: r.notes,
-        snapshot: r.snapshot as SavedReport['snapshot']
+        snapshot: r.snapshot
       })))
     } catch (error) {
       console.error('Error loading saved reports:', error)
@@ -135,19 +146,22 @@ export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTab
             name: name || `Report v${nextVersion}`,
             version: nextVersion,
             snapshot
-          })
+          } as Record<string, unknown>)
           .select()
           .single()
         
         if (error) throw error
         
+        // Cast response to handle untyped table
+        const reportData = data as { id: string; name: string; version: number; created_at: string }
+        
         // Add to local state
         const newReport: SavedReport = {
-          id: data.id,
+          id: reportData.id,
           projectId: currentProject.id,
-          name: data.name,
-          version: data.version,
-          createdAt: new Date(data.created_at),
+          name: reportData.name,
+          version: reportData.version,
+          createdAt: new Date(reportData.created_at),
           snapshot
         }
         setSavedReports(prev => [newReport, ...prev])

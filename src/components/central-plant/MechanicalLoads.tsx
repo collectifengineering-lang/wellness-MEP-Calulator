@@ -326,7 +326,7 @@ export function calculateMechanicalKVA(
   settings: MechanicalElectricalSettings,
   dhwHeaterType: 'electric' | 'gas',
   powerFactor: number,
-  electricPrimary: boolean
+  _electricPrimary: boolean // Prefixed with _ to indicate intentionally unused
 ): { total: number; breakdown: { name: string; kva: number }[] } {
   const breakdown: { name: string; kva: number }[] = []
   
