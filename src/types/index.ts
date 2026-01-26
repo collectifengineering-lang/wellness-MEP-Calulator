@@ -408,10 +408,17 @@ export interface PoolRoomResults {
   actualACH: number
 }
 
-// Stored pool room configuration for a zone
-export interface PoolRoomDesign {
-  targetZoneId: string | null
+// Pool configuration for a single zone
+export interface ZonePoolConfig {
   pools: PoolConfig[]
   params: PoolRoomParams
   lastResults?: PoolRoomResults
+}
+
+// Stored pool room configurations - one per zone
+export interface PoolRoomDesign {
+  // Map of zone ID to pool configuration
+  zoneConfigs: Record<string, ZonePoolConfig>
+  // Currently selected zone in the UI (for convenience)
+  activeZoneId?: string | null
 }

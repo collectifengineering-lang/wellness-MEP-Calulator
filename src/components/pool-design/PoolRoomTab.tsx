@@ -16,50 +16,79 @@ import {
 export default function PoolRoomTab() {
   const { currentProject, zones, updateZone, addLineItem, updatePoolRoomDesign } = useProjectStore()
   
-  // Track if we've loaded from saved design
-  const [hasLoadedSavedDesign, setHasLoadedSavedDesign] = useState(false)
-  
   // State for target zone selection
   const [targetZoneId, setTargetZoneId] = useState<string | null>(null)
   
-  // State for pools
+  // State for pools - loaded per zone
   const [pools, setPools] = useState<PoolConfig[]>([])
   
-  // State for room parameters
+  // State for room parameters - loaded per zone
   const [params, setParams] = useState<PoolRoomParams>(getDefaultPoolRoomParams(2000))
   
   // State for editing pool
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null)
   
-  // Load saved design when currentProject becomes available
-  // This fixes the issue where state initializes before project loads from DB
+  // Load active zone from saved design on mount
   useEffect(() => {
-    if (currentProject?.poolRoomDesign && !hasLoadedSavedDesign) {
-      const saved = currentProject.poolRoomDesign
-      if (saved.targetZoneId) setTargetZoneId(saved.targetZoneId)
-      if (saved.pools && saved.pools.length > 0) setPools(saved.pools)
-      if (saved.params) setParams(saved.params)
-      setHasLoadedSavedDesign(true)
+    if (currentProject?.poolRoomDesign?.activeZoneId && !targetZoneId) {
+      setTargetZoneId(currentProject.poolRoomDesign.activeZoneId)
     }
-  }, [currentProject?.poolRoomDesign, hasLoadedSavedDesign])
+  }, [currentProject?.poolRoomDesign?.activeZoneId, targetZoneId])
   
-  // Save to store whenever design changes (debounced via auto-save in ProjectWorkspace)
-  const saveDesign = useCallback(() => {
-    // Only save after we've had a chance to load
-    if (!hasLoadedSavedDesign && currentProject?.poolRoomDesign) return
+  // When target zone changes, load that zone's pool configuration
+  useEffect(() => {
+    if (!targetZoneId) {
+      // No zone selected - clear pools
+      setPools([])
+      setParams(getDefaultPoolRoomParams(2000))
+      return
+    }
+    
+    // Get zone SF for default params
+    const zone = zones.find(z => z.id === targetZoneId)
+    const zoneSF = zone?.sf || 2000
+    
+    // Load zone's saved pool config or start fresh
+    const zoneConfig = currentProject?.poolRoomDesign?.zoneConfigs?.[targetZoneId]
+    if (zoneConfig) {
+      console.log(`📥 Loading pool config for zone "${zone?.name}": ${zoneConfig.pools.length} pools`)
+      setPools(zoneConfig.pools)
+      setParams(zoneConfig.params)
+    } else {
+      console.log(`📥 No pool config for zone "${zone?.name}" - starting fresh`)
+      setPools([])
+      setParams(getDefaultPoolRoomParams(zoneSF))
+    }
+  }, [targetZoneId, currentProject?.poolRoomDesign?.zoneConfigs, zones])
+  
+  // Save current zone's config when pools or params change
+  const saveZoneConfig = useCallback(() => {
+    if (!targetZoneId) return
+    
+    // Get existing configs
+    const existingConfigs = currentProject?.poolRoomDesign?.zoneConfigs || {}
+    
+    // Update or remove this zone's config
+    const newConfigs = { ...existingConfigs }
+    if (pools.length > 0) {
+      newConfigs[targetZoneId] = { pools, params }
+    } else {
+      // Remove config if no pools (clean up)
+      delete newConfigs[targetZoneId]
+    }
     
     updatePoolRoomDesign({
-      targetZoneId,
-      pools,
-      params,
+      zoneConfigs: newConfigs,
+      activeZoneId: targetZoneId,
     })
-  }, [targetZoneId, pools, params, updatePoolRoomDesign, hasLoadedSavedDesign, currentProject?.poolRoomDesign])
+  }, [targetZoneId, pools, params, currentProject?.poolRoomDesign?.zoneConfigs, updatePoolRoomDesign])
   
-  // Auto-save whenever pools, params, or target zone changes
+  // Auto-save when pools or params change (debounced)
   useEffect(() => {
-    const timer = setTimeout(saveDesign, 300)
+    if (!targetZoneId) return
+    const timer = setTimeout(saveZoneConfig, 500)
     return () => clearTimeout(timer)
-  }, [saveDesign])
+  }, [pools, params, saveZoneConfig, targetZoneId])
   
   // Get pool-related zones (pool_indoor, pool_outdoor, hot_tub, etc.)
   const poolZones = zones.filter(z => 
@@ -73,15 +102,15 @@ export default function PoolRoomTab() {
   
   const allZones = zones
   
-  // When target zone changes, update room SF
+  // Update room SF from zone (only the SF, not the whole params - those are loaded above)
   useEffect(() => {
     if (targetZoneId) {
       const zone = zones.find(z => z.id === targetZoneId)
-      if (zone) {
+      if (zone && params.roomSF !== zone.sf) {
+        // Only update roomSF if it changed (don't override loaded params)
         setParams(prev => ({
           ...prev,
           roomSF: zone.sf,
-          wetDeckAreaSF: Math.round(zone.sf * 0.3), // Estimate 30% wet deck
         }))
       }
     }
@@ -188,21 +217,32 @@ export default function PoolRoomTab() {
                 <option value="">Select a zone...</option>
                 {poolZones.length > 0 && (
                   <optgroup label="Pool Zones">
-                    {poolZones.map(zone => (
-                      <option key={zone.id} value={zone.id}>
-                        {zone.name} ({zone.sf.toLocaleString()} SF)
-                      </option>
-                    ))}
+                    {poolZones.map(zone => {
+                      const hasConfig = currentProject?.poolRoomDesign?.zoneConfigs?.[zone.id]
+                      const poolCount = hasConfig?.pools?.length || 0
+                      return (
+                        <option key={zone.id} value={zone.id}>
+                          {zone.name} ({zone.sf.toLocaleString()} SF){poolCount > 0 ? ` ✓ ${poolCount} pool${poolCount > 1 ? 's' : ''}` : ''}
+                        </option>
+                      )
+                    })}
                   </optgroup>
                 )}
                 <optgroup label="All Zones">
-                  {allZones.filter(z => !poolZones.includes(z)).map(zone => (
-                    <option key={zone.id} value={zone.id}>
-                      {zone.name} ({zone.sf.toLocaleString()} SF)
-                    </option>
-                  ))}
+                  {allZones.filter(z => !poolZones.includes(z)).map(zone => {
+                    const hasConfig = currentProject?.poolRoomDesign?.zoneConfigs?.[zone.id]
+                    const poolCount = hasConfig?.pools?.length || 0
+                    return (
+                      <option key={zone.id} value={zone.id}>
+                        {zone.name} ({zone.sf.toLocaleString()} SF){poolCount > 0 ? ` ✓ ${poolCount} pool${poolCount > 1 ? 's' : ''}` : ''}
+                      </option>
+                    )
+                  })}
                 </optgroup>
               </select>
+              {targetZoneId && pools.length > 0 && (
+                <p className="text-xs text-green-400 mt-1">✓ This zone has {pools.length} pool{pools.length > 1 ? 's' : ''} configured</p>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium text-surface-300 mb-2">Room SF</label>
