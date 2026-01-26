@@ -20,7 +20,7 @@ const categoryOptions = [
 ] as const
 
 export default function LineItemsEditor({ zone, onUpdate }: LineItemsEditorProps) {
-  const { addLineItem, deleteLineItem, updateZone } = useProjectStore()
+  const { addLineItem, deleteLineItem, updateLineItem, updateZone } = useProjectStore()
   const { getZoneDefaults } = useSettingsStore()
   const [isAdding, setIsAdding] = useState(false)
   const [newItem, setNewItem] = useState({
@@ -100,25 +100,66 @@ export default function LineItemsEditor({ zone, onUpdate }: LineItemsEditorProps
         </div>
       </div>
 
-      {/* Existing Line Items */}
+      {/* Existing Line Items - EDITABLE! */}
       <div className="space-y-2">
         {zone.lineItems.map((item) => (
-          <div key={item.id} className="flex items-center gap-2 p-2 bg-surface-900 rounded-lg">
-            <span className="text-xs px-2 py-1 bg-surface-700 rounded">
-              {categoryOptions.find(c => c.value === item.category)?.label.split(' ')[0]}
-            </span>
-            <span className="flex-1 text-sm text-white truncate">{item.name}</span>
-            <span className="text-sm text-surface-400">
-              {item.quantity} × {item.value} {item.unit}
-            </span>
-            <button
-              onClick={() => deleteLineItem(zone.id, item.id)}
-              className="p-1 hover:bg-surface-700 rounded"
-            >
-              <svg className="w-4 h-4 text-surface-500 hover:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
+          <div key={item.id} className="p-2 bg-surface-900 rounded-lg space-y-2">
+            {/* Row 1: Category icon + Name (editable) */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs px-2 py-1 bg-surface-700 rounded shrink-0">
+                {categoryOptions.find(c => c.value === item.category)?.label.split(' ')[0]}
+              </span>
+              <input
+                type="text"
+                value={item.name}
+                onChange={(e) => updateLineItem(zone.id, item.id, { name: e.target.value })}
+                className="flex-1 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm min-w-0"
+              />
+              <button
+                onClick={() => deleteLineItem(zone.id, item.id)}
+                className="p-1 hover:bg-surface-700 rounded shrink-0"
+                title="Remove item"
+              >
+                <svg className="w-4 h-4 text-surface-500 hover:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* Row 2: Quantity × Value Unit */}
+            <div className="flex items-center gap-2 pl-8">
+              <input
+                type="number"
+                value={item.quantity}
+                onChange={(e) => updateLineItem(zone.id, item.id, { quantity: Number(e.target.value) || 1 })}
+                min={1}
+                className="w-16 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm text-center"
+              />
+              <span className="text-surface-500">×</span>
+              <input
+                type="number"
+                value={item.value}
+                onChange={(e) => updateLineItem(zone.id, item.id, { value: Number(e.target.value) || 0 })}
+                min={0}
+                step={0.1}
+                className="w-20 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm text-right"
+              />
+              <select
+                value={item.unit}
+                onChange={(e) => updateLineItem(zone.id, item.id, { unit: e.target.value })}
+                className="px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm"
+              >
+                <option value="kW">kW</option>
+                <option value="W">W</option>
+                <option value="MBH">MBH</option>
+                <option value="CFM">CFM</option>
+                <option value="Tons">Tons</option>
+                <option value="GPM">GPM</option>
+                <option value="lb/hr">lb/hr</option>
+              </select>
+              <span className="text-xs text-surface-500">
+                = {(item.quantity * item.value).toFixed(1)} {item.unit}
+              </span>
+            </div>
           </div>
         ))}
       </div>

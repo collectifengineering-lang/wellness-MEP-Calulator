@@ -87,45 +87,72 @@ function DefaultEquipmentEditor({
         )}
       </div>
 
-      {/* Existing Equipment */}
+      {/* Existing Equipment - FULLY EDITABLE */}
       {equipment.length > 0 ? (
         <div className="space-y-2 mb-3">
           {equipment.map((item) => (
-            <div key={item.id} className="flex items-center gap-2 p-2 bg-surface-900 rounded-lg">
-              <span className="text-xs px-2 py-1 bg-surface-700 rounded">
-                {equipmentCategories.find(c => c.value === item.category)?.label.split(' ')[0]}
-              </span>
-              <input
-                type="text"
-                value={item.name}
-                onChange={(e) => handleUpdate(item.id, { name: e.target.value })}
-                className="flex-1 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm"
-              />
-              <input
-                type="number"
-                value={item.quantity}
-                onChange={(e) => handleUpdate(item.id, { quantity: Number(e.target.value) })}
-                min={1}
-                className="w-14 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm text-center"
-              />
-              <span className="text-surface-500 text-sm">×</span>
-              <input
-                type="number"
-                value={item.value}
-                onChange={(e) => handleUpdate(item.id, { value: Number(e.target.value) })}
-                min={0}
-                step={0.1}
-                className="w-20 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm text-right"
-              />
-              <span className="text-surface-400 text-sm w-12">{item.unit}</span>
-              <button
-                onClick={() => handleDelete(item.id)}
-                className="p-1 hover:bg-surface-700 rounded"
-              >
-                <svg className="w-4 h-4 text-surface-500 hover:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+            <div key={item.id} className="p-2 bg-surface-900 rounded-lg space-y-2">
+              {/* Row 1: Category + Name */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={item.category}
+                  onChange={(e) => handleUpdate(item.id, { category: e.target.value as EquipmentCategory })}
+                  className="text-xs px-2 py-1 bg-surface-700 border border-surface-600 rounded text-white"
+                >
+                  {equipmentCategories.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label.split(' ')[0]}</option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  value={item.name}
+                  onChange={(e) => handleUpdate(item.id, { name: e.target.value })}
+                  className="flex-1 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm"
+                />
+                <button
+                  onClick={() => handleDelete(item.id)}
+                  className="p-1 hover:bg-surface-700 rounded"
+                >
+                  <svg className="w-4 h-4 text-surface-500 hover:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              {/* Row 2: Quantity × Value Unit = Total */}
+              <div className="flex items-center gap-2 pl-2">
+                <input
+                  type="number"
+                  value={item.quantity}
+                  onChange={(e) => handleUpdate(item.id, { quantity: Number(e.target.value) || 1 })}
+                  min={1}
+                  className="w-14 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm text-center"
+                />
+                <span className="text-surface-500 text-sm">×</span>
+                <input
+                  type="number"
+                  value={item.value}
+                  onChange={(e) => handleUpdate(item.id, { value: Number(e.target.value) || 0 })}
+                  min={0}
+                  step={0.1}
+                  className="w-20 px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm text-right"
+                />
+                <select
+                  value={item.unit}
+                  onChange={(e) => handleUpdate(item.id, { unit: e.target.value })}
+                  className="px-2 py-1 bg-surface-800 border border-surface-600 rounded text-white text-sm"
+                >
+                  <option value="kW">kW</option>
+                  <option value="W">W</option>
+                  <option value="MBH">MBH</option>
+                  <option value="CFM">CFM</option>
+                  <option value="Tons">Tons</option>
+                  <option value="GPM">GPM</option>
+                  <option value="lb/hr">lb/hr</option>
+                </select>
+                <span className="text-xs text-surface-500">
+                  = {(item.quantity * item.value).toFixed(1)} {item.unit}
+                </span>
+              </div>
             </div>
           ))}
         </div>
