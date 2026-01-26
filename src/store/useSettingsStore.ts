@@ -153,13 +153,18 @@ export const useSettingsStore = create<SettingsState>()(
       syncError: null,
       
       updateZoneDefaults: (zoneType, updates) => {
+        const base = get().customZoneDefaults[zoneType] || builtInDefaults[zoneType as ZoneType] || builtInDefaults.custom
+        const merged = { ...base, ...updates }
+        
+        console.log('updateZoneDefaults:', zoneType)
+        console.log('  - Base:', base)
+        console.log('  - Updates:', updates)
+        console.log('  - Merged (with defaultEquipment?):', merged.defaultEquipment)
+        
         set((state) => ({
           customZoneDefaults: {
             ...state.customZoneDefaults,
-            [zoneType]: {
-              ...(state.customZoneDefaults[zoneType] || builtInDefaults[zoneType as ZoneType] || builtInDefaults.custom),
-              ...updates,
-            },
+            [zoneType]: merged,
           },
         }))
         // Auto-save to database

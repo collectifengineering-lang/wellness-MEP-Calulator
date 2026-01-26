@@ -264,7 +264,8 @@ export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaults
     updateZoneDefaults, 
     resetZoneDefaults, 
     deleteCustomZoneType,
-    isCustomZoneType 
+    isCustomZoneType,
+    customZoneDefaults  // Subscribe to changes in custom defaults
   } = useSettingsStore()
   
   const isCustom = isCustomZoneType(zoneTypeId)
@@ -272,14 +273,30 @@ export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaults
   const currentDefaults = getZoneDefaults(zoneTypeId)
   
   const [localDefaults, setLocalDefaults] = useState<ZoneDefaults>(currentDefaults)
+  const [isSaving, setIsSaving] = useState(false)
 
+  // Update local state when store changes OR when zoneTypeId changes
   useEffect(() => {
-    setLocalDefaults(currentDefaults)
-  }, [zoneTypeId])
+    const freshDefaults = getZoneDefaults(zoneTypeId)
+    setLocalDefaults(freshDefaults)
+  }, [zoneTypeId, customZoneDefaults])
 
-  const handleSave = () => {
-    updateZoneDefaults(zoneTypeId, localDefaults)
-    onClose()
+  const handleSave = async () => {
+    setIsSaving(true)
+    try {
+      // Make a clean copy to avoid any reference issues
+      const toSave = JSON.parse(JSON.stringify(localDefaults))
+      console.log('Saving zone defaults:', zoneTypeId, toSave)
+      updateZoneDefaults(zoneTypeId, toSave)
+      // Give the store time to persist
+      await new Promise(resolve => setTimeout(resolve, 100))
+      onClose()
+    } catch (error) {
+      console.error('Failed to save zone defaults:', error)
+      alert('Failed to save! Check console for details.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleReset = () => {
@@ -620,9 +637,10 @@ export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaults
             </button>
             <button
               onClick={handleSave}
-              className="px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg text-sm font-medium"
+              disabled={isSaving}
+              className="px-4 py-2 bg-primary-600 hover:bg-primary-500 disabled:bg-primary-800 text-white rounded-lg text-sm font-medium"
             >
-              Save Changes
+              {isSaving ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </div>
