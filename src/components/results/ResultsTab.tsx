@@ -139,14 +139,15 @@ export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTab
       }
       
       if (isSupabaseConfigured()) {
-        const { data, error } = await supabase
-          .from('saved_reports')
+        // Use any type to bypass strict Supabase typing for custom table
+        const { data, error } = await (supabase
+          .from('saved_reports') as any)
           .insert({
             project_id: currentProject.id,
             name: name || `Report v${nextVersion}`,
             version: nextVersion,
             snapshot
-          } as Record<string, unknown>)
+          })
           .select()
           .single()
         

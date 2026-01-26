@@ -77,7 +77,7 @@ export interface ZoneDefaults {
   // Default equipment line items - will be added to new zones of this type
   defaultEquipment?: Array<{
     id?: string  // Optional - generated at runtime if not present
-    category: 'power' | 'lighting' | 'gas' | 'ventilation' | 'exhaust' | 'cooling' | 'heating' | 'dehumidification' | 'other'
+    category: 'power' | 'lighting' | 'gas' | 'ventilation' | 'exhaust' | 'cooling' | 'pool_chiller' | 'heating' | 'dehumidification' | 'other'
     name: string
     quantity: number
     unit: string
