@@ -285,10 +285,10 @@ export function getDefaultElectricalSettings(): ProjectElectricalSettings {
 export function getDefaultMechanicalSettings(): MechanicalElectricalSettings {
   return {
     // Conversion factors
-    coolingKvaPerTon: 1.2,       // Air-cooled chiller: ~1.2 kW/ton efficiency
+    coolingKvaPerTon: 1.5,       // Air-cooled chiller: ~1.5 kVA/ton
     heatingKvaPerMbh: 0.293,     // 1 MBH = 1000 BTU/hr = 293W = 0.293 kW
-    poolChillerKvaPerTon: 1.5,   // Water-cooled, slightly less efficient
-    dehumidKvaPerLbHr: 0.05,     // ~5 kW per 100 lb/hr dehumidification capacity
+    poolChillerKvaPerTon: 1.5,   // Pool water chiller: ~1.5 kVA/ton
+    dehumidKvaPerLbHr: 0.4,      // Dehumidification: ~0.4 kVA per lb/hr
     
     // Heating percentage - most heating via heat pumps/energy recovery
     heatingElectricPercent: 0.15, // 15% of heating is supplemental electric (default)

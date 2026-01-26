@@ -295,8 +295,8 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
           <h4 className="text-sm font-medium text-surface-300 mb-2">Default Conversion Factors</h4>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-surface-400">
             <div>
-              <strong className="text-surface-300">Cooling:</strong> 1.2 kVA/ton
-              <p className="mt-0.5">Air-cooled chiller efficiency</p>
+              <strong className="text-surface-300">Cooling:</strong> 1.5 kVA/ton
+              <p className="mt-0.5">Air-cooled chiller</p>
             </div>
             <div>
               <strong className="text-surface-300">Heating:</strong> 0.293 kVA/MBH
@@ -304,11 +304,11 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
             </div>
             <div>
               <strong className="text-surface-300">Pool Chiller:</strong> 1.5 kVA/ton
-              <p className="mt-0.5">Water-cooled system</p>
+              <p className="mt-0.5">Water chiller system</p>
             </div>
             <div>
-              <strong className="text-surface-300">Dehumid:</strong> 0.05 kVA/(lb/hr)
-              <p className="mt-0.5">~5 kW per 100 lb/hr</p>
+              <strong className="text-surface-300">Dehumid:</strong> 0.4 kVA/(lb/hr)
+              <p className="mt-0.5">Pool dehumidification unit</p>
             </div>
           </div>
         </div>
