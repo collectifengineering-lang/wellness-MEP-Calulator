@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useProjectStore } from '../../store/useProjectStore'
 import { exportToPDF, exportToExcelFile } from '../../export'
 import { getZoneDefaults, calculateLaundryLoads } from '../../data/zoneDefaults'
+import { getLegacyFixtureCounts } from '../../data/fixtureUtils'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import type { CalculationResults, ZoneFixtures, SavedReport } from '../../types'
 
@@ -15,7 +16,7 @@ interface ResultsTabProps {
   onNavigateToTab?: (tab: 'builder' | 'pool' | 'central') => void
 }
 
-export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTabProps) {
+export default function ResultsTab({ calculations }: ResultsTabProps) {
   const { currentProject, zones } = useProjectStore()
   const { results, aggregatedFixtures, totalSF } = calculations
   const [includeDetailed, setIncludeDetailed] = useState(false)
@@ -31,6 +32,16 @@ export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTab
   const [selectedReport, setSelectedReport] = useState<SavedReport | null>(null)
   const [newReportName, setNewReportName] = useState('')
   const [showNameModal, setShowNameModal] = useState(false)
+  
+  // Edit mode state for inline report editing
+  const [editMode, setEditMode] = useState(false)
+  const [reportEdits, setReportEdits] = useState<{
+    executiveSummary?: string
+    hvacNotes?: string
+    electricalNotes?: string
+    plumbingNotes?: string
+    fireProtectionNotes?: string
+  }>({})
   
   // Track when calculations change to show "updated" indicator
   useEffect(() => {
@@ -499,25 +510,32 @@ export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTab
 
           {/* Executive Summary */}
           <section className="px-8 py-6 border-b border-gray-200">
-            <h2 className="text-lg font-bold text-gray-900 mb-3">Executive Summary</h2>
-            <p className="text-sm text-gray-600 leading-relaxed">
-              COLLECTIF ENGINEERING has been engaged to determine the MEP requirements of a ~{Math.round(totalSF / 1000)}k SF wellness facility. 
-              This report identifies high-level requirements for utility services, MEP systems, and provides recommendations for landlord negotiation items.
-            </p>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-bold text-gray-900">Executive Summary</h2>
+              <button 
+                onClick={() => setEditMode(!editMode)}
+                className={`text-xs px-2 py-1 rounded ${editMode ? 'bg-primary-600 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
+              >
+                {editMode ? '✓ Done Editing' : '✎ Edit Report'}
+              </button>
+            </div>
+            {editMode ? (
+              <textarea
+                value={reportEdits.executiveSummary ?? `COLLECTIF ENGINEERING has been engaged to determine the MEP requirements of a ~${Math.round(totalSF / 1000)}k SF wellness facility. This report identifies high-level requirements for utility services, MEP systems, and provides recommendations for landlord negotiation items.`}
+                onChange={(e) => setReportEdits(prev => ({ ...prev, executiveSummary: e.target.value }))}
+                className="w-full text-sm text-gray-600 leading-relaxed p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 min-h-[80px]"
+              />
+            ) : (
+              <p className="text-sm text-gray-600 leading-relaxed">
+                {reportEdits.executiveSummary || `COLLECTIF ENGINEERING has been engaged to determine the MEP requirements of a ~${Math.round(totalSF / 1000)}k SF wellness facility. This report identifies high-level requirements for utility services, MEP systems, and provides recommendations for landlord negotiation items.`}
+              </p>
+            )}
           </section>
 
           {/* HVAC Section */}
           <section className="px-8 py-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-gray-900">1. HVAC (Mechanical)</h2>
-              {onNavigateToTab && (
-                <button 
-                  onClick={() => onNavigateToTab('central')}
-                  className="text-xs text-primary-600 hover:underline"
-                >
-                  Edit in Central Plant →
-                </button>
-              )}
             </div>
             <div className="space-y-3 text-sm text-gray-700">
               <div>
@@ -553,14 +571,6 @@ export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTab
           <section className="px-8 py-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-gray-900">2. Electrical / Fire Alarm</h2>
-              {onNavigateToTab && (
-                <button 
-                  onClick={() => onNavigateToTab('central')}
-                  className="text-xs text-primary-600 hover:underline"
-                >
-                  Edit in Central Plant →
-                </button>
-              )}
             </div>
             <div className="space-y-3 text-sm text-gray-700">
               <ol className="list-decimal list-inside space-y-2">
@@ -589,14 +599,6 @@ export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTab
           <section className="px-8 py-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-gray-900">3. Plumbing</h2>
-              {onNavigateToTab && (
-                <button 
-                  onClick={() => onNavigateToTab('central')}
-                  className="text-xs text-primary-600 hover:underline"
-                >
-                  Edit in Central Plant →
-                </button>
-              )}
             </div>
             <div className="space-y-3 text-sm text-gray-700">
               <div>
@@ -642,14 +644,6 @@ export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTab
           <section className="px-8 py-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-gray-900">4. Fire Protection (Sprinklers)</h2>
-              {onNavigateToTab && (
-                <button 
-                  onClick={() => onNavigateToTab('builder')}
-                  className="text-xs text-primary-600 hover:underline"
-                >
-                  Edit Zones →
-                </button>
-              )}
             </div>
             <div className="space-y-3 text-sm text-gray-700">
               <ol className="list-decimal list-inside space-y-2">
@@ -771,33 +765,40 @@ export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTab
                     </tr>
                   </thead>
                   <tbody>
-                    {zones.filter(z => 
-                      z.fixtures.wcs > 0 || z.fixtures.lavs > 0 || z.fixtures.showers > 0 || 
-                      z.fixtures.floorDrains > 0 || z.fixtures.serviceSinks > 0 ||
-                      z.fixtures.washingMachines > 0 || z.fixtures.dryers > 0
-                    ).map((zone, idx) => (
-                      <tr key={zone.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                        <td className="py-2 px-3 font-medium text-gray-900">{zone.name}</td>
-                        <td className="py-2 px-3 text-right font-mono text-gray-700">{zone.fixtures.wcs || '-'}</td>
-                        <td className="py-2 px-3 text-right font-mono text-gray-700">{zone.fixtures.lavs || '-'}</td>
-                        <td className="py-2 px-3 text-right font-mono text-gray-700">{zone.fixtures.showers || '-'}</td>
-                        <td className="py-2 px-3 text-right font-mono text-gray-700">{zone.fixtures.floorDrains || '-'}</td>
-                        <td className="py-2 px-3 text-right font-mono text-gray-700">{zone.fixtures.serviceSinks || '-'}</td>
-                        <td className="py-2 px-3 text-right font-mono text-gray-700">{zone.fixtures.washingMachines || '-'}</td>
-                        <td className="py-2 px-3 text-right font-mono text-gray-700">{zone.fixtures.dryers || '-'}</td>
-                      </tr>
-                    ))}
+                    {zones.map((zone, idx) => {
+                      // Convert dynamic fixtures to legacy format for display
+                      const legacyFixtures = getLegacyFixtureCounts(zone.fixtures)
+                      const hasAnyFixtures = legacyFixtures.wcs > 0 || legacyFixtures.lavs > 0 || 
+                        legacyFixtures.showers > 0 || legacyFixtures.floorDrains > 0 || 
+                        legacyFixtures.serviceSinks > 0 || legacyFixtures.washingMachines > 0 || 
+                        legacyFixtures.dryers > 0
+                      
+                      if (!hasAnyFixtures) return null
+                      
+                      return (
+                        <tr key={zone.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="py-2 px-3 font-medium text-gray-900">{zone.name}</td>
+                          <td className="py-2 px-3 text-right font-mono text-gray-700">{legacyFixtures.wcs || '-'}</td>
+                          <td className="py-2 px-3 text-right font-mono text-gray-700">{legacyFixtures.lavs || '-'}</td>
+                          <td className="py-2 px-3 text-right font-mono text-gray-700">{legacyFixtures.showers || '-'}</td>
+                          <td className="py-2 px-3 text-right font-mono text-gray-700">{legacyFixtures.floorDrains || '-'}</td>
+                          <td className="py-2 px-3 text-right font-mono text-gray-700">{legacyFixtures.serviceSinks || '-'}</td>
+                          <td className="py-2 px-3 text-right font-mono text-gray-700">{legacyFixtures.washingMachines || '-'}</td>
+                          <td className="py-2 px-3 text-right font-mono text-gray-700">{legacyFixtures.dryers || '-'}</td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                   <tfoot>
                     <tr className="bg-gray-200 font-semibold">
                       <td className="py-2 px-3">TOTAL</td>
-                      <td className="py-2 px-3 text-right font-mono">{aggregatedFixtures.wcs}</td>
-                      <td className="py-2 px-3 text-right font-mono">{aggregatedFixtures.lavs}</td>
-                      <td className="py-2 px-3 text-right font-mono">{aggregatedFixtures.showers}</td>
-                      <td className="py-2 px-3 text-right font-mono">{aggregatedFixtures.floorDrains}</td>
-                      <td className="py-2 px-3 text-right font-mono">{aggregatedFixtures.serviceSinks}</td>
-                      <td className="py-2 px-3 text-right font-mono">{aggregatedFixtures.washingMachines}</td>
-                      <td className="py-2 px-3 text-right font-mono">{aggregatedFixtures.dryers}</td>
+                      <td className="py-2 px-3 text-right font-mono">{getLegacyFixtureCounts(aggregatedFixtures).wcs}</td>
+                      <td className="py-2 px-3 text-right font-mono">{getLegacyFixtureCounts(aggregatedFixtures).lavs}</td>
+                      <td className="py-2 px-3 text-right font-mono">{getLegacyFixtureCounts(aggregatedFixtures).showers}</td>
+                      <td className="py-2 px-3 text-right font-mono">{getLegacyFixtureCounts(aggregatedFixtures).floorDrains}</td>
+                      <td className="py-2 px-3 text-right font-mono">{getLegacyFixtureCounts(aggregatedFixtures).serviceSinks}</td>
+                      <td className="py-2 px-3 text-right font-mono">{getLegacyFixtureCounts(aggregatedFixtures).washingMachines}</td>
+                      <td className="py-2 px-3 text-right font-mono">{getLegacyFixtureCounts(aggregatedFixtures).dryers}</td>
                     </tr>
                   </tfoot>
                 </table>
