@@ -14,7 +14,14 @@ export function useCalculations() {
   const { currentProject, zones, getAggregatedFixtures } = useProjectStore()
   const { electrical: electricalSettings, gas: gasSettings, dhw: dhwSettings, plumbing: plumbingSettings } = useSettingsStore()
 
+  // Debug: Track total line items to force re-calc when they change
+  const totalLineItems = zones.reduce((sum, z) => sum + (z.lineItems?.length || 0), 0)
+  const lineItemsHash = zones.map(z => `${z.id}:${z.lineItems?.length || 0}`).join(',')
+
   return useMemo(() => {
+    console.log(`📊 useCalculations running - ${zones.length} zones, ${totalLineItems} total line items`)
+    console.log(`   Line items per zone: ${zones.map(z => `${z.name}(${z.lineItems?.length || 0})`).join(', ')}`)
+    
     if (!currentProject) {
       return {
         results: null,
@@ -82,6 +89,8 @@ export function useCalculations() {
       dhw,
       plumbing,
     }
+    
+    console.log(`📊 HVAC Results: ${hvac.totalTons} tons, ${hvac.dehumidLbHr} lb/hr dehumid, ${hvac.poolChillerTons} pool chiller tons`)
 
     // Calculate mechanical equipment electrical loads
     const mechanicalSettings = currentProject.mechanicalSettings || getDefaultMechanicalSettings()
@@ -103,5 +112,6 @@ export function useCalculations() {
       totalSF,
       settings: { electrical: electricalSettings, gas: gasSettings, dhw: dhwSettings, plumbing: plumbingSettings }
     }
-  }, [currentProject, zones, getAggregatedFixtures, electricalSettings, gasSettings, dhwSettings, plumbingSettings])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProject, zones, totalLineItems, lineItemsHash, getAggregatedFixtures, electricalSettings, gasSettings, dhwSettings, plumbingSettings])
 }
