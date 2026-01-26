@@ -50,7 +50,11 @@ export function useCalculations() {
     const hvac = calculateHVAC(zones, climate, contingency)
     const gas = calculateGas(zones, contingency)
     const dhw = calculateDHW(aggregatedFixtures, currentProject.dhwSettings, contingency)
-    const plumbing = calculatePlumbing(aggregatedFixtures, { useCommercialLaundry: hasCommercialLaundry })
+    const plumbing = calculatePlumbing(aggregatedFixtures, { 
+      useCommercialLaundry: hasCommercialLaundry,
+      designVelocityFPS: plumbingSettings.design_velocity_fps,
+      hotWaterDemandFactor: plumbingSettings.hot_water_demand_factor,
+    })
 
     // Add DHW gas load to total gas if using gas heaters
     if (currentProject.dhwSettings.heaterType === 'gas') {

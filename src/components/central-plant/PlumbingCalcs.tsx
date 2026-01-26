@@ -1,5 +1,6 @@
 import type { CalculationResults, ZoneFixtures } from '../../types'
 import { fixtureUnits } from '../../data/defaults'
+import { useSettingsStore } from '../../store/useSettingsStore'
 
 interface PlumbingCalcsProps {
   results: CalculationResults
@@ -7,6 +8,7 @@ interface PlumbingCalcsProps {
 }
 
 export default function PlumbingCalcs({ results, fixtures }: PlumbingCalcsProps) {
+  const { plumbing: plumbingSettings, updatePlumbingSettings } = useSettingsStore()
   const { plumbing } = results
 
   // Calculate breakdown
@@ -23,10 +25,49 @@ export default function PlumbingCalcs({ results, fixtures }: PlumbingCalcsProps)
     <div className="bg-surface-800 rounded-xl border border-surface-700 overflow-hidden">
       <div className="px-6 py-4 border-b border-surface-700">
         <h3 className="text-lg font-semibold text-white">Plumbing Calculations</h3>
-        <p className="text-sm text-surface-400 mt-1">WSFU/DFU method with Hunter's Curve</p>
+        <p className="text-sm text-surface-400 mt-1">WSFU/DFU method with velocity-based pipe sizing</p>
       </div>
 
       <div className="p-6 space-y-6">
+        {/* Pipe Sizing Settings */}
+        <div className="bg-surface-900/50 rounded-lg p-4">
+          <h4 className="text-sm font-medium text-surface-300 mb-3">🔧 Pipe Sizing Parameters</h4>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs text-surface-400 mb-1">Design Velocity</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={plumbingSettings.design_velocity_fps}
+                  onChange={(e) => updatePlumbingSettings({ design_velocity_fps: Number(e.target.value) })}
+                  min={2}
+                  max={10}
+                  step={0.5}
+                  className="flex-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+                />
+                <span className="text-surface-400 text-sm">FPS</span>
+              </div>
+              <p className="text-xs text-surface-500 mt-1">Typical: 4-8 FPS. Lower = quieter, larger pipes</p>
+            </div>
+            <div>
+              <label className="block text-xs text-surface-400 mb-1">Hot Water Demand Factor</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={plumbingSettings.hot_water_demand_factor}
+                  onChange={(e) => updatePlumbingSettings({ hot_water_demand_factor: Number(e.target.value) })}
+                  min={0.3}
+                  max={0.9}
+                  step={0.05}
+                  className="flex-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+                />
+                <span className="text-surface-400 text-sm">×</span>
+              </div>
+              <p className="text-xs text-surface-500 mt-1">Hot water as fraction of cold water flow</p>
+            </div>
+          </div>
+        </div>
+
         {/* Fixture Breakdown Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -62,53 +103,97 @@ export default function PlumbingCalcs({ results, fixtures }: PlumbingCalcsProps)
           </table>
         </div>
 
-        {/* Results */}
-        <div className="bg-surface-900 rounded-lg p-4 space-y-4">
-          <div>
-            <h4 className="text-sm font-medium text-surface-300 mb-2">Water Supply</h4>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-surface-400">Total WSFU:</span>
-                <span className="text-cyan-400 font-mono">{plumbing.totalWSFU}</span>
+        {/* Results - Water Supply */}
+        <div className="bg-cyan-900/20 border border-cyan-700/30 rounded-lg p-4">
+          <h4 className="text-sm font-medium text-cyan-400 mb-3">💧 Water Supply Sizing</h4>
+          <div className="grid grid-cols-2 gap-4">
+            {/* Cold Water */}
+            <div className="bg-surface-900/50 rounded-lg p-3">
+              <div className="text-xs text-surface-400 mb-2 uppercase tracking-wider">Cold Water</div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-surface-300">Flow Rate:</span>
+                  <span className="text-white font-mono">{plumbing.coldWaterGPM || plumbing.peakGPM} GPM</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-surface-300">Main Size:</span>
+                  <span className="text-cyan-400 font-mono font-semibold">{plumbing.coldWaterMainSize}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-surface-300">Actual Velocity:</span>
+                  <span className={`font-mono ${
+                    (plumbing.coldActualVelocityFPS || 0) > 8 ? 'text-red-400' : 
+                    (plumbing.coldActualVelocityFPS || 0) < 3 ? 'text-amber-400' : 'text-green-400'
+                  }`}>
+                    {plumbing.coldActualVelocityFPS?.toFixed(1) || '—'} FPS
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span className="text-surface-400">Peak Flow:</span>
-                <span className="text-white font-mono">{plumbing.peakGPM} GPM</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-surface-400">Water Meter:</span>
-                <span className="text-white font-mono">{plumbing.recommendedMeterSize}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-surface-400">Cold Water Main:</span>
-                <span className="text-white font-mono">{plumbing.coldWaterMainSize}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-surface-400">Hot Water Main:</span>
-                <span className="text-white font-mono">{plumbing.hotWaterMainSize}</span>
+            </div>
+            
+            {/* Hot Water */}
+            <div className="bg-surface-900/50 rounded-lg p-3">
+              <div className="text-xs text-surface-400 mb-2 uppercase tracking-wider">Hot Water</div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-surface-300">Flow Rate:</span>
+                  <span className="text-white font-mono">{plumbing.hotWaterGPM || Math.round(plumbing.peakGPM * 0.6)} GPM</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-surface-300">Main Size:</span>
+                  <span className="text-orange-400 font-mono font-semibold">{plumbing.hotWaterMainSize}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-surface-300">Actual Velocity:</span>
+                  <span className={`font-mono ${
+                    (plumbing.hotActualVelocityFPS || 0) > 8 ? 'text-red-400' : 
+                    (plumbing.hotActualVelocityFPS || 0) < 3 ? 'text-amber-400' : 'text-green-400'
+                  }`}>
+                    {plumbing.hotActualVelocityFPS?.toFixed(1) || '—'} FPS
+                  </span>
+                </div>
               </div>
             </div>
           </div>
+          
+          {/* Velocity Guide */}
+          <div className="mt-3 flex items-center gap-4 text-xs">
+            <span className="text-surface-400">Velocity Guide:</span>
+            <span className="text-amber-400">{'<'}3 FPS = Slow (oversized)</span>
+            <span className="text-green-400">3-8 FPS = Optimal</span>
+            <span className="text-red-400">{'>'}8 FPS = High (noise/erosion risk)</span>
+          </div>
+        </div>
 
-          <div className="border-t border-surface-700 pt-4">
-            <h4 className="text-sm font-medium text-surface-300 mb-2">Drainage</h4>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-surface-400">Total DFU:</span>
-                <span className="text-amber-400 font-mono">{plumbing.totalDFU}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-surface-400">Building Drain:</span>
-                <span className="text-white font-mono">{plumbing.recommendedDrainSize}</span>
-              </div>
+        {/* Results - Drainage */}
+        <div className="bg-amber-900/20 border border-amber-700/30 rounded-lg p-4">
+          <h4 className="text-sm font-medium text-amber-400 mb-3">🚽 Sanitary / Drainage</h4>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="flex justify-between">
+              <span className="text-surface-300">Total DFU:</span>
+              <span className="text-amber-400 font-mono">{plumbing.totalDFU}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-surface-300">Building Drain:</span>
+              <span className="text-white font-mono font-semibold">{plumbing.recommendedDrainSize}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-surface-300">Water Meter:</span>
+              <span className="text-white font-mono">{plumbing.recommendedMeterSize}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-surface-300">Peak GPM:</span>
+              <span className="text-white font-mono">{plumbing.peakGPM} GPM</span>
             </div>
           </div>
         </div>
 
         {/* Notes */}
-        <div className="text-xs text-surface-500">
+        <div className="text-xs text-surface-500 space-y-1">
           <p>* WSFU values based on IPC/UPC public use fixtures</p>
           <p>* GPM conversion uses Hunter's Curve approximation</p>
+          <p>* Pipe sizing formula: d = √(GPM × 0.408 / V)</p>
+          <p>* Design velocity: {plumbingSettings.design_velocity_fps} FPS</p>
         </div>
       </div>
     </div>

@@ -1,13 +1,21 @@
 import type { ZoneFixtures, PlumbingCalcResult } from '../types'
 import { fixtureUnits, sanitarySizing, waterMeterSizing } from '../data/defaults'
 
-// Extended interface to handle commercial laundry
+// Standard pipe sizes (inches) for water supply
+const STANDARD_PIPE_SIZES = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 6, 8]
+
+// Extended interface to handle commercial laundry and velocity settings
 interface PlumbingCalcOptions {
   useCommercialLaundry?: boolean
+  designVelocityFPS?: number  // Design velocity in feet per second (default 5)
+  hotWaterDemandFactor?: number  // Hot water as % of cold (default 0.6)
 }
 
 export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalcOptions): PlumbingCalcResult {
   const useCommercialWasher = options?.useCommercialLaundry ?? false
+  const designVelocity = options?.designVelocityFPS ?? 5  // Default 5 FPS
+  const hotWaterFactor = options?.hotWaterDemandFactor ?? 0.6
+  
   const washerUnits = useCommercialWasher ? fixtureUnits.washing_machine_commercial : fixtureUnits.washing_machine
   
   // Calculate total Water Supply Fixture Units (WSFU)
@@ -49,12 +57,18 @@ export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalc
     }
   }
 
-  // Cold water main size (based on peak GPM)
-  const coldWaterMainSize = getWaterMainSize(peakGPM)
+  // Cold water main size (velocity-based)
+  const coldWaterMainSize = getPipeSizeByVelocity(peakGPM, designVelocity)
   
-  // Hot water main (typically smaller, ~60% of cold water demand)
-  const hotWaterGPM = peakGPM * 0.6
-  const hotWaterMainSize = getWaterMainSize(hotWaterGPM)
+  // Hot water main (typically smaller, based on demand factor)
+  const hotWaterGPM = peakGPM * hotWaterFactor
+  const hotWaterMainSize = getPipeSizeByVelocity(hotWaterGPM, designVelocity)
+  
+  // Calculate actual velocities for the selected pipe sizes
+  const coldPipeDia = parseFloat(coldWaterMainSize.replace('"', ''))
+  const hotPipeDia = parseFloat(hotWaterMainSize.replace('"', ''))
+  const coldActualVelocity = calculateVelocity(peakGPM, coldPipeDia)
+  const hotActualVelocity = calculateVelocity(hotWaterGPM, hotPipeDia)
 
   return {
     totalWSFU: Math.round(totalWSFU),
@@ -64,7 +78,44 @@ export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalc
     recommendedDrainSize,
     coldWaterMainSize,
     hotWaterMainSize,
+    // Velocity-based sizing details
+    designVelocityFPS: designVelocity,
+    coldWaterGPM: Math.round(peakGPM),
+    hotWaterGPM: Math.round(hotWaterGPM),
+    coldActualVelocityFPS: Math.round(coldActualVelocity * 10) / 10,
+    hotActualVelocityFPS: Math.round(hotActualVelocity * 10) / 10,
   }
+}
+
+/**
+ * Calculate pipe size based on flow rate and design velocity
+ * Formula: d = √(GPM × 0.408 / V)
+ * Where: d = diameter in inches, V = velocity in FPS
+ * 0.408 = conversion factor (4 / π / 7.48 / 60 × 144)
+ */
+function getPipeSizeByVelocity(gpm: number, velocityFPS: number): string {
+  if (gpm <= 0) return '0.5"'
+  
+  // Calculate minimum required diameter (inches)
+  const minDiameter = Math.sqrt((gpm * 0.408) / velocityFPS)
+  
+  // Find the next standard pipe size that accommodates this flow
+  for (const size of STANDARD_PIPE_SIZES) {
+    if (size >= minDiameter) {
+      return `${size}"`
+    }
+  }
+  
+  return '8"' // Maximum standard size
+}
+
+/**
+ * Calculate actual velocity for a given flow and pipe diameter
+ * Formula: V = GPM × 0.408 / d²
+ */
+function calculateVelocity(gpm: number, diameterInches: number): number {
+  if (gpm <= 0 || diameterInches <= 0) return 0
+  return (gpm * 0.408) / (diameterInches * diameterInches)
 }
 
 // Hunter's Curve approximation for WSFU to GPM conversion
@@ -79,17 +130,6 @@ function wsfuToGPM(wsfu: number): number {
   if (wsfu <= 200) return 97.5 + (wsfu - 100) * 0.35
   if (wsfu <= 500) return 132.5 + (wsfu - 200) * 0.25
   return 207.5 + (wsfu - 500) * 0.2
-}
-
-// Determine water main size based on GPM
-function getWaterMainSize(gpm: number): string {
-  if (gpm <= 30) return '1"'
-  if (gpm <= 50) return '1.25"'
-  if (gpm <= 75) return '1.5"'
-  if (gpm <= 130) return '2"'
-  if (gpm <= 200) return '2.5"'
-  if (gpm <= 400) return '3"'
-  return '4"'
 }
 
 // Get fixture count summary

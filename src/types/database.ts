@@ -202,6 +202,7 @@ export interface SharedDHWSettings {
 export interface SharedPlumbingSettings {
   backwash_pit_threshold_gpm: number
   hot_water_demand_factor: number
+  design_velocity_fps: number  // Design velocity for pipe sizing (default 5 FPS)
 }
 
 export interface SharedClimateMultipliers {

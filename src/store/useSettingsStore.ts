@@ -35,6 +35,7 @@ export interface DHWGlobalSettings {
 export interface PlumbingSettings {
   backwash_pit_threshold_gpm: number  // GPM threshold for backwash pit
   hot_water_demand_factor: number     // Hot water as % of cold (0.5 - 0.7)
+  design_velocity_fps: number         // Design velocity for pipe sizing in FPS (default 5)
 }
 
 // Climate multipliers for regional adjustments
@@ -112,6 +113,7 @@ const defaultDHW: DHWGlobalSettings = {
 const defaultPlumbing: PlumbingSettings = {
   backwash_pit_threshold_gpm: 225,
   hot_water_demand_factor: 0.6,
+  design_velocity_fps: 5,  // 5 FPS default - typical range 4-8 FPS
 }
 
 // Climate multipliers based on ASHRAE guidelines
