@@ -28,12 +28,32 @@ export default function ProjectWorkspace() {
   
   // CRITICAL: Track if initial load is complete to prevent auto-save from wiping data
   const isLoadingProject = useRef(true)
+  
+  // Track if we've already initialized for this project
+  const initializedProjectId = useRef<string | null>(null)
 
-  // Load project if not already loaded
+  // Load project if not already loaded, OR enable auto-save if already loaded
   useEffect(() => {
-    if (!currentProject && projectId) {
+    if (!projectId) return
+    
+    // If we've already initialized for this project, don't do it again
+    if (initializedProjectId.current === projectId) {
+      return
+    }
+    
+    if (!currentProject) {
+      // Project not in store - need to load from database
       isLoadingProject.current = true
+      initializedProjectId.current = projectId
       loadProject(projectId)
+    } else if (currentProject.id === projectId) {
+      // Project already loaded (e.g., from ProjectsGrid) - enable auto-save immediately
+      // but give React a tick to stabilize
+      initializedProjectId.current = projectId
+      setTimeout(() => {
+        isLoadingProject.current = false
+        console.log('Project already loaded - auto-save enabled')
+      }, 100)
     }
   }, [projectId, currentProject])
 
@@ -416,10 +436,10 @@ export default function ProjectWorkspace() {
                     <span className="text-primary-400 animate-pulse">Saving...</span>
                   )}
                   {!saving && synced && isSupabaseConfigured() && (
-                    <span className="text-emerald-400">• Synced</span>
+                    <span className="text-emerald-400 cursor-pointer" onClick={() => saveProject()} title="Click to force save">✓ Synced</span>
                   )}
                   {!saving && !synced && isSupabaseConfigured() && (
-                    <span className="text-amber-400">• Unsaved changes</span>
+                    <span className="text-amber-400 cursor-pointer" onClick={() => saveProject()} title="Click to save now">• Unsaved - click to save</span>
                   )}
                   {otherUserEditing && (
                     <span className="text-cyan-400 animate-pulse">• Another user editing</span>
@@ -482,7 +502,14 @@ export default function ProjectWorkspace() {
           <CentralPlantTab calculations={calculations} />
         )}
         {activeTab === 'results' && (
-          <ResultsTab calculations={calculations} />
+          <ResultsTab 
+            calculations={calculations} 
+            onNavigateToTab={(tab) => {
+              if (tab === 'builder') setActiveTab('builder')
+              else if (tab === 'pool') setActiveTab('pool')
+              else if (tab === 'central') setActiveTab('central')
+            }}
+          />
         )}
       </main>
     </div>

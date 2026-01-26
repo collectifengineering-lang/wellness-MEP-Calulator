@@ -2,6 +2,62 @@ export * from './database'
 
 export type ClimateType = 'hot_humid' | 'cold_dry' | 'temperate'
 
+// Saved report snapshot for historical reference
+export interface SavedReport {
+  id: string
+  projectId: string
+  name: string
+  version: number
+  createdAt: Date
+  notes?: string
+  // Snapshot of calculations at time of generation
+  snapshot: {
+    totalSF: number
+    zoneCount: number
+    hvac: {
+      totalTons: number
+      totalMBH: number
+      totalVentCFM: number
+      totalExhaustCFM: number
+      dehumidLbHr: number
+      rtuCount: number
+    }
+    electrical: {
+      totalKW: number
+      totalKVA: number
+      amps_208v: number
+      amps_480v: number
+      recommendedService: string
+      panelCount: number
+    }
+    plumbing: {
+      totalWSFU: number
+      totalDFU: number
+      peakGPM: number
+      coldWaterMainSize: string
+      hotWaterMainSize: string
+      recommendedDrainSize: string
+    }
+    dhw: {
+      peakGPH: number
+      grossBTU: number
+      storageGallons: number
+      tanklessUnits: number
+    }
+    gas: {
+      totalMBH: number
+      totalCFH: number
+      recommendedPipeSize: string
+    }
+    // Zone summary at time of report
+    zones: Array<{
+      name: string
+      type: string
+      sf: number
+    }>
+  }
+}
+
 export type ZoneType =
   | 'reception'
   | 'mechanical_room'

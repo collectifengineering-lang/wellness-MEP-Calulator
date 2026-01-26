@@ -1,23 +1,189 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useProjectStore } from '../../store/useProjectStore'
 import { exportToPDF, exportToExcelFile } from '../../export'
 import { getZoneDefaults, calculateLaundryLoads } from '../../data/zoneDefaults'
-import type { CalculationResults, ZoneFixtures } from '../../types'
+import { supabase, isSupabaseConfigured } from '../../lib/supabase'
+import type { CalculationResults, ZoneFixtures, SavedReport } from '../../types'
 
 interface ResultsTabProps {
   calculations: {
     results: CalculationResults | null
     aggregatedFixtures: ZoneFixtures
     totalSF: number
+    mechanicalKVA?: { total: number; breakdown: { name: string; kva: number }[] }
   }
+  onNavigateToTab?: (tab: 'builder' | 'pool' | 'central') => void
 }
 
-export default function ResultsTab({ calculations }: ResultsTabProps) {
+export default function ResultsTab({ calculations, onNavigateToTab }: ResultsTabProps) {
   const { currentProject, zones } = useProjectStore()
-  const { results, aggregatedFixtures, totalSF } = calculations
+  const { results, aggregatedFixtures, totalSF, mechanicalKVA } = calculations
   const [includeDetailed, setIncludeDetailed] = useState(false)
   const [showDetailedReport, setShowDetailedReport] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState(new Date())
+  
+  // Saved reports state
+  const [savedReports, setSavedReports] = useState<SavedReport[]>([])
+  const [loadingReports, setLoadingReports] = useState(false)
+  const [savingReport, setSavingReport] = useState(false)
+  const [showReportHistory, setShowReportHistory] = useState(false)
+  const [selectedReport, setSelectedReport] = useState<SavedReport | null>(null)
+  const [newReportName, setNewReportName] = useState('')
+  const [showNameModal, setShowNameModal] = useState(false)
+  
+  // Track when calculations change to show "updated" indicator
+  useEffect(() => {
+    if (results) {
+      setLastUpdated(new Date())
+    }
+  }, [results, zones, currentProject?.dhwSettings, currentProject?.mechanicalSettings])
+  
+  // Load saved reports when project changes
+  const loadSavedReports = useCallback(async () => {
+    if (!currentProject?.id || !isSupabaseConfigured()) return
+    
+    setLoadingReports(true)
+    try {
+      const { data, error } = await supabase
+        .from('saved_reports')
+        .select('*')
+        .eq('project_id', currentProject.id)
+        .order('created_at', { ascending: false })
+      
+      if (error) throw error
+      
+      setSavedReports((data || []).map(r => ({
+        id: r.id,
+        projectId: r.project_id,
+        name: r.name,
+        version: r.version,
+        createdAt: new Date(r.created_at),
+        notes: r.notes,
+        snapshot: r.snapshot as SavedReport['snapshot']
+      })))
+    } catch (error) {
+      console.error('Error loading saved reports:', error)
+    }
+    setLoadingReports(false)
+  }, [currentProject?.id])
+  
+  useEffect(() => {
+    loadSavedReports()
+  }, [loadSavedReports])
+  
+  // Generate and save a new report
+  const generateReport = async (name: string) => {
+    if (!currentProject || !results) return
+    
+    setSavingReport(true)
+    try {
+      const nextVersion = savedReports.length > 0 
+        ? Math.max(...savedReports.map(r => r.version)) + 1 
+        : 1
+      
+      const snapshot: SavedReport['snapshot'] = {
+        totalSF,
+        zoneCount: zones.length,
+        hvac: {
+          totalTons: results.hvac.totalTons,
+          totalMBH: results.hvac.totalMBH,
+          totalVentCFM: results.hvac.totalVentCFM,
+          totalExhaustCFM: results.hvac.totalExhaustCFM,
+          dehumidLbHr: results.hvac.dehumidLbHr,
+          rtuCount: results.hvac.rtuCount
+        },
+        electrical: {
+          totalKW: results.electrical.totalKW,
+          totalKVA: results.electrical.totalKVA,
+          amps_208v: results.electrical.amps_208v,
+          amps_480v: results.electrical.amps_480v,
+          recommendedService: results.electrical.recommendedService,
+          panelCount: results.electrical.panelCount
+        },
+        plumbing: {
+          totalWSFU: results.plumbing.totalWSFU,
+          totalDFU: results.plumbing.totalDFU,
+          peakGPM: results.plumbing.peakGPM,
+          coldWaterMainSize: results.plumbing.coldWaterMainSize,
+          hotWaterMainSize: results.plumbing.hotWaterMainSize,
+          recommendedDrainSize: results.plumbing.recommendedDrainSize
+        },
+        dhw: {
+          peakGPH: results.dhw.peakGPH,
+          grossBTU: results.dhw.grossBTU,
+          storageGallons: results.dhw.storageGallons,
+          tanklessUnits: results.dhw.tanklessUnits
+        },
+        gas: {
+          totalMBH: results.gas.totalMBH,
+          totalCFH: results.gas.totalCFH,
+          recommendedPipeSize: results.gas.recommendedPipeSize
+        },
+        zones: zones.map(z => ({
+          name: z.name,
+          type: z.type,
+          sf: z.sf
+        }))
+      }
+      
+      if (isSupabaseConfigured()) {
+        const { data, error } = await supabase
+          .from('saved_reports')
+          .insert({
+            project_id: currentProject.id,
+            name: name || `Report v${nextVersion}`,
+            version: nextVersion,
+            snapshot
+          })
+          .select()
+          .single()
+        
+        if (error) throw error
+        
+        // Add to local state
+        const newReport: SavedReport = {
+          id: data.id,
+          projectId: currentProject.id,
+          name: data.name,
+          version: data.version,
+          createdAt: new Date(data.created_at),
+          snapshot
+        }
+        setSavedReports(prev => [newReport, ...prev])
+      }
+      
+      setShowNameModal(false)
+      setNewReportName('')
+    } catch (error) {
+      console.error('Error saving report:', error)
+      alert('Failed to save report. Check console for details.')
+    }
+    setSavingReport(false)
+  }
+  
+  // Delete a saved report
+  const deleteReport = async (reportId: string) => {
+    if (!confirm('Delete this saved report?')) return
+    
+    try {
+      if (isSupabaseConfigured()) {
+        const { error } = await supabase
+          .from('saved_reports')
+          .delete()
+          .eq('id', reportId)
+        
+        if (error) throw error
+      }
+      
+      setSavedReports(prev => prev.filter(r => r.id !== reportId))
+      if (selectedReport?.id === reportId) {
+        setSelectedReport(null)
+      }
+    } catch (error) {
+      console.error('Error deleting report:', error)
+    }
+  }
 
   if (!currentProject || !results) {
     return (
@@ -83,6 +249,35 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
           </button>
         </div>
         <div className="flex items-center gap-2">
+          {/* Generate Report Button */}
+          <button
+            onClick={() => setShowNameModal(true)}
+            disabled={savingReport}
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 disabled:bg-primary-800 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {savingReport ? 'Saving...' : 'Save Snapshot'}
+          </button>
+          
+          {/* Report History Button */}
+          <button
+            onClick={() => setShowReportHistory(!showReportHistory)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showReportHistory || savedReports.length > 0
+                ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                : 'bg-surface-700 hover:bg-surface-600 text-surface-300'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            History {savedReports.length > 0 && `(${savedReports.length})`}
+          </button>
+          
+          <span className="text-surface-600">|</span>
+          
           <button
             onClick={handleExportPDF}
             disabled={exporting}
@@ -106,6 +301,169 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
         </div>
       </div>
 
+      {/* Report Name Modal */}
+      {showNameModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-surface-800 rounded-xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="text-lg font-semibold text-white mb-4">Save Report Snapshot</h3>
+            <p className="text-sm text-surface-400 mb-4">
+              This will save a copy of the current calculations for historical reference.
+            </p>
+            <input
+              type="text"
+              value={newReportName}
+              onChange={(e) => setNewReportName(e.target.value)}
+              placeholder={`Report v${savedReports.length + 1}`}
+              className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white placeholder-surface-500 focus:outline-none focus:ring-2 focus:ring-primary-500 mb-4"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  generateReport(newReportName || `Report v${savedReports.length + 1}`)
+                }
+              }}
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowNameModal(false); setNewReportName('') }}
+                className="px-4 py-2 text-surface-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => generateReport(newReportName || `Report v${savedReports.length + 1}`)}
+                disabled={savingReport}
+                className="px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                {savingReport ? 'Saving...' : 'Save Report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Report History Panel */}
+      {showReportHistory && (
+        <div className="bg-surface-800 border-b border-surface-700">
+          <div className="max-w-4xl mx-auto px-8 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-semibold text-white">Saved Report History</h3>
+              <button 
+                onClick={() => setShowReportHistory(false)}
+                className="text-surface-400 hover:text-white"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {loadingReports ? (
+              <p className="text-surface-400 text-sm">Loading reports...</p>
+            ) : savedReports.length === 0 ? (
+              <p className="text-surface-400 text-sm">No saved reports yet. Click "Save Snapshot" to create one.</p>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {savedReports.map((report) => (
+                  <div
+                    key={report.id}
+                    className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
+                      selectedReport?.id === report.id
+                        ? 'bg-primary-600/20 border border-primary-500'
+                        : 'bg-surface-700 hover:bg-surface-600'
+                    }`}
+                    onClick={() => setSelectedReport(selectedReport?.id === report.id ? null : report)}
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-white">{report.name}</span>
+                        <span className="text-xs px-2 py-0.5 bg-surface-600 text-surface-300 rounded">
+                          v{report.version}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-4 mt-1 text-xs text-surface-400">
+                        <span>{report.createdAt.toLocaleDateString()} {report.createdAt.toLocaleTimeString()}</span>
+                        <span>{report.snapshot.totalSF.toLocaleString()} SF</span>
+                        <span>{report.snapshot.zoneCount} zones</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); deleteReport(report.id) }}
+                        className="p-1.5 text-surface-400 hover:text-red-400 transition-colors"
+                        title="Delete report"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {/* Selected Report Comparison */}
+            {selectedReport && results && (
+              <div className="mt-4 p-4 bg-surface-900 rounded-lg">
+                <h4 className="text-sm font-semibold text-white mb-3">
+                  Comparing: {selectedReport.name} vs Current
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                  <ComparisonItem
+                    label="Total SF"
+                    saved={selectedReport.snapshot.totalSF}
+                    current={totalSF}
+                    unit=""
+                  />
+                  <ComparisonItem
+                    label="Cooling"
+                    saved={selectedReport.snapshot.hvac.totalTons}
+                    current={results.hvac.totalTons}
+                    unit=" tons"
+                  />
+                  <ComparisonItem
+                    label="Electrical"
+                    saved={selectedReport.snapshot.electrical.totalKW}
+                    current={results.electrical.totalKW}
+                    unit=" kW"
+                  />
+                  <ComparisonItem
+                    label="Service"
+                    saved={selectedReport.snapshot.electrical.amps_208v}
+                    current={results.electrical.amps_208v}
+                    unit="A"
+                  />
+                  <ComparisonItem
+                    label="Heating"
+                    saved={selectedReport.snapshot.hvac.totalMBH}
+                    current={results.hvac.totalMBH}
+                    unit=" MBH"
+                  />
+                  <ComparisonItem
+                    label="Ventilation"
+                    saved={selectedReport.snapshot.hvac.totalVentCFM}
+                    current={results.hvac.totalVentCFM}
+                    unit=" CFM"
+                  />
+                  <ComparisonItem
+                    label="DHW Storage"
+                    saved={selectedReport.snapshot.dhw.storageGallons}
+                    current={results.dhw.storageGallons}
+                    unit=" gal"
+                  />
+                  <ComparisonItem
+                    label="Gas"
+                    saved={selectedReport.snapshot.gas.totalCFH}
+                    current={results.gas.totalCFH}
+                    unit=" CFH"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
       {/* Report Preview */}
       <div className="max-w-4xl mx-auto p-8">
         {/* Report Paper */}
@@ -137,7 +495,14 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
           <section className="px-8 py-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-gray-900">1. HVAC (Mechanical)</h2>
-              <button className="text-xs text-primary-600 hover:underline">Edit</button>
+              {onNavigateToTab && (
+                <button 
+                  onClick={() => onNavigateToTab('central')}
+                  className="text-xs text-primary-600 hover:underline"
+                >
+                  Edit in Central Plant →
+                </button>
+              )}
             </div>
             <div className="space-y-3 text-sm text-gray-700">
               <div>
@@ -173,7 +538,14 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
           <section className="px-8 py-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-gray-900">2. Electrical / Fire Alarm</h2>
-              <button className="text-xs text-primary-600 hover:underline">Edit</button>
+              {onNavigateToTab && (
+                <button 
+                  onClick={() => onNavigateToTab('central')}
+                  className="text-xs text-primary-600 hover:underline"
+                >
+                  Edit in Central Plant →
+                </button>
+              )}
             </div>
             <div className="space-y-3 text-sm text-gray-700">
               <ol className="list-decimal list-inside space-y-2">
@@ -202,7 +574,14 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
           <section className="px-8 py-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-gray-900">3. Plumbing</h2>
-              <button className="text-xs text-primary-600 hover:underline">Edit</button>
+              {onNavigateToTab && (
+                <button 
+                  onClick={() => onNavigateToTab('central')}
+                  className="text-xs text-primary-600 hover:underline"
+                >
+                  Edit in Central Plant →
+                </button>
+              )}
             </div>
             <div className="space-y-3 text-sm text-gray-700">
               <div>
@@ -248,7 +627,14 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
           <section className="px-8 py-6 border-b border-gray-200">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold text-gray-900">4. Fire Protection (Sprinklers)</h2>
-              <button className="text-xs text-primary-600 hover:underline">Edit</button>
+              {onNavigateToTab && (
+                <button 
+                  onClick={() => onNavigateToTab('builder')}
+                  className="text-xs text-primary-600 hover:underline"
+                >
+                  Edit Zones →
+                </button>
+              )}
             </div>
             <div className="space-y-3 text-sm text-gray-700">
               <ol className="list-decimal list-inside space-y-2">
@@ -271,6 +657,7 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
           <div className="px-8 py-4 bg-gray-50 text-center text-xs text-gray-500">
             <p>Generated by COLLECTIF Engineering MEP Calculator</p>
             <p className="mt-1">Contingency: {(currentProject.contingency * 100).toFixed(0)}% applied to all calculations</p>
+            <p className="mt-1 text-green-600">✓ Live calculations • Last updated: {lastUpdated.toLocaleTimeString()}</p>
           </div>
         </div>
 
@@ -623,6 +1010,50 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// Helper component for comparing saved vs current values
+function ComparisonItem({ 
+  label, 
+  saved, 
+  current, 
+  unit 
+}: { 
+  label: string
+  saved: number
+  current: number
+  unit: string
+}) {
+  const diff = current - saved
+  const pctChange = saved !== 0 ? ((diff / saved) * 100) : 0
+  const isIncrease = diff > 0
+  const isDecrease = diff < 0
+  const hasChange = Math.abs(pctChange) > 0.5
+  
+  return (
+    <div className="bg-surface-800 p-2 rounded">
+      <div className="text-surface-400 mb-1">{label}</div>
+      <div className="flex items-baseline gap-2">
+        <span className="font-mono text-white">
+          {typeof current === 'number' && current % 1 !== 0 
+            ? current.toFixed(1) 
+            : current.toLocaleString()}{unit}
+        </span>
+        {hasChange && (
+          <span className={`text-xs font-medium ${
+            isIncrease ? 'text-orange-400' : isDecrease ? 'text-green-400' : 'text-surface-500'
+          }`}>
+            {isIncrease ? '↑' : '↓'} {Math.abs(pctChange).toFixed(0)}%
+          </span>
+        )}
+      </div>
+      <div className="text-surface-500 text-xs mt-0.5">
+        was {typeof saved === 'number' && saved % 1 !== 0 
+          ? saved.toFixed(1) 
+          : saved.toLocaleString()}{unit}
       </div>
     </div>
   )
