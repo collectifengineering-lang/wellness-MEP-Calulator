@@ -59,6 +59,7 @@ export interface Project {
   electricalSettings: ProjectElectricalSettings
   contingency: number
   resultAdjustments: ResultAdjustments
+  poolRoomDesign?: PoolRoomDesign  // Pool room calculator state
   createdAt: Date
   updatedAt: Date
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { useProjectStore } from '../../store/useProjectStore'
 import PoolEditor from './PoolEditor'
@@ -14,19 +14,40 @@ import {
 } from '../../calculations/pool'
 
 export default function PoolRoomTab() {
-  const { zones, updateZone, addLineItem } = useProjectStore()
+  const { currentProject, zones, updateZone, addLineItem, updatePoolRoomDesign } = useProjectStore()
   
-  // State for target zone selection
-  const [targetZoneId, setTargetZoneId] = useState<string | null>(null)
+  // State for target zone selection - initialized from saved design
+  const [targetZoneId, setTargetZoneId] = useState<string | null>(
+    currentProject?.poolRoomDesign?.targetZoneId || null
+  )
   
-  // State for pools
-  const [pools, setPools] = useState<PoolConfig[]>([])
+  // State for pools - initialized from saved design
+  const [pools, setPools] = useState<PoolConfig[]>(
+    currentProject?.poolRoomDesign?.pools || []
+  )
   
-  // State for room parameters
-  const [params, setParams] = useState<PoolRoomParams>(() => getDefaultPoolRoomParams(2000))
+  // State for room parameters - initialized from saved design or defaults
+  const [params, setParams] = useState<PoolRoomParams>(
+    currentProject?.poolRoomDesign?.params || getDefaultPoolRoomParams(2000)
+  )
   
   // State for editing pool
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null)
+  
+  // Save to store whenever design changes (debounced via auto-save in ProjectWorkspace)
+  const saveDesign = useCallback(() => {
+    updatePoolRoomDesign({
+      targetZoneId,
+      pools,
+      params,
+    })
+  }, [targetZoneId, pools, params, updatePoolRoomDesign])
+  
+  // Auto-save whenever pools, params, or target zone changes
+  useEffect(() => {
+    const timer = setTimeout(saveDesign, 300)
+    return () => clearTimeout(timer)
+  }, [saveDesign])
   
   // Get pool-related zones (pool_indoor, pool_outdoor, hot_tub, etc.)
   const poolZones = zones.filter(z => 

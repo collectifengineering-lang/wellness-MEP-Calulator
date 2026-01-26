@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { v4 as uuidv4 } from 'uuid'
-import type { Project, Zone, DHWSettings, ResultAdjustments, ClimateType, ZoneType, LineItem, ZoneFixtures, ZoneProcessLoads } from '../types'
+import type { Project, Zone, DHWSettings, ResultAdjustments, ClimateType, ZoneType, LineItem, ZoneFixtures, ZoneProcessLoads, PoolRoomDesign } from '../types'
 import { getZoneColor, calculateFixturesFromSF, type ZoneDefaults } from '../data/zoneDefaults'
 import { useSettingsStore } from './useSettingsStore'
 import { getDefaultDHWSettings, getDefaultResultAdjustments, getDefaultElectricalSettings } from '../data/defaults'
@@ -271,6 +271,9 @@ interface ProjectState {
   // Result adjustments
   updateResultAdjustments: (adjustments: Partial<ResultAdjustments>) => void
   
+  // Pool room design
+  updatePoolRoomDesign: (design: PoolRoomDesign | undefined) => void
+  
   // Computed values
   getTotalSF: () => number
   getAggregatedFixtures: () => ZoneFixtures
@@ -426,6 +429,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       ? { 
           ...state.currentProject, 
           resultAdjustments: { ...state.currentProject.resultAdjustments, ...adjustments },
+          updatedAt: new Date()
+        }
+      : null
+  })),
+  
+  updatePoolRoomDesign: (design) => set((state) => ({
+    currentProject: state.currentProject 
+      ? { 
+          ...state.currentProject, 
+          poolRoomDesign: design,
           updatedAt: new Date()
         }
       : null

@@ -80,6 +80,7 @@ export default function ProjectWorkspace() {
           dhwSettings: mergedDHW,
           contingency: (pd.contingency as number) || 0.25,
           resultAdjustments: mergedAdjustments,
+          poolRoomDesign: pd.pool_room_design as import('../types').PoolRoomDesign | undefined,
           createdAt: new Date(pd.created_at as string),
           updatedAt: new Date(pd.updated_at as string),
         } as import('../types').Project)
@@ -179,6 +180,7 @@ export default function ProjectWorkspace() {
               dhwSettings: mergedDHW,
               contingency: (pd.contingency as number) || 0.25,
               resultAdjustments: mergedAdjustments,
+              poolRoomDesign: pd.pool_room_design as import('../types').PoolRoomDesign | undefined,
               createdAt: new Date(pd.created_at as string),
               updatedAt: new Date(pd.updated_at as string),
             } as import('../types').Project)
@@ -277,6 +279,7 @@ export default function ProjectWorkspace() {
           dhw_settings: currentProject.dhwSettings as unknown as Record<string, unknown>,
           contingency: currentProject.contingency,
           result_adjustments: currentProject.resultAdjustments as unknown as Record<string, unknown>,
+          pool_room_design: currentProject.poolRoomDesign as unknown as Record<string, unknown>,
           updated_at: timestamp,
         } as unknown as never)
 
