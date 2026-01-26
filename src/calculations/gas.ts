@@ -8,78 +8,8 @@ export function calculateGas(zones: Zone[], contingency: number): GasCalcResult 
 
   zones.forEach(zone => {
     const defaults = getZoneDefaults(zone.type)
-    const processLoads = zone.processLoads || {}
     
-    // Get gas MBH - prefer zone's processLoads, fall back to defaults
-    const zoneGasMBH = processLoads.gas_mbh ?? defaults.gas_mbh ?? 0
-    const poolHeaterMBH = processLoads.pool_heater_mbh ?? defaults.pool_heater_gas_mbh ?? 0
-    
-    // Only count gas loads for gas sub-type zones (or always-gas equipment like pool heaters)
-    if (zone.subType === 'gas' || poolHeaterMBH > 0) {
-      // Fixed gas loads (sauna, banya, etc.)
-      if (zoneGasMBH > 0 && zone.subType === 'gas') {
-        totalMBH += zoneGasMBH
-        equipmentBreakdown.push({
-          name: `${zone.name} - ${defaults.displayName}`,
-          mbh: zoneGasMBH,
-          cfh: zoneGasMBH,
-        })
-      }
-      
-      // Pool heaters (can be gas regardless of zone subType)
-      if (poolHeaterMBH > 0) {
-        totalMBH += poolHeaterMBH
-        equipmentBreakdown.push({
-          name: `${zone.name} - Pool Heater`,
-          mbh: poolHeaterMBH,
-          cfh: poolHeaterMBH,
-        })
-      }
-      
-      // Commercial laundry - use zone's custom equipment specs if provided
-      if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0) {
-        const laundryLoads = calculateLaundryLoads(
-          zone.fixtures.washingMachines || 0,
-          zone.fixtures.dryers,
-          'gas',
-          zone.laundryEquipment
-        )
-        if (laundryLoads.dryer_gas_mbh > 0) {
-          totalMBH += laundryLoads.dryer_gas_mbh
-          // Stacked dryers = 2 pockets per unit
-          const pockets = zone.fixtures.dryers * 2
-          const mbhPerPocket = zone.laundryEquipment?.dryer_gas_mbh ?? 95
-          equipmentBreakdown.push({
-            name: `${zone.name} - Gas Dryers (${zone.fixtures.dryers} units, ${pockets} pockets @ ${mbhPerPocket} MBH each)`,
-            mbh: laundryLoads.dryer_gas_mbh,
-            cfh: laundryLoads.total_gas_cfh,
-          })
-        }
-      }
-      // Legacy dryer calculation for non-commercial laundry
-      else if (defaults.gas_mbh_per_dryer && zone.fixtures.dryers > 0) {
-        const dryerMBH = defaults.gas_mbh_per_dryer * zone.fixtures.dryers
-        totalMBH += dryerMBH
-        equipmentBreakdown.push({
-          name: `${zone.name} - Dryers (${zone.fixtures.dryers}x)`,
-          mbh: dryerMBH,
-          cfh: dryerMBH,
-        })
-      }
-      
-      // Commercial kitchen (per SF)
-      if (defaults.gas_mbh_per_sf) {
-        const kitchenMBH = defaults.gas_mbh_per_sf * zone.sf
-        totalMBH += kitchenMBH
-        equipmentBreakdown.push({
-          name: `${zone.name} - Kitchen Equipment`,
-          mbh: Math.round(kitchenMBH),
-          cfh: Math.round(kitchenMBH),
-        })
-      }
-    }
-    
-    // Line items for gas
+    // 1. LINE ITEMS - ALL gas equipment should be here now!
     zone.lineItems
       .filter(li => li.category === 'gas')
       .forEach(li => {
@@ -91,13 +21,50 @@ export function calculateGas(zones: Zone[], contingency: number): GasCalcResult 
         } else if (li.unit === 'CFH') {
           mbh = li.quantity * li.value // approximate 1 CFH = 1 MBH for nat gas
         }
-        totalMBH += mbh
-        equipmentBreakdown.push({
-          name: `${zone.name} - ${li.name}`,
-          mbh: Math.round(mbh),
-          cfh: Math.round(mbh),
-        })
+        if (mbh > 0) {
+          totalMBH += mbh
+          equipmentBreakdown.push({
+            name: `${zone.name} - ${li.name}`,
+            mbh: Math.round(mbh),
+            cfh: Math.round(mbh),
+          })
+        }
       })
+    
+    // 2. LAUNDRY GAS DRYERS (calculated from fixture counts)
+    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0 && zone.subType === 'gas') {
+      const laundryLoads = calculateLaundryLoads(
+        zone.fixtures.washingMachines || 0,
+        zone.fixtures.dryers,
+        'gas',
+        zone.laundryEquipment
+      )
+      if (laundryLoads.dryer_gas_mbh > 0) {
+        totalMBH += laundryLoads.dryer_gas_mbh
+        const pockets = zone.fixtures.dryers * 2
+        const mbhPerPocket = zone.laundryEquipment?.dryer_gas_mbh ?? 95
+        equipmentBreakdown.push({
+          name: `${zone.name} - Gas Dryers (${zone.fixtures.dryers} units, ${pockets} pockets @ ${mbhPerPocket} MBH each)`,
+          mbh: laundryLoads.dryer_gas_mbh,
+          cfh: laundryLoads.total_gas_cfh,
+        })
+      }
+    }
+    
+    // 3. COMMERCIAL KITCHEN (rate-based, for zones without line items)
+    if (defaults.gas_mbh_per_sf && zone.subType === 'gas') {
+      // Only add if no kitchen line items already exist
+      const hasKitchenLineItem = zone.lineItems.some(li => li.category === 'gas' && li.name.toLowerCase().includes('kitchen'))
+      if (!hasKitchenLineItem) {
+        const kitchenMBH = defaults.gas_mbh_per_sf * zone.sf
+        totalMBH += kitchenMBH
+        equipmentBreakdown.push({
+          name: `${zone.name} - Kitchen Equipment`,
+          mbh: Math.round(kitchenMBH),
+          cfh: Math.round(kitchenMBH),
+        })
+      }
+    }
   })
 
   // Total CFH (natural gas ~1,000 BTU/CF, so CFH ≈ MBH for convenience)

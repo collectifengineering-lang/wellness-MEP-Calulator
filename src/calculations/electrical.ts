@@ -24,30 +24,11 @@ export function calculateElectrical(
   zones.forEach(zone => {
     const defaults = getZoneDefaults(zone.type)
     
-    // Rate-based loads
+    // 1. Rate-based loads (per SF)
     const lightingKW = zone.sf * zone.rates.lighting_w_sf / 1000
     const receptacleKW = zone.sf * zone.rates.receptacle_va_sf / 1000
     
-    // Fixed loads - prefer zone's processLoads, fall back to defaults
-    let fixedKW = zone.processLoads?.fixed_kw ?? defaults.fixed_kw ?? 0
-    
-    // Special handling for laundry zones - calculate from equipment counts
-    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment) {
-      const washers = zone.fixtures.washingMachines || 0
-      const dryers = zone.fixtures.dryers || 0
-      const dryerType = zone.subType === 'gas' ? 'gas' : 'electric'
-      const laundryLoads = calculateLaundryLoads(washers, dryers, dryerType, zone.laundryEquipment)
-      
-      // Add washer electrical load (always electric heated)
-      fixedKW += laundryLoads.washer_kw
-      
-      // Add dryer electrical load if electric dryers
-      if (dryerType === 'electric') {
-        fixedKW += laundryLoads.dryer_kw
-      }
-    }
-    
-    // Line items
+    // 2. Line items - ALL equipment loads should be here!
     const lineItemsKW = zone.lineItems
       .filter(li => li.category === 'lighting' || li.category === 'power')
       .reduce((sum, li) => {
@@ -56,7 +37,18 @@ export function calculateElectrical(
         return sum
       }, 0)
     
-    totalKW += lightingKW + receptacleKW + fixedKW + lineItemsKW
+    // 3. Laundry equipment (calculated from fixture counts)
+    let laundryKW = 0
+    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment) {
+      const washers = zone.fixtures.washingMachines || 0
+      const dryers = zone.fixtures.dryers || 0
+      const dryerType = zone.subType === 'gas' ? 'gas' : 'electric'
+      const laundryLoads = calculateLaundryLoads(washers, dryers, dryerType, zone.laundryEquipment)
+      laundryKW = laundryLoads.washer_kw + (dryerType === 'electric' ? laundryLoads.dryer_kw : 0)
+    }
+    
+    // Total = Rate-based + Line Items + Laundry
+    totalKW += lightingKW + receptacleKW + lineItemsKW + laundryKW
   })
 
   // Apply demand factor

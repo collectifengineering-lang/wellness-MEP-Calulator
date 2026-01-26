@@ -48,6 +48,123 @@ export function calculateProcessLoads(defaults: ZoneDefaults, sf: number, subTyp
   }
 }
 
+/**
+ * Generate default LINE ITEMS from zone defaults
+ * ALL equipment loads are now LINE ITEMS - visible, editable, simple math!
+ */
+export function generateDefaultLineItems(
+  defaults: ZoneDefaults, 
+  sf: number, 
+  subType: 'electric' | 'gas',
+  _zoneName?: string  // Reserved for future use
+): LineItem[] {
+  const items: LineItem[] = []
+  const ceilingHeight = defaults.ceiling_height_ft || 10
+  
+  // 1. Fixed electrical equipment (heaters, chillers, etc.)
+  let fixed_kw = defaults.fixed_kw || 0
+  if (defaults.kw_per_cubic_meter && subType === 'electric') {
+    const cubicFeet = sf * ceilingHeight
+    const cubicMeters = cubicFeet * 0.0283168
+    fixed_kw = Math.round(cubicMeters * defaults.kw_per_cubic_meter * 10) / 10
+  }
+  if (fixed_kw > 0) {
+    items.push({
+      id: uuidv4(),
+      category: 'power',
+      name: `${defaults.displayName} - Electric Equipment`,
+      quantity: 1,
+      unit: 'kW',
+      value: fixed_kw,
+      notes: defaults.kw_per_cubic_meter ? `${defaults.kw_per_cubic_meter} kW/m³ × ${sf} SF × ${ceilingHeight}ft ceiling` : 'Fixed equipment load'
+    })
+  }
+  
+  // 2. Gas equipment (banya, sauna burners, etc.)
+  let gas_mbh = defaults.gas_mbh || 0
+  if (defaults.gas_mbh_per_sf && subType === 'gas') {
+    gas_mbh = Math.round(sf * defaults.gas_mbh_per_sf)
+  }
+  if (gas_mbh > 0 && subType === 'gas') {
+    items.push({
+      id: uuidv4(),
+      category: 'gas',
+      name: `${defaults.displayName} - Gas Burner/Heater`,
+      quantity: 1,
+      unit: 'MBH',
+      value: gas_mbh,
+      notes: defaults.source_notes?.split(';')[0] || 'Gas equipment'
+    })
+  }
+  
+  // 3. Pool heater
+  if (defaults.pool_heater_gas_mbh && defaults.pool_heater_gas_mbh > 0) {
+    items.push({
+      id: uuidv4(),
+      category: 'gas',
+      name: 'Pool Heater',
+      quantity: 1,
+      unit: 'MBH',
+      value: defaults.pool_heater_gas_mbh,
+      notes: 'Gas pool heater - can switch to electric heat pump'
+    })
+  }
+  
+  // 4. Fixed ventilation (for special spaces like thermal rooms)
+  if (defaults.ventilation_cfm && defaults.ventilation_cfm > 0) {
+    items.push({
+      id: uuidv4(),
+      category: 'ventilation',
+      name: 'Make-Up Air (Fixed)',
+      quantity: 1,
+      unit: 'CFM',
+      value: defaults.ventilation_cfm,
+      notes: 'Fixed outdoor air requirement'
+    })
+  }
+  
+  // 5. Fixed exhaust (for thermal rooms, etc.)
+  if (defaults.exhaust_cfm && defaults.exhaust_cfm > 0) {
+    items.push({
+      id: uuidv4(),
+      category: 'exhaust',
+      name: 'Exhaust Fan (Fixed)',
+      quantity: 1,
+      unit: 'CFM',
+      value: defaults.exhaust_cfm,
+      notes: 'Fixed exhaust requirement'
+    })
+  }
+  
+  // 6. Dehumidification for pools
+  if (defaults.dehumidification_lb_hr && defaults.dehumidification_lb_hr > 0) {
+    items.push({
+      id: uuidv4(),
+      category: 'other',
+      name: 'Pool Dehumidifier',
+      quantity: 1,
+      unit: 'lb/hr',
+      value: defaults.dehumidification_lb_hr,
+      notes: 'Pool area dehumidification capacity'
+    })
+  }
+  
+  // 7. Kitchen MAU (make-up air for hood)
+  if (defaults.mau_cfm && defaults.mau_cfm > 0) {
+    items.push({
+      id: uuidv4(),
+      category: 'ventilation',
+      name: 'Kitchen MAU (for Type I Hood)',
+      quantity: 1,
+      unit: 'CFM',
+      value: defaults.mau_cfm,
+      notes: 'Make-up air for kitchen exhaust hood'
+    })
+  }
+  
+  return items
+}
+
 interface ProjectState {
   // Current project
   currentProject: Project | null
@@ -100,17 +217,21 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const defaults = settingsStore.getZoneDefaults(type)
     const zoneSF = sf || defaults.defaultSF || 1000
     const subType = defaults.defaultSubType || 'electric'
+    const zoneName = name || defaults.displayName
     
     // Auto-calculate fixtures for restroom/locker_room based on SF
     const autoFixtures = calculateFixturesFromSF(type, zoneSF)
     
-    // Calculate process loads (fixed_kw, gas_mbh, etc.) based on SF
+    // Calculate process loads (still used for backwards compatibility)
     const processLoads = calculateProcessLoads(defaults, zoneSF, subType)
+    
+    // Generate LINE ITEMS from defaults - ALL equipment is now visible!
+    const defaultLineItems = generateDefaultLineItems(defaults, zoneSF, subType, zoneName)
     
     const newZone: Zone = {
       id: uuidv4(),
       projectId: get().currentProject?.id || '',
-      name: name || defaults.displayName,
+      name: zoneName,
       type,
       subType,
       sf: zoneSF,
@@ -118,7 +239,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       fixtures: { ...defaults.defaultFixtures, ...autoFixtures },
       rates: { ...defaults.defaultRates },
       processLoads,
-      lineItems: [],
+      lineItems: defaultLineItems,  // Pre-populated with default equipment!
       sortOrder: get().zones.length,
     }
     set((state) => ({ zones: [...state.zones, newZone] }))

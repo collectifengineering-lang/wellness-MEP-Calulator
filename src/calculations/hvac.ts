@@ -36,26 +36,17 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
       totalMBH += btuhr / 1000
     }
     
-    // Ventilation (rate-based)
+    // 1. RATE-BASED ventilation (per SF)
     if (zone.rates.ventilation_cfm_sf > 0) {
       totalVentCFM += zone.sf * zone.rates.ventilation_cfm_sf
     }
-    // Fixed ventilation CFM - prefer zone's processLoads, fall back to defaults
-    const fixedVentCFM = processLoads.ventilation_cfm ?? defaults.ventilation_cfm ?? 0
-    if (fixedVentCFM > 0) {
-      totalVentCFM += fixedVentCFM
-    }
     
-    // Exhaust (rate-based)
+    // 2. RATE-BASED exhaust (per SF)
     if (zone.rates.exhaust_cfm_sf > 0) {
       totalExhaustCFM += zone.sf * zone.rates.exhaust_cfm_sf
     }
-    // Fixed exhaust CFM - prefer zone's processLoads, fall back to defaults
-    const fixedExhaustCFM = processLoads.exhaust_cfm ?? defaults.exhaust_cfm ?? 0
-    if (fixedExhaustCFM > 0) {
-      totalExhaustCFM += fixedExhaustCFM
-    }
-    // Per-fixture exhaust (toilets, showers)
+    
+    // 3. FIXTURE-BASED exhaust (toilets, showers)
     if (defaults.exhaust_cfm_toilet) {
       totalExhaustCFM += zone.fixtures.wcs * defaults.exhaust_cfm_toilet
     }
@@ -63,21 +54,7 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
       totalExhaustCFM += zone.fixtures.showers * defaults.exhaust_cfm_shower
     }
     
-    // Commercial laundry exhaust (per dryer unit)
-    // Uses zone's custom laundry equipment specs if provided
-    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0) {
-      const laundryLoads = calculateLaundryLoads(
-        zone.fixtures.washingMachines || 0,
-        zone.fixtures.dryers,
-        zone.subType === 'gas' ? 'gas' : 'electric',
-        zone.laundryEquipment  // Pass zone's custom equipment specs
-      )
-      totalExhaustCFM += laundryLoads.exhaust_cfm
-      // Make-up air = exhaust (for laundry, MUA should match exhaust)
-      totalVentCFM += laundryLoads.exhaust_cfm
-    }
-    
-    // Line items for ventilation/exhaust
+    // 4. LINE ITEMS - All fixed ventilation/exhaust equipment!
     zone.lineItems.forEach(li => {
       if (li.category === 'ventilation' && li.unit === 'CFM') {
         totalVentCFM += li.quantity * li.value
@@ -86,6 +63,18 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
         totalExhaustCFM += li.quantity * li.value
       }
     })
+    
+    // 5. LAUNDRY exhaust (calculated from fixture counts)
+    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0) {
+      const laundryLoads = calculateLaundryLoads(
+        zone.fixtures.washingMachines || 0,
+        zone.fixtures.dryers,
+        zone.subType === 'gas' ? 'gas' : 'electric',
+        zone.laundryEquipment
+      )
+      totalExhaustCFM += laundryLoads.exhaust_cfm
+      totalVentCFM += laundryLoads.exhaust_cfm // MUA = exhaust
+    }
     
     // Dehumidification for pool areas - prefer zone's processLoads
     const dehumidCapacity = processLoads.dehumid_lb_hr ?? defaults.dehumidification_lb_hr ?? 0
