@@ -64,30 +64,32 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
     }
     
     (zone.lineItems || []).forEach(li => {
-      if (li.category === 'ventilation' && li.unit === 'CFM') {
+      const unit = li.unit?.toLowerCase() || ''
+      
+      if (li.category === 'ventilation' && unit === 'cfm') {
         totalVentCFM += li.quantity * li.value
       }
-      if (li.category === 'exhaust' && li.unit === 'CFM') {
+      if (li.category === 'exhaust' && unit === 'cfm') {
         totalExhaustCFM += li.quantity * li.value
       }
       // Sum up dehumidification from line items (e.g., from pool room calculator)
-      if (li.category === 'dehumidification' && (li.unit === 'lb/hr' || li.unit === 'lbs/hr')) {
+      if (li.category === 'dehumidification' && (unit === 'lb/hr' || unit === 'lbs/hr')) {
         console.log(`   ✅ Adding dehumidification: ${li.quantity} × ${li.value} = ${li.quantity * li.value} lb/hr`)
         dehumidLbHr += li.quantity * li.value
       }
       // Sum up cooling from line items
-      if (li.category === 'cooling' && li.unit === 'tons') {
+      if (li.category === 'cooling' && unit === 'tons') {
         totalTons += li.quantity * li.value
       }
       // Sum up pool chiller from line items (tracked separately for mechanical loads)
-      if (li.category === 'pool_chiller' && li.unit === 'tons') {
+      if (li.category === 'pool_chiller' && unit === 'tons') {
         console.log(`   ✅ Adding pool chiller: ${li.quantity} × ${li.value} = ${li.quantity * li.value} tons`)
         poolChillerTons += li.quantity * li.value
         // Pool chiller also counts toward total cooling
         totalTons += li.quantity * li.value
       }
       // Sum up heating from line items
-      if (li.category === 'heating' && li.unit === 'MBH') {
+      if (li.category === 'heating' && unit === 'mbh') {
         totalMBH += li.quantity * li.value
       }
     })
