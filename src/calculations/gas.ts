@@ -36,19 +36,21 @@ export function calculateGas(zones: Zone[], contingency: number): GasCalcResult 
         })
       }
       
-      // Commercial laundry - use detailed equipment specs
+      // Commercial laundry - use zone's custom equipment specs if provided
       if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0) {
         const laundryLoads = calculateLaundryLoads(
           zone.fixtures.washingMachines || 0,
           zone.fixtures.dryers,
-          'gas'
+          'gas',
+          zone.laundryEquipment
         )
         if (laundryLoads.dryer_gas_mbh > 0) {
           totalMBH += laundryLoads.dryer_gas_mbh
           // Stacked dryers = 2 pockets per unit
           const pockets = zone.fixtures.dryers * 2
+          const mbhPerPocket = zone.laundryEquipment?.dryer_gas_mbh ?? 95
           equipmentBreakdown.push({
-            name: `${zone.name} - Gas Dryers (${zone.fixtures.dryers} units, ${pockets} pockets @ 95 MBH each)`,
+            name: `${zone.name} - Gas Dryers (${zone.fixtures.dryers} units, ${pockets} pockets @ ${mbhPerPocket} MBH each)`,
             mbh: laundryLoads.dryer_gas_mbh,
             cfh: laundryLoads.total_gas_cfh,
           })

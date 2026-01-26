@@ -36,7 +36,7 @@ export function calculateElectrical(
       const washers = zone.fixtures.washingMachines || 0
       const dryers = zone.fixtures.dryers || 0
       const dryerType = zone.subType === 'gas' ? 'gas' : 'electric'
-      const laundryLoads = calculateLaundryLoads(washers, dryers, dryerType)
+      const laundryLoads = calculateLaundryLoads(washers, dryers, dryerType, zone.laundryEquipment)
       
       // Add washer electrical load (always electric heated)
       fixedKW += laundryLoads.washer_kw

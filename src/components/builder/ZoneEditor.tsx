@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import LineItemsEditor from './LineItemsEditor'
 import { useProjectStore, calculateProcessLoads } from '../../store/useProjectStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
-import { getZoneCategories, getZoneTypesByCategory } from '../../data/zoneDefaults'
+import { getZoneCategories, getZoneTypesByCategory, calculateLaundryLoads } from '../../data/zoneDefaults'
 import type { Zone, ZoneType, ZoneProcessLoads } from '../../types'
 
 interface ZoneEditorProps {
@@ -91,17 +91,36 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
   const lightingKW = (localZone.sf * localZone.rates.lighting_w_sf) / 1000
   const receptacleKVA = (localZone.sf * localZone.rates.receptacle_va_sf) / 1000
   const rateVentCFM = localZone.sf * localZone.rates.ventilation_cfm_sf
-  const totalVentCFM = rateVentCFM + processLoads.ventilation_cfm
   const rateExhaustCFM = localZone.sf * localZone.rates.exhaust_cfm_sf
   const fixtureExhaustCFM = (defaults.exhaust_cfm_toilet || 0) * localZone.fixtures.wcs +
     (defaults.exhaust_cfm_shower || 0) * localZone.fixtures.showers
-  const totalExhaustCFM = rateExhaustCFM + processLoads.exhaust_cfm + fixtureExhaustCFM
+  
+  // Include laundry equipment exhaust and electrical
+  let laundryExhaustCFM = 0
+  let laundryVentCFM = 0
+  let laundryKW = 0
+  let laundryGasMBH = 0
+  if (defaults.laundry_equipment && localZone.fixtures.dryers > 0) {
+    const laundryLoads = calculateLaundryLoads(
+      localZone.fixtures.washingMachines || 0,
+      localZone.fixtures.dryers,
+      localZone.subType === 'gas' ? 'gas' : 'electric',
+      localZone.laundryEquipment
+    )
+    laundryExhaustCFM = laundryLoads.exhaust_cfm
+    laundryVentCFM = laundryLoads.exhaust_cfm // MUA = exhaust
+    laundryKW = laundryLoads.total_kw
+    laundryGasMBH = laundryLoads.dryer_gas_mbh
+  }
+  
+  const totalVentCFM = rateVentCFM + processLoads.ventilation_cfm + laundryVentCFM
+  const totalExhaustCFM = rateExhaustCFM + processLoads.exhaust_cfm + fixtureExhaustCFM + laundryExhaustCFM
   const coolingTons = localZone.rates.cooling_sf_ton > 0 ? localZone.sf / localZone.rates.cooling_sf_ton : 0
   const heatingMBH = (localZone.sf * localZone.rates.heating_btuh_sf) / 1000
 
-  // Total electrical = lighting + receptacle + fixed equipment
-  const totalElecKW = lightingKW + (receptacleKVA * 0.85) + processLoads.fixed_kw
-  const totalGasMBH = processLoads.gas_mbh + processLoads.pool_heater_mbh
+  // Total electrical = lighting + receptacle + fixed equipment + laundry
+  const totalElecKW = lightingKW + (receptacleKVA * 0.85) + processLoads.fixed_kw + laundryKW
+  const totalGasMBH = processLoads.gas_mbh + processLoads.pool_heater_mbh + laundryGasMBH
 
   return (
     <>
@@ -769,7 +788,7 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
             )}
           </div>
 
-          {/* Fixtures */}
+          {/* Fixtures - hide washers/dryers for laundry zones (they're in Equipment section) */}
           <div>
             <h4 className="text-sm font-medium text-surface-300 mb-3">🚿 Fixtures</h4>
             <div className="grid grid-cols-3 gap-2">
@@ -779,8 +798,11 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
                 { key: 'wcs', label: 'WCs', icon: '🚽' },
                 { key: 'floorDrains', label: 'Floor Drains', icon: '🕳️' },
                 { key: 'serviceSinks', label: 'Svc Sinks', icon: '🧹' },
-                { key: 'washingMachines', label: 'Washers', icon: '🧺' },
-                { key: 'dryers', label: 'Dryers', icon: '♨️' },
+                // Only show washers/dryers if NOT a laundry zone (laundry uses Equipment section)
+                ...(!defaults.laundry_equipment ? [
+                  { key: 'washingMachines', label: 'Washers', icon: '🧺' },
+                  { key: 'dryers', label: 'Dryers', icon: '♨️' },
+                ] : []),
               ].map(fixture => (
                 <div key={fixture.key}>
                   <label className="text-xs text-surface-400 flex items-center gap-1">
@@ -798,6 +820,11 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
                 </div>
               ))}
             </div>
+            {defaults.laundry_equipment && (
+              <p className="text-xs text-surface-500 mt-2 italic">
+                ℹ️ Washers/Dryers are in the Equipment section above
+              </p>
+            )}
           </div>
 
           {/* Line Items */}

@@ -681,12 +681,12 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Kitchen/Laundry',
     defaultSF: 600,
     defaultSubType: 'gas',
-    defaultFixtures: { ...defaultFixtures, floorDrains: 2, serviceSinks: 1, washingMachines: 4, dryers: 6 },
+    defaultFixtures: { ...defaultFixtures, floorDrains: 2, serviceSinks: 1, washingMachines: 4, dryers: 4 },
     defaultRates: {
       lighting_w_sf: 0.60,
       receptacle_va_sf: 4,
       ventilation_cfm_sf: 0.18,
-      exhaust_cfm_sf: 2.00,
+      exhaust_cfm_sf: 0,  // ZERO! Exhaust from dryer equipment only, not rate-based
       cooling_sf_ton: 400,
       heating_btuh_sf: 25,
     },
@@ -703,7 +703,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       dryer_exhaust_cfm: 1200,
       dryer_mua_sqin: 288,
     },
-    source_notes: 'Standby power required; High dryer exhaust; See equipment specs',
+    source_notes: 'Standby power required; Exhaust from dryer equipment; See equipment specs',
   },
   laundry_residential: {
     displayName: 'Laundry (Residential)',
@@ -1154,13 +1154,40 @@ export function calculatePoolHeaterMBH(
   return Math.ceil(baseMBH * 1.2)
 }
 
+// Custom laundry equipment specs (for zone-level overrides)
+export interface CustomLaundryEquipment {
+  washer_kw?: number
+  washer_amps_208v?: number
+  washer_water_gpm?: number
+  washer_drain_gpm?: number
+  washer_dfu?: number
+  dryer_gas_mbh?: number
+  dryer_kw_electric?: number
+  dryer_exhaust_cfm?: number
+  dryer_mua_sqin?: number
+}
+
 export function calculateLaundryLoads(
   washers: number,
   dryers: number,
-  dryerType: 'gas' | 'electric' = 'gas'
+  dryerType: 'gas' | 'electric' = 'gas',
+  customEquip?: CustomLaundryEquipment  // NEW: Accept zone's custom values
 ): LaundryLoads {
   const defaults = zoneDefaults.laundry_commercial
-  const equip = defaults.laundry_equipment!
+  const defaultEquip = defaults.laundry_equipment!
+  
+  // Merge custom equipment specs with defaults
+  const equip = {
+    washer_kw: customEquip?.washer_kw ?? defaultEquip.washer_kw,
+    washer_amps_208v: customEquip?.washer_amps_208v ?? defaultEquip.washer_amps_208v,
+    washer_water_gpm: customEquip?.washer_water_gpm ?? defaultEquip.washer_water_gpm,
+    washer_drain_gpm: customEquip?.washer_drain_gpm ?? defaultEquip.washer_drain_gpm,
+    washer_dfu: customEquip?.washer_dfu ?? defaultEquip.washer_dfu,
+    dryer_gas_mbh: customEquip?.dryer_gas_mbh ?? defaultEquip.dryer_gas_mbh,
+    dryer_kw_electric: customEquip?.dryer_kw_electric ?? defaultEquip.dryer_kw_electric,
+    dryer_exhaust_cfm: customEquip?.dryer_exhaust_cfm ?? defaultEquip.dryer_exhaust_cfm,
+    dryer_mua_sqin: customEquip?.dryer_mua_sqin ?? defaultEquip.dryer_mua_sqin,
+  }
   
   const washer_kw = washers * equip.washer_kw
   const washer_amps_208v = washers * equip.washer_amps_208v

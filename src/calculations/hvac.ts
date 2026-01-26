@@ -64,12 +64,13 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
     }
     
     // Commercial laundry exhaust (per dryer unit)
-    // Huebsch HTT45: 1,200 CFM max airflow per dryer unit
+    // Uses zone's custom laundry equipment specs if provided
     if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0) {
       const laundryLoads = calculateLaundryLoads(
         zone.fixtures.washingMachines || 0,
         zone.fixtures.dryers,
-        zone.subType === 'gas' ? 'gas' : 'electric'
+        zone.subType === 'gas' ? 'gas' : 'electric',
+        zone.laundryEquipment  // Pass zone's custom equipment specs
       )
       totalExhaustCFM += laundryLoads.exhaust_cfm
       // Make-up air = exhaust (for laundry, MUA should match exhaust)
@@ -142,9 +143,14 @@ export function getHVACBreakdown(zones: Zone[], climate: ClimateType): {
     if (defaults.exhaust_cfm_toilet) exhaustCFM += zone.fixtures.wcs * defaults.exhaust_cfm_toilet
     if (defaults.exhaust_cfm_shower) exhaustCFM += zone.fixtures.showers * defaults.exhaust_cfm_shower
     
-    // Laundry exhaust
+    // Laundry exhaust - uses zone's custom specs
     if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0) {
-      const laundryLoads = calculateLaundryLoads(zone.fixtures.washingMachines || 0, zone.fixtures.dryers, 'gas')
+      const laundryLoads = calculateLaundryLoads(
+        zone.fixtures.washingMachines || 0, 
+        zone.fixtures.dryers, 
+        zone.subType === 'gas' ? 'gas' : 'electric',
+        zone.laundryEquipment
+      )
       exhaustCFM += laundryLoads.exhaust_cfm
       ventCFM += laundryLoads.exhaust_cfm // MUA
     }

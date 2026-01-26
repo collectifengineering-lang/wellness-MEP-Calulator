@@ -306,12 +306,13 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
                       const receptacleKW = zone.sf * zone.rates.receptacle_va_sf / 1000
                       let fixedKW = defaults.fixed_kw || 0
                       
-                      // Add laundry equipment loads
+                      // Add laundry equipment loads - use zone's custom specs
                       if (zone.type === 'laundry_commercial' && defaults.laundry_equipment) {
                         const laundryLoads = calculateLaundryLoads(
                           zone.fixtures.washingMachines || 0,
                           zone.fixtures.dryers || 0,
-                          zone.subType === 'gas' ? 'gas' : 'electric'
+                          zone.subType === 'gas' ? 'gas' : 'electric',
+                          zone.laundryEquipment
                         )
                         fixedKW += laundryLoads.total_kw
                       }
