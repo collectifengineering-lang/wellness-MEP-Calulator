@@ -32,7 +32,11 @@ export function calculateGas(zones: Zone[], contingency: number): GasCalcResult 
       })
     
     // 2. LAUNDRY GAS DRYERS (calculated from fixture counts)
-    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0 && zone.subType === 'gas') {
+    // Only add if no dryer line items already exist (avoid double-counting)
+    const hasDryerLineItem = zone.lineItems.some(li => 
+      li.category === 'gas' && li.name.toLowerCase().includes('dryer')
+    )
+    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zone.fixtures.dryers > 0 && zone.subType === 'gas' && !hasDryerLineItem) {
       const laundryLoads = calculateLaundryLoads(
         zone.fixtures.washingMachines || 0,
         zone.fixtures.dryers,

@@ -55,9 +55,16 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
   const dhwKVA = settings.includeDhw && dhwSettings.heaterType === 'electric'
     ? dhw.electricKW / currentProject.electricalSettings.powerFactor
     : 0
+  
+  // Fan power for ventilation and exhaust
+  const totalCFM = hvac.totalVentCFM + hvac.totalExhaustCFM
+  const fanHpPer1000Cfm = settings.fanHpPer1000Cfm ?? 0.6
+  const fanHP = (totalCFM / 1000) * fanHpPer1000Cfm
+  const fanKVA = fanHP * 0.746 / currentProject.electricalSettings.powerFactor // HP to kW to kVA
+  const fanKVAIncluded = (settings.includeFans ?? true) ? fanKVA : 0
     
   // Total mechanical kVA
-  const totalMechKVA = coolingKVA + heatingKVA + poolChillerKVA + dehumidKVA + dhwKVA
+  const totalMechKVA = coolingKVA + heatingKVA + poolChillerKVA + dehumidKVA + dhwKVA + fanKVAIncluded
 
   return (
     <div className="bg-surface-800 rounded-xl border border-surface-700 overflow-hidden">
@@ -274,6 +281,46 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
                   {settings.includeDhw && dhwSettings.heaterType === 'electric' ? dhwKVA.toFixed(1) : '—'}
                 </td>
               </tr>
+              
+              {/* Fan Power */}
+              <tr className="border-b border-surface-700/50">
+                <td className="py-3 px-2">
+                  <input
+                    type="checkbox"
+                    checked={settings.includeFans ?? true}
+                    onChange={(e) => handleUpdate('includeFans', e.target.checked)}
+                    className="w-4 h-4 rounded accent-cyan-500"
+                  />
+                </td>
+                <td className="py-3 px-2">
+                  <div className="text-white">Fan Power (Supply + Exhaust)</div>
+                  <div className="text-xs text-surface-500 mt-0.5">
+                    {hvac.totalVentCFM.toLocaleString()} + {hvac.totalExhaustCFM.toLocaleString()} = {totalCFM.toLocaleString()} CFM
+                  </div>
+                </td>
+                <td className="py-3 px-2 text-right text-surface-300 font-mono">
+                  {fanHP.toFixed(1)} HP
+                </td>
+                <td className="py-3 px-2 text-center text-surface-500">×</td>
+                <td className="py-3 px-2">
+                  <div className="flex items-center justify-end gap-1">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.3"
+                      max="1.5"
+                      value={fanHpPer1000Cfm}
+                      onChange={(e) => handleUpdate('fanHpPer1000Cfm', Number(e.target.value))}
+                      className="w-16 px-2 py-1 bg-surface-900 border border-surface-600 rounded text-white text-right font-mono text-sm"
+                    />
+                    <span className="text-xs text-surface-500">HP/kCFM</span>
+                  </div>
+                </td>
+                <td className="py-3 px-2 text-center text-surface-500">=</td>
+                <td className="py-3 px-2 text-right text-cyan-400 font-mono font-medium">
+                  {(settings.includeFans ?? true) ? fanKVA.toFixed(1) : '—'}
+                </td>
+              </tr>
             </tbody>
             
             {/* Total */}
@@ -293,7 +340,7 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
         {/* Conversion Factor Notes */}
         <div className="bg-surface-900/50 rounded-lg p-4">
           <h4 className="text-sm font-medium text-surface-300 mb-2">Default Conversion Factors</h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-surface-400">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs text-surface-400">
             <div>
               <strong className="text-surface-300">Cooling:</strong> 1.5 kVA/ton
               <p className="mt-0.5">Air-cooled chiller</p>
@@ -309,6 +356,10 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
             <div>
               <strong className="text-surface-300">Dehumid:</strong> 0.4 kVA/(lb/hr)
               <p className="mt-0.5">Pool dehumidification unit</p>
+            </div>
+            <div>
+              <strong className="text-surface-300">Fans:</strong> 0.6 HP/1000 CFM
+              <p className="mt-0.5">Supply + exhaust fans</p>
             </div>
           </div>
         </div>
@@ -395,6 +446,17 @@ export function calculateMechanicalKVA(
     breakdown.push({ name: 'DHW Electric', kva })
   }
   
+  // Fan power for ventilation and exhaust
+  if (settings.includeFans ?? true) {
+    const totalCFM = hvac.totalVentCFM + hvac.totalExhaustCFM
+    const fanHpPer1000Cfm = settings.fanHpPer1000Cfm ?? 0.6
+    const fanHP = (totalCFM / 1000) * fanHpPer1000Cfm
+    const kva = fanHP * 0.746 / powerFactor // HP to kW to kVA
+    if (kva > 0) {
+      breakdown.push({ name: 'Fan Power', kva })
+    }
+  }
+
   const total = breakdown.reduce((sum, item) => sum + item.kva, 0)
   
   return { total, breakdown }

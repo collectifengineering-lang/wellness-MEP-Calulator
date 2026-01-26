@@ -133,10 +133,11 @@ export interface ProjectElectricalSettings {
 // Mechanical equipment electrical load settings
 export interface MechanicalElectricalSettings {
   // Conversion factors - adjustable per project
-  coolingKvaPerTon: number       // Default: 1.2 (typical air-cooled chiller)
+  coolingKvaPerTon: number       // Default: 1.5 (typical air-cooled chiller)
   heatingKvaPerMbh: number       // Default: 0.293 (1 MBH = 293W electric resistance)
-  poolChillerKvaPerTon: number   // Default: 1.5 (water-cooled, slightly less efficient)
-  dehumidKvaPerLbHr: number      // Default: 0.05 (5 kW per 100 lb/hr)
+  poolChillerKvaPerTon: number   // Default: 1.5 (water-cooled)
+  dehumidKvaPerLbHr: number      // Default: 0.4 (dehumidification unit)
+  fanHpPer1000Cfm: number        // Default: 0.6 (HP per 1000 CFM for supply/exhaust fans)
   
   // Heating percentage - most heating via heat pumps/energy recovery
   heatingElectricPercent: number // Default: 0.15 (15% of heating is supplemental electric)
@@ -147,6 +148,7 @@ export interface MechanicalElectricalSettings {
   includePoolChiller: boolean    // Include pool water heating/chilling
   includeDehumid: boolean        // Include dehumidification
   includeDhw: boolean            // Include DHW if electric
+  includeFans: boolean           // Include fan power for ventilation/exhaust
 }
 
 // Process loads that are fixed per zone (not per SF)

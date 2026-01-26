@@ -289,6 +289,7 @@ export function getDefaultMechanicalSettings(): MechanicalElectricalSettings {
     heatingKvaPerMbh: 0.293,     // 1 MBH = 1000 BTU/hr = 293W = 0.293 kW
     poolChillerKvaPerTon: 1.5,   // Pool water chiller: ~1.5 kVA/ton
     dehumidKvaPerLbHr: 0.4,      // Dehumidification: ~0.4 kVA per lb/hr
+    fanHpPer1000Cfm: 0.6,        // Fan power: ~0.6 HP per 1000 CFM (typical)
     
     // Heating percentage - most heating via heat pumps/energy recovery
     heatingElectricPercent: 0.15, // 15% of heating is supplemental electric (default)
@@ -299,6 +300,7 @@ export function getDefaultMechanicalSettings(): MechanicalElectricalSettings {
     includePoolChiller: true,
     includeDehumid: true,
     includeDhw: true,            // Will only apply if DHW heater type is electric
+    includeFans: true,           // Include fan power for ventilation/exhaust
   }
 }
 
