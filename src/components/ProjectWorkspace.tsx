@@ -7,6 +7,7 @@ import ResultsTab from './results/ResultsTab'
 import { useProjectStore } from '../store/useProjectStore'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { useCalculations } from '../hooks/useCalculations'
+import { getDefaultDHWSettings, getDefaultElectricalSettings, getDefaultResultAdjustments } from '../data/defaults'
 
 type TabType = 'builder' | 'central' | 'results'
 
@@ -41,22 +42,43 @@ export default function ProjectWorkspace() {
 
       if (projectData) {
         const pd = projectData as Record<string, unknown>
+        const climate = (pd.climate as import('../types').ClimateType) || 'temperate'
+        
+        // Merge saved DHW settings with defaults to ensure all required fields exist
+        const defaultDHW = getDefaultDHWSettings(climate)
+        const savedDHW = pd.dhw_settings as Partial<import('../types').DHWSettings> | null
+        const mergedDHW: import('../types').DHWSettings = {
+          ...defaultDHW,
+          ...savedDHW,
+        }
+        
+        // Merge saved electrical settings with defaults
+        const defaultElectrical = getDefaultElectricalSettings()
+        const savedElectrical = pd.electrical_settings as Partial<import('../types').ProjectElectricalSettings> | null
+        const mergedElectrical = {
+          ...defaultElectrical,
+          ...savedElectrical,
+        }
+        
+        // Merge saved result adjustments with defaults
+        const defaultAdjustments = getDefaultResultAdjustments()
+        const savedAdjustments = pd.result_adjustments as Partial<import('../types').ResultAdjustments> | null
+        const mergedAdjustments = {
+          ...defaultAdjustments,
+          ...savedAdjustments,
+        }
+        
         setCurrentProject({
           id: pd.id as string,
           userId: pd.user_id as string,
           name: (pd.name as string) || 'Untitled',
           targetSF: (pd.target_sf as number) || 0,
-          climate: (pd.climate as import('../types').ClimateType) || 'temperate',
+          climate,
           electricPrimary: pd.electric_primary as boolean ?? true,
-          dhwSettings: (pd.dhw_settings as import('../types').DHWSettings) || {
-            heaterType: 'gas', gasEfficiency: 0.95, electricEfficiency: 0.98,
-            storageTemp: 140, deliveryTemp: 110, coldWaterTemp: 55, peakDuration: 2
-          },
+          electricalSettings: mergedElectrical,
+          dhwSettings: mergedDHW,
           contingency: (pd.contingency as number) || 0.25,
-          resultAdjustments: (pd.result_adjustments as import('../types').ResultAdjustments) || {
-            hvacNotes: '', electricalNotes: '', gasNotes: '',
-            waterSanitaryNotes: '', sprinklerNotes: '', fireAlarmNotes: '', overrides: {}
-          },
+          resultAdjustments: mergedAdjustments,
           createdAt: new Date(pd.created_at as string),
           updatedAt: new Date(pd.updated_at as string),
         } as import('../types').Project)
@@ -131,22 +153,31 @@ export default function ProjectWorkspace() {
             setOtherUserEditing(true)
             setTimeout(() => setOtherUserEditing(false), 3000)
             
+            // Merge with defaults to ensure all required fields exist
+            const climate = (pd.climate as import('../types').ClimateType) || 'temperate'
+            const defaultDHW = getDefaultDHWSettings(climate)
+            const savedDHW = pd.dhw_settings as Partial<import('../types').DHWSettings> | null
+            const mergedDHW = { ...defaultDHW, ...savedDHW }
+            
+            const defaultElectrical = getDefaultElectricalSettings()
+            const savedElectrical = pd.electrical_settings as Partial<import('../types').ProjectElectricalSettings> | null
+            const mergedElectrical = { ...defaultElectrical, ...savedElectrical }
+            
+            const defaultAdjustments = getDefaultResultAdjustments()
+            const savedAdjustments = pd.result_adjustments as Partial<import('../types').ResultAdjustments> | null
+            const mergedAdjustments = { ...defaultAdjustments, ...savedAdjustments }
+            
             setCurrentProject({
               id: pd.id as string,
               userId: pd.user_id as string,
               name: (pd.name as string) || 'Untitled',
               targetSF: (pd.target_sf as number) || 0,
-              climate: (pd.climate as import('../types').ClimateType) || 'temperate',
+              climate,
               electricPrimary: pd.electric_primary as boolean ?? true,
-              dhwSettings: (pd.dhw_settings as import('../types').DHWSettings) || {
-                heaterType: 'gas', gasEfficiency: 0.95, electricEfficiency: 0.98,
-                storageTemp: 140, deliveryTemp: 110, coldWaterTemp: 55, peakDuration: 2
-              },
+              electricalSettings: mergedElectrical,
+              dhwSettings: mergedDHW,
               contingency: (pd.contingency as number) || 0.25,
-              resultAdjustments: (pd.result_adjustments as import('../types').ResultAdjustments) || {
-                hvacNotes: '', electricalNotes: '', gasNotes: '',
-                waterSanitaryNotes: '', sprinklerNotes: '', fireAlarmNotes: '', overrides: {}
-              },
+              resultAdjustments: mergedAdjustments,
               createdAt: new Date(pd.created_at as string),
               updatedAt: new Date(pd.updated_at as string),
             } as import('../types').Project)
