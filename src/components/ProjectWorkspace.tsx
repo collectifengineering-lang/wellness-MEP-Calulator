@@ -78,6 +78,8 @@ export default function ProjectWorkspace() {
             color: (z.color as string) || '#64748b',
             fixtures: (z.fixtures as import('../types').ZoneFixtures) || { showers: 0, lavs: 0, wcs: 0, floorDrains: 0, serviceSinks: 0, washingMachines: 0, dryers: 0 },
             rates: (z.rates as import('../types').ZoneRates) || { lighting_w_sf: 1, receptacle_va_sf: 3, ventilation_cfm_sf: 0.15, exhaust_cfm_sf: 0, cooling_sf_ton: 400, heating_btuh_sf: 25 },
+            processLoads: (z.process_loads as import('../types').ZoneProcessLoads) || { fixed_kw: 0, gas_mbh: 0, ventilation_cfm: 0, exhaust_cfm: 0, pool_heater_mbh: 0, dehumid_lb_hr: 0, flue_size_in: 0, ceiling_height_ft: 10 },
+            laundryEquipment: z.laundry_equipment as import('../types').LaundryEquipment | undefined,
             lineItems: (z.line_items as import('../types').LineItem[]) || [],
             sortOrder: (z.sort_order as number) || 0,
           } as import('../types').Zone)))
@@ -185,6 +187,8 @@ export default function ProjectWorkspace() {
               color: (z.color as string) || '#64748b',
               fixtures: (z.fixtures as import('../types').ZoneFixtures) || { showers: 0, lavs: 0, wcs: 0, floorDrains: 0, serviceSinks: 0, washingMachines: 0, dryers: 0 },
               rates: (z.rates as import('../types').ZoneRates) || { lighting_w_sf: 1, receptacle_va_sf: 3, ventilation_cfm_sf: 0.15, exhaust_cfm_sf: 0, cooling_sf_ton: 400, heating_btuh_sf: 25 },
+              processLoads: (z.process_loads as import('../types').ZoneProcessLoads) || { fixed_kw: 0, gas_mbh: 0, ventilation_cfm: 0, exhaust_cfm: 0, pool_heater_mbh: 0, dehumid_lb_hr: 0, flue_size_in: 0, ceiling_height_ft: 10 },
+              laundryEquipment: z.laundry_equipment as import('../types').LaundryEquipment | undefined,
               lineItems: (z.line_items as import('../types').LineItem[]) || [],
               sortOrder: (z.sort_order as number) || 0,
             } as import('../types').Zone
@@ -271,6 +275,8 @@ export default function ProjectWorkspace() {
             color: zone.color,
             fixtures: zone.fixtures as unknown as Record<string, unknown>,
             rates: zone.rates as unknown as Record<string, unknown>,
+            process_loads: zone.processLoads as unknown as Record<string, unknown>,
+            laundry_equipment: zone.laundryEquipment as unknown as Record<string, unknown>,
             line_items: zone.lineItems as unknown as Record<string, unknown>[],
             sort_order: zone.sortOrder,
           } as unknown as never)

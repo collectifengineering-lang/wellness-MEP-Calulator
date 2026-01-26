@@ -91,6 +91,8 @@ export interface Database {
           color: string | null
           fixtures: ZoneFixtures | null
           rates: ZoneRates | null
+          process_loads: ZoneProcessLoads | null
+          laundry_equipment: LaundryEquipment | null
           line_items: LineItem[] | null
           sort_order: number | null
           created_at: string
@@ -105,6 +107,8 @@ export interface Database {
           color?: string | null
           fixtures?: ZoneFixtures | null
           rates?: ZoneRates | null
+          process_loads?: ZoneProcessLoads | null
+          laundry_equipment?: LaundryEquipment | null
           line_items?: LineItem[] | null
           sort_order?: number | null
           created_at?: string
@@ -119,6 +123,8 @@ export interface Database {
           color?: string | null
           fixtures?: ZoneFixtures | null
           rates?: ZoneRates | null
+          process_loads?: ZoneProcessLoads | null
+          laundry_equipment?: LaundryEquipment | null
           line_items?: LineItem[] | null
           sort_order?: number | null
           created_at?: string
@@ -175,6 +181,29 @@ export interface LineItem {
   unit: string
   value: number
   notes?: string
+}
+
+export interface ZoneProcessLoads {
+  fixed_kw: number
+  gas_mbh: number
+  ventilation_cfm: number
+  exhaust_cfm: number
+  pool_heater_mbh: number
+  dehumid_lb_hr: number
+  flue_size_in: number
+  ceiling_height_ft: number
+}
+
+export interface LaundryEquipment {
+  washer_kw?: number
+  washer_amps_208v?: number
+  washer_water_gpm?: number
+  washer_drain_gpm?: number
+  washer_dfu?: number
+  dryer_gas_mbh?: number
+  dryer_kw_electric?: number
+  dryer_exhaust_cfm?: number
+  dryer_mua_sqin?: number
 }
 
 // Shared settings types for database
