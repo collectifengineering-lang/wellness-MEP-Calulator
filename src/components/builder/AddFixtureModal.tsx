@@ -144,7 +144,7 @@ export function AddFixtureModal({ isOpen, onClose, onAddFixture, existingFixture
                             <div className="flex-1 min-w-0">
                               <div className="text-sm text-white truncate">{fixture.name}</div>
                               <div className="text-xs text-surface-500">
-                                WSFU: {fixture.wsfu} | DFU: {fixture.dfu}
+                                WSFU: {fixture.wsfuTotal} | DFU: {fixture.dfu}
                                 {fixture.hotWaterGPH > 0 && ` | HW: ${fixture.hotWaterGPH} GPH`}
                               </div>
                             </div>
@@ -174,9 +174,15 @@ export function AddFixtureModal({ isOpen, onClose, onAddFixture, existingFixture
                 </div>
 
                 <div className="space-y-3 text-sm">
-                  <div className="flex justify-between bg-surface-800 rounded-lg px-3 py-2">
-                    <span className="text-surface-400">WSFU</span>
-                    <span className="text-white font-mono">{selectedFixture.wsfu}</span>
+                  <div className="bg-surface-800 rounded-lg px-3 py-2">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-surface-400">WSFU Total</span>
+                      <span className="text-white font-mono">{selectedFixture.wsfuTotal}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-surface-500">Cold: {selectedFixture.wsfuCold}</span>
+                      <span className="text-surface-500">Hot: {selectedFixture.wsfuHot}</span>
+                    </div>
                   </div>
                   <div className="flex justify-between bg-surface-800 rounded-lg px-3 py-2">
                     <span className="text-surface-400">DFU</span>

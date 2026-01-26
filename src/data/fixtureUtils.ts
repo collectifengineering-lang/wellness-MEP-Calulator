@@ -6,24 +6,56 @@
 import type { ZoneFixtures } from '../types'
 
 // Reverse mapping: new ID -> legacy key
+// Maps ASPE fixture IDs to legacy aggregate categories
 const NEW_TO_LEGACY: Record<string, string> = {
+  // Showers (bathing)
   'shower': 'showers',
+  'shower_private': 'showers',
+  'shower_public': 'showers',
   'shower_gang': 'showers',
+  
+  // Lavatories (sinks)
   'lavatory': 'lavs',
+  'lavatory_private': 'lavs',
   'lavatory_public': 'lavs',
+  'hand_sink': 'lavs',
+  
+  // Water closets & urinals
   'water_closet_tank': 'wcs',
+  'water_closet_tank_private': 'wcs',
+  'water_closet_tank_public': 'wcs',
   'water_closet_valve': 'wcs',
+  'water_closet_valve_private': 'wcs',
+  'water_closet_valve_public': 'wcs',
+  'water_closet_flushometer': 'wcs',
   'water_closet_public': 'wcs',
-  'urinal_flush_valve': 'wcs',  // Count urinals as WCs for legacy compatibility
+  'urinal_1in_valve': 'wcs',  // Count urinals as WCs for legacy compatibility
+  'urinal_3_4in_valve': 'wcs',
+  'urinal_tank': 'wcs',
+  'urinal_flush_valve': 'wcs',
   'urinal_flush_tank': 'wcs',
+  'urinal_waterless': 'wcs',
+  
+  // Floor drains
   'floor_drain_2in': 'floorDrains',
   'floor_drain_3in': 'floorDrains',
   'floor_drain_4in': 'floorDrains',
   'area_drain': 'floorDrains',
   'trench_drain': 'floorDrains',
+  'emergency_floor_drain': 'floorDrains',
+  
+  // Service sinks
   'service_sink': 'serviceSinks',
+  'mop_basin': 'serviceSinks',
+  
+  // Washing machines
   'washing_machine_residential': 'washingMachines',
+  'washing_machine_8lb_private': 'washingMachines',
+  'washing_machine_8lb_public': 'washingMachines',
+  'washing_machine_15lb': 'washingMachines',
   'washing_machine_commercial': 'washingMachines',
+  
+  // Dryers
   'dryer_condensate': 'dryers',
 }
 

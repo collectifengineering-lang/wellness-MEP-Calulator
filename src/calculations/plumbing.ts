@@ -39,7 +39,9 @@ export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalc
     const fixtureDef = getFixtureById(mappedId)
     
     if (fixtureDef) {
-      totalWSFU += count * fixtureDef.wsfu
+      // Use wsfuTotal from ASPE tables (or fall back to legacy wsfu)
+      const wsfu = 'wsfuTotal' in fixtureDef ? (fixtureDef as any).wsfuTotal : (fixtureDef as any).wsfu || 0
+      totalWSFU += count * wsfu
       totalDFU += count * fixtureDef.dfu
     } else {
       // Fallback for unknown fixtures - use conservative estimates

@@ -534,7 +534,7 @@ function DynamicFixturesSection({
       const count = fixtures[id] || (legacyId ? fixtures[legacyId] : 0) || 0
       return { ...def, count }
     })
-    .filter(Boolean) as Array<{ id: string; name: string; icon: string; count: number; wsfu: number; dfu: number }>
+    .filter(Boolean) as Array<{ id: string; name: string; icon: string; count: number; wsfuTotal: number; dfu: number }>
 
   // Handle fixture removal (set to 0)
   const handleRemoveFixture = (fixtureId: string) => {
@@ -566,7 +566,7 @@ function DynamicFixturesSection({
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-white truncate">{fixture.name}</div>
                 <div className="text-[10px] text-surface-500">
-                  WSFU: {fixture.wsfu} | DFU: {fixture.dfu}
+                  WSFU: {fixture.wsfuTotal} | DFU: {fixture.dfu}
                 </div>
               </div>
               <input

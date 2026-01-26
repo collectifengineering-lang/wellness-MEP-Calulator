@@ -1,6 +1,6 @@
 import type { DHWSettings, DHWCalcResult, ZoneFixtures } from '../types'
 import { dhwDefaults, dhwBuildingTypeFactors, fixtureUnits } from '../data/defaults'
-import { getFixtureById, LEGACY_FIXTURE_MAPPING } from '../data/nycFixtures'
+import { getFixtureById } from '../data/nycFixtures'
 
 export interface DHWCalcBreakdown {
   // Fixture demand
@@ -56,32 +56,47 @@ export function calculateDHW(
     return count
   }
   
-  // Calculate individual fixture demands (using both new and legacy fixture IDs)
-  const showerCount = getFixtureCount(['shower', 'shower_gang'], ['showers'])
-  const lavCount = getFixtureCount(['lavatory', 'lavatory_public'], ['lavs'])
-  const serviceSinkCount = getFixtureCount(['service_sink'], ['serviceSinks'])
-  const washerCount = getFixtureCount(['washing_machine_residential', 'washing_machine_commercial'], ['washingMachines'])
+  // Calculate individual fixture demands (using both new ASPE and legacy fixture IDs)
+  const showerCount = getFixtureCount(
+    ['shower_private', 'shower_public', 'shower', 'shower_gang'], 
+    ['showers']
+  )
+  const lavCount = getFixtureCount(
+    ['lavatory_private', 'lavatory_public', 'lavatory', 'hand_sink'], 
+    ['lavs']
+  )
+  const serviceSinkCount = getFixtureCount(
+    ['service_sink'], 
+    ['serviceSinks']
+  )
+  const washerCount = getFixtureCount(
+    ['washing_machine_8lb_private', 'washing_machine_8lb_public', 'washing_machine_15lb', 
+     'washing_machine_commercial', 'washing_machine_residential'], 
+    ['washingMachines']
+  )
   
   const showerDemandGPH = showerCount * showerGPH
   const lavDemandGPH = lavCount * lavGPH
   const serviceSinkDemandGPH = serviceSinkCount * fixtureUnits.service_sink.hot_gph
   const washerDemandGPH = washerCount * fixtureUnits.washing_machine.hot_gph
   
-  // Calculate hot water demand from all fixtures in NYC database
+  // Calculate hot water demand from all OTHER fixtures in ASPE database
+  // Skip the core fixtures we already counted above
+  const coreFixtureIds = new Set([
+    'shower_private', 'shower_public', 'shower', 'shower_gang', 'showers',
+    'lavatory_private', 'lavatory_public', 'lavatory', 'hand_sink', 'lavs',
+    'service_sink', 'serviceSinks',
+    'washing_machine_8lb_private', 'washing_machine_8lb_public', 'washing_machine_15lb',
+    'washing_machine_commercial', 'washing_machine_residential', 'washingMachines'
+  ])
+  
   let additionalHotWaterGPH = 0
   for (const [fixtureId, count] of Object.entries(fixtures)) {
     if (count <= 0) continue
+    if (coreFixtureIds.has(fixtureId)) continue
     
-    // Skip fixtures we've already counted above
-    if (['shower', 'shower_gang', 'showers', 'lavatory', 'lavatory_public', 'lavs',
-         'service_sink', 'serviceSinks', 'washing_machine_residential', 
-         'washing_machine_commercial', 'washingMachines'].includes(fixtureId)) {
-      continue
-    }
-    
-    // Map legacy IDs to new IDs
-    const mappedId = LEGACY_FIXTURE_MAPPING[fixtureId] || fixtureId
-    const fixtureDef = getFixtureById(mappedId)
+    // Map legacy IDs to new IDs and get fixture definition
+    const fixtureDef = getFixtureById(fixtureId)
     
     if (fixtureDef && fixtureDef.hotWaterGPH > 0) {
       additionalHotWaterGPH += count * fixtureDef.hotWaterGPH

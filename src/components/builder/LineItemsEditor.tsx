@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useProjectStore, generateDefaultLineItems } from '../../store/useProjectStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import type { Zone, LineItem } from '../../types'
+import AddGasApplianceModal from './AddGasApplianceModal'
+import type { GasApplianceDefinition } from '../../data/gasAppliances'
 
 interface LineItemsEditorProps {
   zone: Zone
@@ -25,6 +27,7 @@ export default function LineItemsEditor({ zone, onUpdate }: LineItemsEditorProps
   const { addLineItem, deleteLineItem, updateLineItem, updateZone } = useProjectStore()
   const { getZoneDefaults } = useSettingsStore()
   const [isAdding, setIsAdding] = useState(false)
+  const [showGasApplianceModal, setShowGasApplianceModal] = useState(false)
   const [newItem, setNewItem] = useState({
     category: 'power' as LineItem['category'],
     name: '',
@@ -32,6 +35,17 @@ export default function LineItemsEditor({ zone, onUpdate }: LineItemsEditorProps
     unit: 'kW',
     value: 0,
   })
+
+  // Add gas appliance from ASPE database
+  const handleAddGasAppliance = (appliance: GasApplianceDefinition, quantity: number) => {
+    addLineItem(zone.id, {
+      category: 'gas',
+      name: appliance.name,
+      quantity: quantity,
+      unit: 'MBH',
+      value: appliance.mbh,
+    })
+  }
 
   // Regenerate default line items from zone defaults
   const handleResetToDefaults = () => {
@@ -87,6 +101,14 @@ export default function LineItemsEditor({ zone, onUpdate }: LineItemsEditorProps
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
                 Reset Defaults
+              </button>
+              <button
+                onClick={() => setShowGasApplianceModal(true)}
+                className="text-xs text-orange-400 hover:text-orange-300 flex items-center gap-1"
+                title="Add gas appliance from ASPE database"
+              >
+                <span>🔥</span>
+                Gas Appliance
               </button>
               <button
                 onClick={() => setIsAdding(true)}
@@ -328,6 +350,13 @@ export default function LineItemsEditor({ zone, onUpdate }: LineItemsEditorProps
           </div>
         </div>
       )}
+      
+      {/* Gas Appliance Modal */}
+      <AddGasApplianceModal
+        isOpen={showGasApplianceModal}
+        onClose={() => setShowGasApplianceModal(false)}
+        onAddAppliance={handleAddGasAppliance}
+      />
     </div>
   )
 }
