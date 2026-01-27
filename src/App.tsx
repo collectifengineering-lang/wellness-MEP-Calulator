@@ -5,8 +5,13 @@ import { useAuthStore } from './store/useAuthStore'
 import { initializeSettings } from './store/useSettingsStore'
 import LoginPage from './components/auth/LoginPage'
 import AuthGuard from './components/auth/AuthGuard'
-import ProjectsGrid from './components/projects/ProjectsGrid'
+import LandingPage from './components/landing/LandingPage'
+import ConceptMEPHome from './components/concept-mep/ConceptMEPHome'
 import ProjectWorkspace from './components/ProjectWorkspace'
+import ScannerHome from './components/plan-scanner/ScannerHome'
+import HVACHome from './components/hvac/HVACHome'
+import ElectricalHome from './components/electrical/ElectricalHome'
+import PlumbingHome from './components/plumbing/PlumbingHome'
 import SettingsPage from './components/settings/SettingsPage'
 
 function App() {
@@ -47,23 +52,78 @@ function App() {
   return (
     <div className="min-h-screen bg-surface-900">
       <Routes>
+        {/* Auth */}
         <Route path="/login" element={<LoginPage />} />
+        
+        {/* Landing Page - Main Hub 🐐 */}
         <Route
           path="/"
           element={
             <AuthGuard>
-              <ProjectsGrid />
+              <LandingPage />
+            </AuthGuard>
+          }
+        />
+        
+        {/* Concept MEP Module (existing app) */}
+        <Route
+          path="/concept-mep"
+          element={
+            <AuthGuard>
+              <ConceptMEPHome />
             </AuthGuard>
           }
         />
         <Route
-          path="/project/:projectId"
+          path="/concept-mep/project/:projectId"
           element={
             <AuthGuard>
               <ProjectWorkspace />
             </AuthGuard>
           }
         />
+        
+        {/* Plan Scanner Module */}
+        <Route
+          path="/plan-scanner"
+          element={
+            <AuthGuard>
+              <ScannerHome />
+            </AuthGuard>
+          }
+        />
+        
+        {/* HVAC Module (placeholder) */}
+        <Route
+          path="/hvac"
+          element={
+            <AuthGuard>
+              <HVACHome />
+            </AuthGuard>
+          }
+        />
+        
+        {/* Electrical Module (placeholder) */}
+        <Route
+          path="/electrical"
+          element={
+            <AuthGuard>
+              <ElectricalHome />
+            </AuthGuard>
+          }
+        />
+        
+        {/* Plumbing Module (placeholder) */}
+        <Route
+          path="/plumbing"
+          element={
+            <AuthGuard>
+              <PlumbingHome />
+            </AuthGuard>
+          }
+        />
+        
+        {/* Global Settings */}
         <Route
           path="/settings"
           element={
@@ -72,6 +132,11 @@ function App() {
             </AuthGuard>
           }
         />
+        
+        {/* Legacy route redirect */}
+        <Route path="/project/:projectId" element={<Navigate to="/concept-mep/project/:projectId" replace />} />
+        
+        {/* Catch all */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

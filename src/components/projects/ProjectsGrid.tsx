@@ -7,8 +7,13 @@ import { useAuthStore } from '../../store/useAuthStore'
 import { useProjectStore, createNewProject } from '../../store/useProjectStore'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import type { Project, ClimateType } from '../../types'
+import { Logo } from '../shared/Logo'
 
-export default function ProjectsGrid() {
+interface ProjectsGridProps {
+  moduleTitle?: string
+}
+
+export default function ProjectsGrid({ moduleTitle = 'Concept MEP Design' }: ProjectsGridProps) {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const { setCurrentProject, setZones } = useProjectStore()
@@ -66,7 +71,7 @@ export default function ProjectsGrid() {
     setCurrentProject(newProject)
     setZones([])
     setShowNewModal(false)
-    navigate(`/project/${newProject.id}`)
+    navigate(`/concept-mep/project/${newProject.id}`)
   }
 
   const handleOpenProject = async (project: Project) => {
@@ -92,7 +97,7 @@ export default function ProjectsGrid() {
       }
     }
     
-    navigate(`/project/${project.id}`)
+    navigate(`/concept-mep/project/${project.id}`)
   }
 
   const handleDeleteProject = async (projectId: string) => {
@@ -203,18 +208,27 @@ export default function ProjectsGrid() {
       <header className="sticky top-0 z-30 bg-surface-900/80 backdrop-blur-lg border-b border-surface-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center">
-                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-lg font-semibold text-white">MEP Calculator</h1>
-                <p className="text-xs text-surface-400">Wellness Facility</p>
+            <div className="flex items-center gap-4">
+              <button onClick={() => navigate('/')} className="hover:opacity-80 transition-opacity">
+                <Logo size="sm" showText={false} />
+              </button>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
+                  <span className="text-lg">🏗️</span>
+                </div>
+                <div>
+                  <h1 className="text-lg font-semibold text-white">{moduleTitle}</h1>
+                  <p className="text-xs text-surface-400">Collectif GOAT 🐐</p>
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate('/')}
+                className="px-3 py-1.5 text-sm text-surface-300 hover:text-white hover:bg-surface-700 rounded-lg transition-colors"
+              >
+                ← Hub
+              </button>
               <button
                 onClick={() => navigate('/settings')}
                 className="p-2 hover:bg-surface-700 rounded-lg transition-colors"
@@ -262,8 +276,8 @@ export default function ProjectsGrid() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
               </svg>
             </div>
-            <h3 className="text-lg font-medium text-white mb-2">No projects yet</h3>
-            <p className="text-surface-400 mb-6">Get started by creating your first project</p>
+            <h3 className="text-lg font-medium text-white mb-2">No projects yet 🐐</h3>
+            <p className="text-surface-400 mb-6">Don't be a scaredy goat! Create your first project</p>
             <button
               onClick={() => setShowNewModal(true)}
               className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg font-medium transition-colors"

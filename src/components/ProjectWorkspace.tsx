@@ -5,6 +5,7 @@ import ZoneCanvas from './builder/ZoneCanvas'
 import PoolRoomTab from './pool-design/PoolRoomTab'
 import CentralPlantTab from './central-plant/CentralPlantTab'
 import ResultsTab from './results/ResultsTab'
+import { Logo } from './shared/Logo'
 import { useProjectStore } from '../store/useProjectStore'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { useCalculations } from '../hooks/useCalculations'
@@ -434,14 +435,22 @@ export default function ProjectWorkspace() {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate('/')}
+                className="hover:opacity-80 transition-opacity"
+                title="Back to Hub"
+              >
+                <Logo size="sm" showText={false} />
+              </button>
+              <button
+                onClick={() => navigate('/concept-mep')}
                 className="p-2 hover:bg-surface-700 rounded-lg transition-colors"
+                title="Back to Projects"
               >
                 <svg className="w-5 h-5 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
               </button>
               <div>
-                <h1 className="text-lg font-semibold text-white">{currentProject.name}</h1>
+                <h1 className="text-lg font-semibold text-white">{currentProject.name} 🐐</h1>
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-surface-400">{currentProject.targetSF.toLocaleString()} SF target</span>
                   {saving && (

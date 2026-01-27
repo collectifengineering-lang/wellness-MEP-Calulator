@@ -4,6 +4,7 @@ import UserMenu from '../auth/UserMenu'
 import ZoneDefaultsEditor from './ZoneDefaultsEditor'
 import NewZoneTypeModal from './NewZoneTypeModal'
 import GlobalSettingsPanel from './GlobalSettingsPanel'
+import { Logo } from '../shared/Logo'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { zoneDefaults as builtInDefaults, getZoneCategories } from '../../data/zoneDefaults'
 
@@ -118,16 +119,15 @@ export default function SettingsPage() {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate('/')}
-                className="p-2 hover:bg-surface-700 rounded-lg transition-colors"
+                className="hover:opacity-80 transition-opacity"
+                title="Back to Hub"
               >
-                <svg className="w-5 h-5 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
+                <Logo size="sm" showText={false} />
               </button>
               <div>
-                <h1 className="text-lg font-semibold text-white">Settings</h1>
+                <h1 className="text-lg font-semibold text-white">⚙️ Settings</h1>
                 <p className="text-xs text-surface-400">
-                  Zone Defaults & Custom Types
+                  Collectif GOAT Global Settings 🐐
                   {lastSyncedAt && !syncError && (
                     <span className="ml-2 text-green-400">• Synced</span>
                   )}
