@@ -317,9 +317,30 @@ export const useScannerStore = create<ScannerState>()(
     {
       name: 'scanner-store',
       partialize: (state) => ({
-        scans: state.scans,
-        legends: state.legends,
-        trainingExamples: state.trainingExamples,
+        // Strip out heavy file data from scans before persisting
+        // Only persist metadata - drawings are session-only until saved to Supabase
+        scans: state.scans.map(scan => ({
+          ...scan,
+          drawings: scan.drawings.map(d => ({
+            id: d.id,
+            fileName: d.fileName,
+            fileType: d.fileType,
+            fileUrl: '', // Don't persist the actual file data
+            pageNumber: d.pageNumber,
+          })),
+        })),
+        legends: state.legends.map(legend => ({
+          ...legend,
+          // Strip any large image data from symbols
+          symbols: legend.symbols.map(s => ({
+            ...s,
+            imageData: undefined,
+          })),
+        })),
+        trainingExamples: state.trainingExamples.slice(0, 100).map(ex => ({
+          ...ex,
+          imageRegion: undefined, // Don't persist image regions
+        })),
       }),
     }
   )
