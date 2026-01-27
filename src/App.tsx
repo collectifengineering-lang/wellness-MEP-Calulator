@@ -12,6 +12,7 @@ import ScannerHome from './components/plan-scanner/ScannerHome'
 import HVACHome from './components/hvac/HVACHome'
 import ElectricalHome from './components/electrical/ElectricalHome'
 import PlumbingHome from './components/plumbing/PlumbingHome'
+import PlumbingWorkspace from './components/plumbing/PlumbingWorkspace'
 import SettingsPage from './components/settings/SettingsPage'
 
 function App() {
@@ -113,12 +114,20 @@ function App() {
           }
         />
         
-        {/* Plumbing Module (placeholder) */}
+        {/* Plumbing Module */}
         <Route
           path="/plumbing"
           element={
             <AuthGuard>
               <PlumbingHome />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/plumbing/project/:projectId"
+          element={
+            <AuthGuard>
+              <PlumbingWorkspace />
             </AuthGuard>
           }
         />

@@ -124,7 +124,6 @@ export default function LandingPage() {
       description: 'Fixture units, pipe sizing, DHW calculations, gas piping, and fire protection.',
       path: '/plumbing',
       color: '#ec4899', // pink
-      comingSoon: true,
     },
   ]
 
