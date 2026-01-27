@@ -1,21 +1,19 @@
 /**
- * Plan Analyzer - AI-powered drawing analysis
- * Uses Claude (primary) or Grok (fallback) to extract spaces and fixtures
+ * Plan Analyzer - AI-powered drawing analysis for Plan Scanner
+ * Independent from Concept MEP to allow separate training
+ * Uses Claude (primary) with Grok fallback
  */
 
 import { ExtractedSpace, SymbolLegend } from '../store/useScannerStore'
 import { v4 as uuidv4 } from 'uuid'
 
-// Initialize Anthropic client (lazy loaded)
-const getAnthropicApiKey = () => {
-  return import.meta.env.VITE_ANTHROPIC_API_KEY || null
-}
+// Get API keys from environment (same keys, independent checks)
+const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || ''
+const XAI_API_KEY = import.meta.env.VITE_XAI_API_KEY || ''
 
-// Grok/xAI fallback
-const getXAIClient = () => {
-  const apiKey = import.meta.env.VITE_XAI_API_KEY
-  return apiKey || null
-}
+// Check if providers are configured
+const isClaudeReady = () => !!ANTHROPIC_API_KEY && ANTHROPIC_API_KEY.length > 10
+const isGrokReady = () => !!XAI_API_KEY && XAI_API_KEY.length > 10
 
 // Analysis prompt for floor plans
 const PLAN_ANALYSIS_PROMPT = `You are an expert MEP (Mechanical, Electrical, Plumbing) engineer analyzing architectural floor plans.
@@ -141,30 +139,49 @@ export async function analyzeDrawing(
   mimeType: string = 'image/png',
   legend?: SymbolLegend
 ): Promise<AnalysisResult> {
-  // Try Claude first
-  const anthropicKey = getAnthropicApiKey()
-  if (anthropicKey) {
+  const errors: string[] = []
+  
+  console.log('🔍 Plan Scanner AI Analysis Starting...')
+  console.log(`   Claude configured: ${isClaudeReady()}`)
+  console.log(`   Grok configured: ${isGrokReady()}`)
+  console.log(`   Image type: ${mimeType}`)
+  console.log(`   Image size: ${Math.round(imageBase64.length / 1024)}KB base64`)
+  
+  // Try Claude first (preferred for document analysis)
+  if (isClaudeReady()) {
     try {
-      const result = await analyzeWithClaude(anthropicKey, imageBase64, mimeType, legend)
+      console.log('🔵 Attempting analysis with Claude...')
+      const result = await analyzeWithClaude(ANTHROPIC_API_KEY, imageBase64, mimeType, legend)
+      console.log('✅ Claude analysis successful!')
       return { ...result, provider: 'claude' }
     } catch (error) {
-      console.error('Claude analysis failed, trying Grok:', error)
+      const msg = error instanceof Error ? error.message : String(error)
+      console.error('❌ Claude analysis failed:', msg)
+      errors.push(`Claude: ${msg}`)
     }
+  } else {
+    console.log('⚠️ Claude not configured - check VITE_ANTHROPIC_API_KEY')
+    errors.push('Claude: API key not configured')
   }
   
-  // Fallback to Grok
-  const xaiKey = getXAIClient()
-  if (xaiKey) {
+  // Fallback to Grok only if Claude fails
+  if (isGrokReady()) {
     try {
-      const result = await analyzeWithGrok(xaiKey, imageBase64, mimeType, legend)
+      console.log('🟠 Falling back to Grok...')
+      const result = await analyzeWithGrok(XAI_API_KEY, imageBase64, mimeType, legend)
+      console.log('✅ Grok analysis successful!')
       return { ...result, provider: 'grok' }
     } catch (error) {
-      console.error('Grok analysis also failed:', error)
-      throw error
+      const msg = error instanceof Error ? error.message : String(error)
+      console.error('❌ Grok analysis failed:', msg)
+      errors.push(`Grok: ${msg}`)
     }
+  } else {
+    console.log('⚠️ Grok not configured - check VITE_XAI_API_KEY')
   }
   
-  throw new Error('No AI provider configured. Please set VITE_ANTHROPIC_API_KEY or VITE_XAI_API_KEY')
+  // Both failed
+  throw new Error(`AI analysis failed:\n${errors.join('\n')}`)
 }
 
 async function analyzeWithClaude(
