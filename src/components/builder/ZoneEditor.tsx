@@ -546,6 +546,75 @@ function DynamicFixturesSection({
     onUpdate(newFixtures)
   }
 
+  // Individual fixture row with local state for better editing
+  const FixtureRow = ({ 
+    fixture, 
+    fixtures, 
+    onUpdate, 
+    onRemove 
+  }: { 
+    fixture: { id: string; name: string; icon: string; count: number; wsfuTotal: number; dfu: number }
+    fixtures: Record<string, number>
+    onUpdate: (fixtures: Record<string, number>) => void
+    onRemove: () => void
+  }) => {
+    const [localValue, setLocalValue] = useState(fixture.count.toString())
+    
+    // Sync local value when fixture count changes from outside
+    useEffect(() => {
+      setLocalValue(fixture.count.toString())
+    }, [fixture.count])
+    
+    const handleBlur = () => {
+      const newCount = parseInt(localValue) || 0
+      if (newCount > 0) {
+        onUpdate({ ...fixtures, [fixture.id]: newCount })
+      } else {
+        // Don't auto-remove on blur, just set to 0
+        setLocalValue('0')
+        onUpdate({ ...fixtures, [fixture.id]: 0 })
+      }
+    }
+    
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        (e.target as HTMLInputElement).blur()
+      }
+    }
+    
+    return (
+      <div className="flex items-center gap-2 bg-surface-800 rounded-lg p-2">
+        <span className="text-lg">{fixture.icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs text-white truncate">{fixture.name}</div>
+          <div className="text-[10px] text-surface-500">
+            WSFU: {fixture.wsfuTotal} | DFU: {fixture.dfu}
+          </div>
+        </div>
+        <input
+          type="number"
+          value={localValue}
+          onChange={(e) => setLocalValue(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          min={0}
+          className="w-14 px-2 py-1 bg-surface-900 border border-surface-600 rounded text-white text-sm text-center focus:border-primary-500 focus:outline-none"
+        />
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            e.preventDefault()
+            onRemove()
+          }}
+          className="p-1 hover:bg-surface-700 rounded text-surface-500 hover:text-red-400 transition-colors"
+          title="Remove fixture"
+        >
+          ×
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -561,36 +630,13 @@ function DynamicFixturesSection({
       {displayedFixtures.length > 0 ? (
         <div className="grid grid-cols-2 gap-2">
           {displayedFixtures.map(fixture => (
-            <div key={fixture.id} className="flex items-center gap-2 bg-surface-800 rounded-lg p-2">
-              <span className="text-lg">{fixture.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-white truncate">{fixture.name}</div>
-                <div className="text-[10px] text-surface-500">
-                  WSFU: {fixture.wsfuTotal} | DFU: {fixture.dfu}
-                </div>
-              </div>
-              <input
-                type="number"
-                value={fixture.count}
-                onChange={(e) => {
-                  const newCount = Math.max(0, parseInt(e.target.value) || 0)
-                  if (newCount > 0) {
-                    onUpdate({ ...fixtures, [fixture.id]: newCount })
-                  } else {
-                    handleRemoveFixture(fixture.id)
-                  }
-                }}
-                min={0}
-                className="w-14 px-2 py-1 bg-surface-900 border border-surface-600 rounded text-white text-sm text-center"
-              />
-              <button
-                onClick={() => handleRemoveFixture(fixture.id)}
-                className="p-1 hover:bg-surface-700 rounded text-surface-500 hover:text-red-400"
-                title="Remove fixture"
-              >
-                ×
-              </button>
-            </div>
+            <FixtureRow
+              key={fixture.id}
+              fixture={fixture}
+              fixtures={fixtures}
+              onUpdate={onUpdate}
+              onRemove={() => handleRemoveFixture(fixture.id)}
+            />
           ))}
         </div>
       ) : (
