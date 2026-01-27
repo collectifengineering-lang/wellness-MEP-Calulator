@@ -62,31 +62,32 @@ export async function exportConceptPDF(
 ): Promise<void> {
   const legacyFixtures = getLegacyFixtureCounts(fixtures)
   
-  // Build header with logo
+  // Build header with logo - centered on each page
   const headerContent: Content = storedLogoDataUrl ? {
-    columns: [
+    stack: [
       { 
         image: storedLogoDataUrl, 
-        width: 80, 
-        margin: [40, 15, 0, 0] 
+        width: 50, 
+        alignment: 'center' as const,
+        margin: [0, 10, 0, 0] 
       },
       { 
         text: 'MEP Concept Report', 
         style: 'headerText', 
-        alignment: 'right', 
-        margin: [0, 25, 40, 0] 
+        alignment: 'center' as const,
+        margin: [0, 2, 0, 0] 
       },
     ],
   } : {
-    columns: [
-      { text: 'COLLECTIF Engineering PLLC', style: 'headerText', margin: [40, 20, 0, 0] },
-      { text: 'MEP Concept Report', style: 'headerText', alignment: 'right', margin: [0, 20, 40, 0] },
+    stack: [
+      { text: 'COLLECTIF Engineering PLLC', style: 'headerText', alignment: 'center' as const, margin: [0, 15, 0, 0] },
+      { text: 'MEP Concept Report', style: 'headerText', alignment: 'center' as const, margin: [0, 2, 0, 0] },
     ],
   }
 
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'LETTER',
-    pageMargins: [40, 60, 40, 50],
+    pageMargins: [40, 55, 40, 45],
     defaultStyle: {
       fontSize: 10,
       lineHeight: 1.25,
