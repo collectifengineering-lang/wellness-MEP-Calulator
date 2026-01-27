@@ -97,7 +97,7 @@ export default function ScanWorkspace() {
   
   // Helper function to render PDF page to image for AI analysis
   // Uses 3x scale for better text recognition (same as Concept MEP)
-  const renderPdfPageToImage = async (pdfDataUrl: string): Promise<{ base64: string; mime: string }> => {
+  const renderPdfPageToImage = async (pdfDataUrl: string, pageNumber: number = 1): Promise<{ base64: string; mime: string }> => {
     const pdfjs = await import('pdfjs-dist')
     pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
     
@@ -109,7 +109,7 @@ export default function ScanWorkspace() {
     const pdfBytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0))
     
     const pdf = await pdfjs.getDocument({ data: pdfBytes }).promise
-    const page = await pdf.getPage(1) // Analyze first page
+    const page = await pdf.getPage(pageNumber) // Get specific page
     
     // Render at 3x scale for better quality (helps read smaller text in tables)
     // This matches the Concept MEP PDF import resolution
@@ -221,11 +221,52 @@ export default function ScanWorkspace() {
 
     for (const file of files) {
       const base64 = await fileToBase64(file)
+      
+      // Check if PDF has multiple pages
+      if (file.type === 'application/pdf') {
+        try {
+          const pdfjs = await import('pdfjs-dist')
+          pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
+          
+          const base64Match = base64.match(/^data:([^;]+);base64,(.+)$/)
+          if (base64Match) {
+            const pdfBase64 = base64Match[2]
+            const pdfBytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0))
+            const pdf = await pdfjs.getDocument({ data: pdfBytes }).promise
+            const pageCount = pdf.numPages
+            
+            console.log(`📄 PDF has ${pageCount} pages`)
+            
+            if (pageCount > 1) {
+              // Multi-page PDF: create a separate drawing for each page
+              for (let pageNum = 1; pageNum <= pageCount; pageNum++) {
+                const drawing: ScanDrawing = {
+                  id: uuidv4(),
+                  fileName: `${file.name} (Page ${pageNum})`,
+                  fileType: file.type,
+                  fileUrl: base64,
+                  pageNumber: pageNum,
+                }
+                addDrawing(currentScan.id, drawing)
+                if (pageNum === 1) {
+                  setSelectedDrawingId(drawing.id)
+                }
+              }
+              continue // Skip single-page handling below
+            }
+          }
+        } catch (err) {
+          console.error('Error checking PDF pages:', err)
+        }
+      }
+      
+      // Single page PDF or regular image
       const drawing: ScanDrawing = {
         id: uuidv4(),
         fileName: file.name,
         fileType: file.type,
         fileUrl: base64,
+        pageNumber: 1,
       }
       addDrawing(currentScan.id, drawing)
       setSelectedDrawingId(drawing.id)

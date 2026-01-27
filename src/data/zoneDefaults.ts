@@ -1136,6 +1136,40 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
   },
 
   // ============================================
+  // CATEGORY 12: Vertical Transportation
+  // ============================================
+  elevator: {
+    displayName: 'Elevator',
+    category: 'Vertical Transportation',
+    defaultSF: 100,  // Typical elevator machine room/pit footprint
+    defaultFixtures: {
+      floor_drain_2in: 1,  // Pit sump/drain
+    },
+    visibleFixtures: ['floor_drain_2in', 'sump_pump'],
+    defaultRates: {
+      lighting_w_sf: 0.50,     // Minimal lighting in shaft/machine room
+      receptacle_va_sf: 1,     // Minimal receptacles
+      ventilation_cfm_sf: 0.10,
+      exhaust_cfm_sf: 0.10,    // Machine room ventilation
+      cooling_sf_ton: 0,       // Machine room may need cooling
+      heating_btuh_sf: 10,
+    },
+    // Default equipment: Hydraulic elevator (most common for 2-5 floor buildings)
+    // Typical specs: 2500-3500 lb capacity, 100-150 fpm
+    defaultEquipment: [
+      {
+        category: 'power',
+        name: 'Hydraulic Elevator (25 HP)',
+        quantity: 1,
+        unit: 'kW',
+        value: 25,  // ~25 kW for typical hydraulic elevator (20-30 HP motor)
+        notes: 'Hydraulic elevator - 3500 lb, 100 fpm, 2-5 floors',
+      },
+    ],
+    source_notes: 'Hydraulic elevator: 20-30 HP (15-25 kW typical). Includes motor, controls, cab lighting, door operators.',
+  },
+
+  // ============================================
   // Custom Zone
   // ============================================
   custom: {
@@ -1157,6 +1191,7 @@ const zoneColors: Record<string, string> = {
   Thermal: '#f59e0b',
   'Pool/Spa': '#06b6d4',
   'Kitchen/Laundry': '#8b5cf6',
+  'Vertical Transportation': '#6366f1',  // Indigo for elevators
   'Event/CoWork': '#ec4899',
   Specialty: '#14b8a6',
   Sports: '#84cc16',

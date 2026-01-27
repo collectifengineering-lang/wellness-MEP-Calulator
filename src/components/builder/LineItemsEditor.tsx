@@ -23,11 +23,36 @@ const categoryOptions = [
   { value: 'other', label: '📦 Other', unit: '' },
 ] as const
 
+// Elevator equipment presets
+const ELEVATOR_PRESETS = [
+  { 
+    name: 'Hydraulic Elevator (25 HP)', 
+    kw: 25, 
+    notes: 'Typical 2-5 floors, 3500 lb, 100 fpm. Lower cost, requires machine room.' 
+  },
+  { 
+    name: 'Traction Elevator - Geared (20 HP)', 
+    kw: 18, 
+    notes: 'Mid-rise 5-10 floors, 3500 lb, 200-350 fpm. More efficient than hydraulic.' 
+  },
+  { 
+    name: 'Traction Elevator - Gearless (30 HP)', 
+    kw: 30, 
+    notes: 'High-rise 10+ floors, 4000 lb, 500+ fpm. Most efficient, highest cost.' 
+  },
+  { 
+    name: 'MRL Elevator (15 HP)', 
+    kw: 15, 
+    notes: 'Machine-room-less, 2-20 floors, compact. Energy efficient.' 
+  },
+] as const
+
 export default function LineItemsEditor({ zone, onUpdate }: LineItemsEditorProps) {
   const { addLineItem, deleteLineItem, updateLineItem, updateZone } = useProjectStore()
   const { getZoneDefaults } = useSettingsStore()
   const [isAdding, setIsAdding] = useState(false)
   const [showGasApplianceModal, setShowGasApplianceModal] = useState(false)
+  const [showElevatorMenu, setShowElevatorMenu] = useState(false)
   const [newItem, setNewItem] = useState({
     category: 'power' as LineItem['category'],
     name: '',
@@ -110,6 +135,43 @@ export default function LineItemsEditor({ zone, onUpdate }: LineItemsEditorProps
                 <span>🔥</span>
                 Gas Appliance
               </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowElevatorMenu(!showElevatorMenu)}
+                  className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                  title="Add elevator equipment"
+                >
+                  <span>🛗</span>
+                  Elevator
+                </button>
+                {showElevatorMenu && (
+                  <div className="absolute right-0 top-6 z-50 w-72 bg-surface-800 border border-surface-600 rounded-lg shadow-xl py-1">
+                    <div className="px-3 py-1.5 text-xs text-surface-400 font-medium border-b border-surface-700">
+                      Select Elevator Type
+                    </div>
+                    {ELEVATOR_PRESETS.map((elevator) => (
+                      <button
+                        key={elevator.name}
+                        onClick={() => {
+                          addLineItem(zone.id, {
+                            category: 'power',
+                            name: elevator.name,
+                            quantity: 1,
+                            unit: 'kW',
+                            value: elevator.kw,
+                            notes: elevator.notes,
+                          })
+                          setShowElevatorMenu(false)
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-surface-700 transition-colors"
+                      >
+                        <div className="text-sm text-white font-medium">{elevator.name}</div>
+                        <div className="text-xs text-surface-400">{elevator.kw} kW • {elevator.notes}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => setIsAdding(true)}
                 className="text-xs text-primary-400 hover:text-primary-300 flex items-center gap-1"

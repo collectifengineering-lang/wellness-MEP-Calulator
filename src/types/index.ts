@@ -102,6 +102,7 @@ export type ZoneType =
   | 'cafe_light_fb'
   | 'terrace'
   | 'recovery_longevity'
+  | 'elevator'
   | 'custom'
 
 export interface Project {
