@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Logo } from '../shared/Logo'
 import UserMenu from '../auth/UserMenu'
@@ -8,6 +8,7 @@ import { analyzeDrawing, calculateScale } from '../../lib/planAnalyzer'
 import { v4 as uuidv4 } from 'uuid'
 import ExportModal from './ExportModal'
 import PDFViewer from './PDFViewer'
+import { NYC_FIXTURE_DATABASE, getFixtureById } from '../../data/nycFixtures'
 
 type TabType = 'drawings' | 'spaces' | 'export'
 
@@ -910,6 +911,71 @@ export default function ScanWorkspace() {
 
 // Space Editor Component
 function SpaceEditor({ space, onUpdate }: { space: ExtractedSpace; onUpdate: (updates: Partial<ExtractedSpace>) => void }) {
+  const [showAddFixture, setShowAddFixture] = useState(false)
+  const [fixtureSearch, setFixtureSearch] = useState('')
+
+  // Get displayed fixtures (those with count > 0)
+  const displayedFixtures = useMemo(() => {
+    const fixtures: Array<{ id: string; name: string; icon: string; count: number; wsfu: number; dfu: number }> = []
+    
+    Object.entries(space.fixtures).forEach(([id, count]) => {
+      if (count > 0) {
+        const def = getFixtureById(id)
+        if (def) {
+          fixtures.push({
+            id,
+            name: def.name,
+            icon: def.icon,
+            count,
+            wsfu: def.wsfuTotal,
+            dfu: def.dfu
+          })
+        } else {
+          // Legacy fixture - show with basic info
+          fixtures.push({
+            id,
+            name: id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            icon: '🔧',
+            count,
+            wsfu: 0,
+            dfu: 0
+          })
+        }
+      }
+    })
+    
+    return fixtures
+  }, [space.fixtures])
+
+  // Filter available fixtures for the add modal
+  const availableFixtures = useMemo(() => {
+    const search = fixtureSearch.toLowerCase()
+    return NYC_FIXTURE_DATABASE.filter(f => 
+      f.name.toLowerCase().includes(search) ||
+      f.category.toLowerCase().includes(search)
+    ).slice(0, 20) // Limit to 20 results
+  }, [fixtureSearch])
+
+  const handleAddFixture = (fixtureId: string, count: number = 1) => {
+    onUpdate({ 
+      fixtures: { ...space.fixtures, [fixtureId]: (space.fixtures[fixtureId] || 0) + count }
+    })
+  }
+
+  const handleRemoveFixture = (fixtureId: string) => {
+    const newFixtures = { ...space.fixtures }
+    delete newFixtures[fixtureId]
+    onUpdate({ fixtures: newFixtures })
+  }
+
+  const handleUpdateFixtureCount = (fixtureId: string, count: number) => {
+    if (count > 0) {
+      onUpdate({ fixtures: { ...space.fixtures, [fixtureId]: count } })
+    } else {
+      handleRemoveFixture(fixtureId)
+    }
+  }
+
   return (
     <div className="max-w-2xl">
       <div className="bg-surface-800 rounded-xl border border-surface-700 p-6 mb-6">
@@ -953,43 +1019,143 @@ function SpaceEditor({ space, onUpdate }: { space: ExtractedSpace; onUpdate: (up
             >
               <option value="">Select type...</option>
               <option value="lobby">Lobby</option>
-              <option value="locker_room_male">Locker Room (Male)</option>
-              <option value="locker_room_female">Locker Room (Female)</option>
-              <option value="restroom_public">Restroom (Public)</option>
+              <option value="locker_room">Locker Room</option>
+              <option value="restroom">Restroom</option>
               <option value="shower_room">Shower Room</option>
-              <option value="pool_lap">Lap Pool</option>
-              <option value="pool_therapy">Therapy Pool</option>
-              <option value="spa_treatment">Spa Treatment</option>
-              <option value="fitness_cardio">Fitness - Cardio</option>
-              <option value="office_private">Office</option>
+              <option value="pool_indoor">Pool (Indoor)</option>
+              <option value="hot_tub">Hot Tub / Spa</option>
+              <option value="sauna_electric">Sauna</option>
+              <option value="steam_room">Steam Room</option>
+              <option value="open_gym">Gym / Fitness</option>
+              <option value="yoga_studio">Yoga Studio</option>
+              <option value="massage_room">Massage / Treatment</option>
+              <option value="office">Office</option>
+              <option value="conference_room">Conference Room</option>
+              <option value="break_room">Break Room</option>
+              <option value="cafe_light_fb">Café / F&B</option>
+              <option value="kitchen_commercial">Kitchen</option>
+              <option value="laundry_commercial">Laundry</option>
               <option value="mechanical_room">Mechanical Room</option>
               <option value="storage">Storage</option>
-              <option value="other">Other</option>
+              <option value="terrace">Terrace / Outdoor</option>
+              <option value="custom">Other</option>
             </select>
           </div>
         </div>
       </div>
 
-      {/* Fixtures */}
+      {/* Fixtures - Dynamic UI */}
       <div className="bg-surface-800 rounded-xl border border-surface-700 p-6 mb-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Fixtures</h3>
-        
-        <div className="grid grid-cols-3 gap-4">
-          {['toilets', 'urinals', 'lavatories', 'showers', 'floor_drains', 'drinking_fountains'].map(fixture => (
-            <div key={fixture}>
-              <label className="block text-sm text-surface-400 mb-1 capitalize">{fixture.replace('_', ' ')}</label>
-              <input
-                type="number"
-                min="0"
-                value={space.fixtures[fixture] || 0}
-                onChange={(e) => onUpdate({ 
-                  fixtures: { ...space.fixtures, [fixture]: parseInt(e.target.value) || 0 }
-                })}
-                className="w-full px-4 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white focus:border-violet-500 focus:outline-none"
-              />
-            </div>
-          ))}
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">🚿 Fixtures</h3>
+          <button
+            onClick={() => setShowAddFixture(true)}
+            className="px-3 py-1.5 text-sm bg-violet-600/20 hover:bg-violet-600/30 text-violet-400 rounded-lg flex items-center gap-1.5 transition-colors"
+          >
+            <span>+</span> Add Fixture
+          </button>
         </div>
+        
+        {displayedFixtures.length > 0 ? (
+          <div className="grid grid-cols-2 gap-3">
+            {displayedFixtures.map(fixture => (
+              <div key={fixture.id} className="flex items-center gap-3 bg-surface-700/50 rounded-lg p-3">
+                <span className="text-xl">{fixture.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm text-white font-medium truncate">{fixture.name}</div>
+                  <div className="text-xs text-surface-500">
+                    WSFU: {fixture.wsfu} | DFU: {fixture.dfu}
+                  </div>
+                </div>
+                <input
+                  type="number"
+                  value={fixture.count}
+                  onChange={(e) => handleUpdateFixtureCount(fixture.id, parseInt(e.target.value) || 0)}
+                  min={0}
+                  className="w-16 px-2 py-1.5 bg-surface-900 border border-surface-600 rounded text-white text-sm text-center"
+                />
+                <button
+                  onClick={() => handleRemoveFixture(fixture.id)}
+                  className="p-1.5 hover:bg-surface-600 rounded text-surface-500 hover:text-red-400 transition-colors"
+                  title="Remove fixture"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-6 text-surface-500">
+            <div className="text-3xl mb-2">🚿</div>
+            <p className="text-sm">No fixtures added yet</p>
+            <button
+              onClick={() => setShowAddFixture(true)}
+              className="mt-2 text-violet-400 hover:text-violet-300 text-sm underline"
+            >
+              Add fixtures from NYC Plumbing Code
+            </button>
+          </div>
+        )}
+
+        {/* Add Fixture Modal */}
+        {showAddFixture && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-surface-800 border border-surface-600 rounded-2xl p-6 shadow-2xl max-w-lg w-full max-h-[80vh] overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-white">Add Fixture</h3>
+                <button 
+                  onClick={() => {
+                    setShowAddFixture(false)
+                    setFixtureSearch('')
+                  }}
+                  className="text-surface-400 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+              
+              {/* Search */}
+              <input
+                type="text"
+                value={fixtureSearch}
+                onChange={(e) => setFixtureSearch(e.target.value)}
+                placeholder="Search fixtures..."
+                className="w-full px-4 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white placeholder-surface-500 focus:border-violet-500 focus:outline-none mb-4"
+                autoFocus
+              />
+              
+              {/* Fixture List */}
+              <div className="flex-1 overflow-y-auto space-y-2">
+                {availableFixtures.map(fixture => (
+                  <button
+                    key={fixture.id}
+                    onClick={() => {
+                      handleAddFixture(fixture.id, 1)
+                      setShowAddFixture(false)
+                      setFixtureSearch('')
+                    }}
+                    className="w-full flex items-center gap-3 p-3 bg-surface-700/50 hover:bg-surface-700 rounded-lg text-left transition-colors"
+                  >
+                    <span className="text-xl">{fixture.icon}</span>
+                    <div className="flex-1">
+                      <div className="text-sm text-white font-medium">{fixture.name}</div>
+                      <div className="text-xs text-surface-500">
+                        {fixture.category} • WSFU: {fixture.wsfuTotal} | DFU: {fixture.dfu}
+                      </div>
+                    </div>
+                    <span className="text-violet-400 text-sm">+ Add</span>
+                  </button>
+                ))}
+                {availableFixtures.length === 0 && (
+                  <div className="text-center py-8 text-surface-500">
+                    <p>No fixtures found</p>
+                    <p className="text-sm mt-1">Try a different search term</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Confidence */}
