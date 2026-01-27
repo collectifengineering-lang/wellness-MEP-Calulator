@@ -421,7 +421,6 @@ export default function ScanWorkspace() {
                       fileUrl={selectedDrawing.fileUrl}
                       fileName={selectedDrawing.fileName}
                       calibrationMode={calibrationMode}
-                      onImageClick={handleImageClick as unknown as (e: React.MouseEvent<HTMLCanvasElement>) => void}
                     />
                   ) : (
                   <div className="h-full overflow-auto p-6 bg-surface-900/50">
