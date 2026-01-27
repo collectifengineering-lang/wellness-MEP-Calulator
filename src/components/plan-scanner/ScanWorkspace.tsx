@@ -30,9 +30,33 @@ export default function ScanWorkspace() {
   const [showExportModal, setShowExportModal] = useState(false)
   const [calibrationDistance, setCalibrationDistance] = useState<string>('')
   const [showCalibrationInput, setShowCalibrationInput] = useState(false)
+  const [showScaleModal, setShowScaleModal] = useState(false)
+  const [selectedScale, setSelectedScale] = useState<string>('')
+  const [customScale, setCustomScale] = useState<string>('')
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
+  
+  // Standard architectural scales (Imperial)
+  // At 96 DPI, we calculate pixels per foot based on the scale
+  // e.g., 1/8" = 1'-0" means 1/8 inch on paper = 1 foot real
+  // So 1 foot real = 8 inches on paper = 8 * 96 = 768 pixels
+  const STANDARD_SCALES = [
+    { label: '1" = 1\'-0"', pixelsPerFoot: 96 },      // Full scale
+    { label: '1/2" = 1\'-0"', pixelsPerFoot: 48 },
+    { label: '1/4" = 1\'-0"', pixelsPerFoot: 24 },
+    { label: '3/16" = 1\'-0"', pixelsPerFoot: 18 },
+    { label: '1/8" = 1\'-0"', pixelsPerFoot: 12 },    // Most common
+    { label: '3/32" = 1\'-0"', pixelsPerFoot: 9 },
+    { label: '1/16" = 1\'-0"', pixelsPerFoot: 6 },
+    { label: '1/32" = 1\'-0"', pixelsPerFoot: 3 },
+    { label: '1" = 10\'-0"', pixelsPerFoot: 9.6 },
+    { label: '1" = 20\'-0"', pixelsPerFoot: 4.8 },
+    { label: '1" = 30\'-0"', pixelsPerFoot: 3.2 },
+    { label: '1" = 40\'-0"', pixelsPerFoot: 2.4 },
+    { label: '1" = 50\'-0"', pixelsPerFoot: 1.92 },
+    { label: '1" = 100\'-0"', pixelsPerFoot: 0.96 },
+  ]
 
   // Load scan on mount
   useEffect(() => {
@@ -179,6 +203,63 @@ export default function ScanWorkspace() {
     updateScan(currentScan.id, { status: 'calibrating' })
     
     alert(`Scale set! ${pixelsPerFoot.toFixed(1)} pixels per foot 📏🐐`)
+  }
+
+  const handleApplyStandardScale = (pixelsPerFoot: number, label: string) => {
+    if (!currentScan) return
+    setScale(currentScan.id, pixelsPerFoot, undefined)
+    updateScan(currentScan.id, { status: 'calibrating' })
+    setShowScaleModal(false)
+    setSelectedScale(label)
+  }
+
+  const handleApplyCustomScale = () => {
+    if (!currentScan || !customScale) return
+    
+    // Parse custom scale like "1/8" = 1'-0"" or "1:100"
+    const parsed = parseCustomScale(customScale)
+    if (!parsed) {
+      alert('Invalid scale format. Use formats like:\n• 1/8" = 1\'-0"\n• 1" = 10\'-0"\n• 1:100')
+      return
+    }
+    
+    setScale(currentScan.id, parsed.pixelsPerFoot, undefined)
+    updateScan(currentScan.id, { status: 'calibrating' })
+    setShowScaleModal(false)
+    setSelectedScale(customScale)
+  }
+
+  // Parse custom scale strings
+  const parseCustomScale = (input: string): { pixelsPerFoot: number } | null => {
+    const cleaned = input.trim().toLowerCase()
+    
+    // Format: 1/X" = 1'-0" (e.g., "1/8" = 1'-0"")
+    const fractionMatch = cleaned.match(/(\d+)\/(\d+)"?\s*=\s*1'/)
+    if (fractionMatch) {
+      const num = parseInt(fractionMatch[1])
+      const denom = parseInt(fractionMatch[2])
+      // At 96 DPI: fraction inch = 1 foot, so 1 foot = (denom/num) * 96 pixels
+      return { pixelsPerFoot: (num / denom) * 96 }
+    }
+    
+    // Format: 1" = X'-0" (e.g., "1" = 10'-0"")
+    const inchToFeetMatch = cleaned.match(/1"?\s*=\s*(\d+)'/)
+    if (inchToFeetMatch) {
+      const feet = parseInt(inchToFeetMatch[1])
+      // 1 inch on paper = X feet real, so 1 foot = 96/X pixels
+      return { pixelsPerFoot: 96 / feet }
+    }
+    
+    // Format: 1:X (metric style, e.g., "1:100")
+    const ratioMatch = cleaned.match(/1\s*:\s*(\d+)/)
+    if (ratioMatch) {
+      const ratio = parseInt(ratioMatch[1])
+      // Assuming 96 DPI and ratio is in same units
+      // 1:100 means 1 unit = 100 units, so scale down by 100
+      return { pixelsPerFoot: 96 / (ratio / 12) } // Convert to feet
+    }
+    
+    return null
   }
 
   const handleAddSpace = () => {
@@ -336,23 +417,19 @@ export default function ScanWorkspace() {
               <div className="px-6 py-3 border-b border-surface-700 bg-surface-800/30 flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <button
-                    onClick={() => {
-                      setCalibrationMode(!calibrationMode)
-                      if (!calibrationMode) clearCalibrationPoints()
-                    }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                      calibrationMode
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-surface-700 text-surface-300 hover:text-white'
-                    }`}
+                    onClick={() => setShowScaleModal(true)}
+                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600"
                   >
-                    📏 {calibrationMode ? 'Calibrating...' : 'Set Scale'}
+                    📏 Set Scale
                   </button>
                   
-                  {currentScan.scale && (
-                    <span className="text-sm text-surface-400">
-                      Scale: {currentScan.scale.pixelsPerFoot.toFixed(1)} px/ft
-                      {currentScan.scale.referenceDistance && ` (${currentScan.scale.referenceDistance}' reference)`}
+                  {currentScan.scale ? (
+                    <span className="text-sm text-emerald-400 font-medium">
+                      ✓ {selectedScale || `${currentScan.scale.pixelsPerFoot.toFixed(1)} px/ft`}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-yellow-400">
+                      ⚠️ No scale set
                     </span>
                   )}
                 </div>
@@ -373,41 +450,138 @@ export default function ScanWorkspace() {
                 </button>
               </div>
 
-              {/* Calibration Input Modal */}
-              {showCalibrationInput && (
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 bg-surface-800 border border-violet-500 rounded-xl p-6 shadow-2xl">
-                  <h3 className="text-lg font-bold text-white mb-4">Set Scale Distance</h3>
-                  <p className="text-sm text-surface-400 mb-4">
-                    Enter the real-world distance between the two points you clicked:
-                  </p>
-                  <div className="flex items-center gap-3 mb-4">
-                    <input
-                      type="number"
-                      value={calibrationDistance}
-                      onChange={(e) => setCalibrationDistance(e.target.value)}
-                      placeholder="10"
-                      className="w-32 px-4 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white focus:border-violet-500 focus:outline-none"
-                      autoFocus
-                    />
-                    <span className="text-surface-400">feet</span>
+              {/* Scale Settings Modal */}
+              {showScaleModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-surface-800 border border-surface-600 rounded-2xl p-6 shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                        📏 Drawing Scale
+                      </h3>
+                      <button 
+                        onClick={() => setShowScaleModal(false)}
+                        className="text-surface-400 hover:text-white"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    
+                    {/* Standard Scales */}
+                    <div className="mb-6">
+                      <h4 className="text-sm font-semibold text-surface-300 mb-3">Standard Architectural Scales</h4>
+                      <div className="grid grid-cols-2 gap-2">
+                        {STANDARD_SCALES.map((scale) => (
+                          <button
+                            key={scale.label}
+                            onClick={() => handleApplyStandardScale(scale.pixelsPerFoot, scale.label)}
+                            className={`px-3 py-2 rounded-lg text-sm text-left transition-colors ${
+                              selectedScale === scale.label
+                                ? 'bg-violet-600 text-white'
+                                : 'bg-surface-700 text-surface-300 hover:bg-surface-600 hover:text-white'
+                            }`}
+                          >
+                            {scale.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    {/* Custom Scale */}
+                    <div className="mb-6">
+                      <h4 className="text-sm font-semibold text-surface-300 mb-3">Custom Scale</h4>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={customScale}
+                          onChange={(e) => setCustomScale(e.target.value)}
+                          placeholder="e.g., 3/16 = 1ft or 1:50"
+                          className="flex-1 px-4 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white placeholder-surface-500 focus:border-violet-500 focus:outline-none text-sm"
+                        />
+                        <button
+                          onClick={handleApplyCustomScale}
+                          disabled={!customScale}
+                          className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white rounded-lg text-sm transition-colors"
+                        >
+                          Apply
+                        </button>
+                      </div>
+                      <p className="text-xs text-surface-500 mt-2">
+                        {"Formats: 1/8\" = 1'-0\" • 1\" = 20'-0\" • 1:100"}
+                      </p>
+                    </div>
+                    
+                    {/* Two-Point Calibration (Images only) */}
+                    {selectedDrawing && selectedDrawing.fileType !== 'application/pdf' && (
+                      <div className="border-t border-surface-700 pt-6">
+                        <h4 className="text-sm font-semibold text-surface-300 mb-3">Two-Point Calibration</h4>
+                        <p className="text-xs text-surface-400 mb-3">
+                          Click two points on a known dimension in the drawing
+                        </p>
+                        <button
+                          onClick={() => {
+                            setShowScaleModal(false)
+                            setCalibrationMode(true)
+                            clearCalibrationPoints()
+                          }}
+                          className="w-full px-4 py-2 bg-surface-700 hover:bg-surface-600 text-white rounded-lg text-sm transition-colors"
+                        >
+                          Start Two-Point Calibration
+                        </button>
+                      </div>
+                    )}
+                    
+                    {/* Current Scale Info */}
+                    {currentScan.scale && (
+                      <div className="border-t border-surface-700 pt-4 mt-4">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-surface-400">Current scale:</span>
+                          <span className="text-emerald-400 font-medium">
+                            {selectedScale || `${currentScan.scale.pixelsPerFoot.toFixed(2)} px/ft`}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => {
-                        setShowCalibrationInput(false)
-                        clearCalibrationPoints()
-                        setCalibrationMode(false)
-                      }}
-                      className="flex-1 px-4 py-2 bg-surface-700 hover:bg-surface-600 text-white rounded-lg"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleCalibrationSubmit}
-                      className="flex-1 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg"
-                    >
-                      Set Scale
-                    </button>
+                </div>
+              )}
+
+              {/* Calibration Distance Input (for two-point) */}
+              {showCalibrationInput && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-surface-800 border border-violet-500 rounded-xl p-6 shadow-2xl max-w-sm w-full">
+                    <h3 className="text-lg font-bold text-white mb-4">Enter Distance</h3>
+                    <p className="text-sm text-surface-400 mb-4">
+                      What is the real-world distance between the two points you clicked?
+                    </p>
+                    <div className="flex items-center gap-3 mb-4">
+                      <input
+                        type="number"
+                        value={calibrationDistance}
+                        onChange={(e) => setCalibrationDistance(e.target.value)}
+                        placeholder="10"
+                        className="flex-1 px-4 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white focus:border-violet-500 focus:outline-none"
+                        autoFocus
+                      />
+                      <span className="text-surface-400">feet</span>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => {
+                          setShowCalibrationInput(false)
+                          clearCalibrationPoints()
+                          setCalibrationMode(false)
+                        }}
+                        className="flex-1 px-4 py-2 bg-surface-700 hover:bg-surface-600 text-white rounded-lg"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleCalibrationSubmit}
+                        className="flex-1 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg"
+                      >
+                        Set Scale
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
