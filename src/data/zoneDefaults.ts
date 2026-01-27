@@ -1265,6 +1265,12 @@ export interface LaundryLoads {
   total_dfu: number
   exhaust_cfm: number
   mua_sqft: number
+  // WSFU values for plumbing
+  total_wsfu_cold: number
+  total_wsfu_hot: number
+  total_wsfu_total: number
+  // Hot water demand
+  hot_water_gph: number
 }
 
 // Calculate occupants for a zone based on SF
@@ -1374,11 +1380,23 @@ export interface CustomLaundryEquipment {
   washer_water_gpm?: number
   washer_drain_gpm?: number
   washer_dfu?: number
+  // WSFU values for plumbing calculations
+  washer_wsfu_cold?: number
+  washer_wsfu_hot?: number
+  washer_wsfu_total?: number
+  // Hot water GPH per washer
+  washer_hot_water_gph?: number
   dryer_gas_mbh?: number
   dryer_kw_electric?: number
   dryer_exhaust_cfm?: number
   dryer_mua_sqin?: number
 }
+
+// Default WSFU and GPH values for commercial washers (from NYC Plumbing Code / ASPE)
+const DEFAULT_WASHER_WSFU_COLD = 6.0
+const DEFAULT_WASHER_WSFU_HOT = 6.0
+const DEFAULT_WASHER_WSFU_TOTAL = 8.0
+const DEFAULT_WASHER_HOT_WATER_GPH = 60
 
 export function calculateLaundryLoads(
   washers: number,
@@ -1396,6 +1414,11 @@ export function calculateLaundryLoads(
     washer_water_gpm: customEquip?.washer_water_gpm ?? defaultEquip.washer_water_gpm,
     washer_drain_gpm: customEquip?.washer_drain_gpm ?? defaultEquip.washer_drain_gpm,
     washer_dfu: customEquip?.washer_dfu ?? defaultEquip.washer_dfu,
+    // WSFU values (customizable per zone)
+    washer_wsfu_cold: customEquip?.washer_wsfu_cold ?? DEFAULT_WASHER_WSFU_COLD,
+    washer_wsfu_hot: customEquip?.washer_wsfu_hot ?? DEFAULT_WASHER_WSFU_HOT,
+    washer_wsfu_total: customEquip?.washer_wsfu_total ?? DEFAULT_WASHER_WSFU_TOTAL,
+    washer_hot_water_gph: customEquip?.washer_hot_water_gph ?? DEFAULT_WASHER_HOT_WATER_GPH,
     dryer_gas_mbh: customEquip?.dryer_gas_mbh ?? defaultEquip.dryer_gas_mbh,
     dryer_kw_electric: customEquip?.dryer_kw_electric ?? defaultEquip.dryer_kw_electric,
     dryer_exhaust_cfm: customEquip?.dryer_exhaust_cfm ?? defaultEquip.dryer_exhaust_cfm,
@@ -1407,6 +1430,14 @@ export function calculateLaundryLoads(
   const water_gpm = washers * equip.washer_water_gpm
   const drain_gpm = washers * equip.washer_drain_gpm
   const washer_dfu = washers * equip.washer_dfu
+  
+  // WSFU totals
+  const total_wsfu_cold = washers * equip.washer_wsfu_cold
+  const total_wsfu_hot = washers * equip.washer_wsfu_hot
+  const total_wsfu_total = washers * equip.washer_wsfu_total
+  
+  // Hot water demand
+  const hot_water_gph = washers * equip.washer_hot_water_gph
   
   const dryer_pockets = dryers * 2
   
@@ -1438,5 +1469,11 @@ export function calculateLaundryLoads(
     total_dfu: washer_dfu + (dryers * 4),
     exhaust_cfm,
     mua_sqft,
+    // WSFU values
+    total_wsfu_cold,
+    total_wsfu_hot,
+    total_wsfu_total,
+    // Hot water demand
+    hot_water_gph,
   }
 }

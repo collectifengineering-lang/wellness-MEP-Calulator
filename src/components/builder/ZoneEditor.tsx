@@ -3,7 +3,7 @@ import LineItemsEditor from './LineItemsEditor'
 import { AddFixtureModal } from './AddFixtureModal'
 import { useProjectStore, calculateProcessLoads } from '../../store/useProjectStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
-import { getZoneCategories, getZoneTypesByCategory } from '../../data/zoneDefaults'
+import { getZoneCategories, getZoneTypesByCategory, calculateLaundryLoads, type CustomLaundryEquipment } from '../../data/zoneDefaults'
 import { getFixtureById, LEGACY_FIXTURE_MAPPING } from '../../data/nycFixtures'
 import type { Zone, ZoneType, ZoneProcessLoads } from '../../types'
 
@@ -307,6 +307,17 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
             onShowAddModal={() => setShowAddFixtureModal(true)}
             hasLaundryEquipment={!!defaults.laundry_equipment}
           />
+
+          {/* Commercial Washer Settings - Show when zone has laundry equipment */}
+          {defaults.laundry_equipment && (localZone.fixtures.washingMachines > 0 || localZone.fixtures.washing_machine_commercial > 0) && (
+            <WasherWaterSettings
+              laundryEquipment={localZone.laundryEquipment}
+              washerCount={localZone.fixtures.washingMachines || localZone.fixtures.washing_machine_commercial || 0}
+              dryerCount={localZone.fixtures.dryers || localZone.fixtures.dryer_condensate || 0}
+              dryerType={localZone.subType === 'gas' ? 'gas' : 'electric'}
+              onUpdate={(newEquip) => handleUpdate({ laundryEquipment: { ...localZone.laundryEquipment, ...newEquip } })}
+            />
+          )}
 
           {/* Line Items */}
           <LineItemsEditor zone={localZone} onUpdate={handleUpdate} />
@@ -656,6 +667,145 @@ function DynamicFixturesSection({
           ℹ️ Commercial washers/dryers should be added via Equipment line items
         </p>
       )}
+    </div>
+  )
+}
+
+// Washer Water Settings Component
+interface WasherWaterSettingsProps {
+  laundryEquipment?: CustomLaundryEquipment
+  washerCount: number
+  dryerCount: number
+  dryerType: 'gas' | 'electric'
+  onUpdate: (updates: Partial<CustomLaundryEquipment>) => void
+}
+
+function WasherWaterSettings({ 
+  laundryEquipment, 
+  washerCount, 
+  dryerCount,
+  dryerType,
+  onUpdate 
+}: WasherWaterSettingsProps) {
+  // Calculate laundry loads with current settings
+  const laundryLoads = calculateLaundryLoads(washerCount, dryerCount, dryerType, laundryEquipment)
+  
+  // Default values
+  const defaultWsfuCold = 6.0
+  const defaultWsfuHot = 6.0
+  const defaultWsfuTotal = 8.0
+  const defaultHotWaterGph = 60
+  const defaultDfu = 6
+  
+  return (
+    <div className="bg-gradient-to-br from-blue-900/20 to-surface-900 rounded-lg p-4 border border-blue-500/20">
+      <h4 className="text-sm font-semibold text-blue-400 mb-3">🧺 Commercial Washer Water Settings</h4>
+      <p className="text-xs text-surface-400 mb-3">
+        Override ASHRAE/ASPE defaults for {washerCount} commercial washer{washerCount !== 1 ? 's' : ''}
+      </p>
+      
+      <div className="grid grid-cols-2 gap-3">
+        {/* Hot Water GPH */}
+        <div>
+          <label className="block text-xs text-surface-400 mb-1">Hot Water GPH (per washer)</label>
+          <input
+            type="number"
+            value={laundryEquipment?.washer_hot_water_gph ?? defaultHotWaterGph}
+            onChange={(e) => onUpdate({ washer_hot_water_gph: Number(e.target.value) })}
+            min={0}
+            step={5}
+            className="w-full px-3 py-1.5 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+          />
+          <p className="text-[10px] text-surface-500 mt-0.5">Total: {laundryLoads.hot_water_gph} GPH</p>
+        </div>
+        
+        {/* DFU per washer */}
+        <div>
+          <label className="block text-xs text-surface-400 mb-1">DFU (per washer)</label>
+          <input
+            type="number"
+            value={laundryEquipment?.washer_dfu ?? defaultDfu}
+            onChange={(e) => onUpdate({ washer_dfu: Number(e.target.value) })}
+            min={1}
+            step={1}
+            className="w-full px-3 py-1.5 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+          />
+          <p className="text-[10px] text-surface-500 mt-0.5">Total: {laundryLoads.total_dfu} DFU</p>
+        </div>
+        
+        {/* WSFU Cold */}
+        <div>
+          <label className="block text-xs text-surface-400 mb-1">WSFU Cold (per washer)</label>
+          <input
+            type="number"
+            value={laundryEquipment?.washer_wsfu_cold ?? defaultWsfuCold}
+            onChange={(e) => onUpdate({ washer_wsfu_cold: Number(e.target.value) })}
+            min={0}
+            step={0.5}
+            className="w-full px-3 py-1.5 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+          />
+          <p className="text-[10px] text-surface-500 mt-0.5">Total: {laundryLoads.total_wsfu_cold}</p>
+        </div>
+        
+        {/* WSFU Hot */}
+        <div>
+          <label className="block text-xs text-surface-400 mb-1">WSFU Hot (per washer)</label>
+          <input
+            type="number"
+            value={laundryEquipment?.washer_wsfu_hot ?? defaultWsfuHot}
+            onChange={(e) => onUpdate({ washer_wsfu_hot: Number(e.target.value) })}
+            min={0}
+            step={0.5}
+            className="w-full px-3 py-1.5 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+          />
+          <p className="text-[10px] text-surface-500 mt-0.5">Total: {laundryLoads.total_wsfu_hot}</p>
+        </div>
+        
+        {/* WSFU Total */}
+        <div className="col-span-2">
+          <label className="block text-xs text-surface-400 mb-1">WSFU Total (per washer)</label>
+          <input
+            type="number"
+            value={laundryEquipment?.washer_wsfu_total ?? defaultWsfuTotal}
+            onChange={(e) => onUpdate({ washer_wsfu_total: Number(e.target.value) })}
+            min={0}
+            step={0.5}
+            className="w-full px-3 py-1.5 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+          />
+          <p className="text-[10px] text-surface-500 mt-0.5">Total: {laundryLoads.total_wsfu_total} WSFU</p>
+        </div>
+      </div>
+      
+      {/* Summary */}
+      <div className="mt-3 pt-3 border-t border-surface-700">
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="bg-surface-800 rounded p-2 text-center">
+            <div className="text-surface-400">Hot Water</div>
+            <div className="text-white font-mono font-medium">{laundryLoads.hot_water_gph} GPH</div>
+          </div>
+          <div className="bg-surface-800 rounded p-2 text-center">
+            <div className="text-surface-400">Total WSFU</div>
+            <div className="text-white font-mono font-medium">{laundryLoads.total_wsfu_total}</div>
+          </div>
+          <div className="bg-surface-800 rounded p-2 text-center">
+            <div className="text-surface-400">Total DFU</div>
+            <div className="text-white font-mono font-medium">{laundryLoads.total_dfu}</div>
+          </div>
+        </div>
+      </div>
+      
+      <button
+        onClick={() => onUpdate({
+          washer_hot_water_gph: undefined,
+          washer_wsfu_cold: undefined,
+          washer_wsfu_hot: undefined,
+          washer_wsfu_total: undefined,
+          washer_dfu: undefined,
+        })}
+        className="mt-3 text-xs text-surface-400 hover:text-surface-300 underline"
+      >
+        Reset to ASHRAE defaults
+      </button>
     </div>
   )
 }
