@@ -10,9 +10,10 @@ interface PlumbingCalcOptions {
   useCommercialLaundry?: boolean
   coldWaterVelocityFPS?: number   // Design velocity for cold water (default 5 FPS)
   hotWaterVelocityFPS?: number    // Design velocity for hot water (default 4 FPS)
-  hotWaterFlowRatio?: number      // Hot water flow as fraction of cold (default 0.6)
-                                   // ASHRAE mixing formula: HW_Flow = Total × (Tf-Tc)/(Ts-Tc)
-                                   // Example: (120-55)/(140-55) = 0.76, conservative default 0.6
+  hotWaterFlowRatio?: number      // Hot water flow as fraction of total (default: calculated from fixtures)
+                                   // If not provided, will be calculated from fixture WSFU values
+                                   // Manual override: set to specific value (0.3-0.8 typical)
+  useCalculatedHWRatio?: boolean  // If true, always use fixture-calculated ratio instead of manual
   // Legacy fields for backwards compatibility
   designVelocityFPS?: number      // @deprecated - use coldWaterVelocityFPS
   hotWaterDemandFactor?: number   // @deprecated - use hotWaterFlowRatio
@@ -25,7 +26,24 @@ export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalc
   // Use new fields or fall back to legacy fields
   const coldWaterVelocity = options?.coldWaterVelocityFPS ?? options?.designVelocityFPS ?? 5
   const hotWaterVelocity = options?.hotWaterVelocityFPS ?? options?.designVelocityFPS ?? 4
-  const hotWaterFactor = options?.hotWaterFlowRatio ?? options?.hotWaterDemandFactor ?? 0.6
+  
+  // Calculate HW ratio from fixture units (ASPE method)
+  const calculatedRatio = calculateHotWaterRatioFromFixtures(fixtures)
+  
+  // Use calculated ratio unless manual override is provided
+  // If useCalculatedHWRatio is true, always use calculated
+  // Otherwise use manual if provided, else calculated
+  let hotWaterFactor: number
+  if (options?.useCalculatedHWRatio) {
+    hotWaterFactor = calculatedRatio.ratio
+  } else if (options?.hotWaterFlowRatio !== undefined) {
+    hotWaterFactor = options.hotWaterFlowRatio
+  } else if (options?.hotWaterDemandFactor !== undefined) {
+    hotWaterFactor = options.hotWaterDemandFactor
+  } else {
+    // Default: use calculated ratio from fixtures
+    hotWaterFactor = calculatedRatio.ratio
+  }
   
   let totalWSFU = 0
   let totalDFU = 0
@@ -103,6 +121,10 @@ export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalc
     hotWaterGPM: Math.round(hotWaterGPM),
     coldActualVelocityFPS: Math.round(coldActualVelocity * 10) / 10,
     hotActualVelocityFPS: Math.round(hotActualVelocity * 10) / 10,
+    // Calculated ratio from fixture units (ASPE method)
+    calculatedHWRatio: calculatedRatio.ratio,
+    wsfuCold: calculatedRatio.totalWsfuCold,
+    wsfuHot: calculatedRatio.totalWsfuHot,
   }
 }
 
@@ -195,4 +217,52 @@ export function calculateHotWaterDemand(fixtures: ZoneFixtures): number {
   }
   
   return totalGPH
+}
+
+/**
+ * Calculate hot water ratio from fixture units (ASPE method)
+ * Uses wsfuHot and wsfuCold from fixture definitions
+ * 
+ * Formula: HW Ratio = Total WSFU Hot / Total WSFU (Cold + Hot)
+ * 
+ * @returns Object with:
+ *   - ratio: calculated HW/Total ratio (0-1)
+ *   - totalWsfuCold: sum of cold water WSFU
+ *   - totalWsfuHot: sum of hot water WSFU
+ *   - totalWsfu: total WSFU
+ */
+export function calculateHotWaterRatioFromFixtures(fixtures: ZoneFixtures): {
+  ratio: number
+  totalWsfuCold: number
+  totalWsfuHot: number
+  totalWsfu: number
+} {
+  let totalWsfuCold = 0
+  let totalWsfuHot = 0
+  
+  for (const [fixtureId, count] of Object.entries(fixtures)) {
+    if (count <= 0) continue
+    
+    // Map legacy IDs to new IDs
+    const mappedId = LEGACY_FIXTURE_MAPPING[fixtureId] || fixtureId
+    const fixtureDef = getFixtureById(mappedId)
+    
+    if (fixtureDef) {
+      totalWsfuCold += count * fixtureDef.wsfuCold
+      totalWsfuHot += count * fixtureDef.wsfuHot
+    }
+  }
+  
+  const totalWsfu = totalWsfuCold + totalWsfuHot
+  
+  // Calculate ratio (avoid division by zero)
+  // If no fixtures, default to 0.5 (50% hot water assumption)
+  const ratio = totalWsfu > 0 ? totalWsfuHot / totalWsfu : 0.5
+  
+  return {
+    ratio: Math.round(ratio * 100) / 100,  // Round to 2 decimal places
+    totalWsfuCold: Math.round(totalWsfuCold * 10) / 10,
+    totalWsfuHot: Math.round(totalWsfuHot * 10) / 10,
+    totalWsfu: Math.round(totalWsfu * 10) / 10,
+  }
 }

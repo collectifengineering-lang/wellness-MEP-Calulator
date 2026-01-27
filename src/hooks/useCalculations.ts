@@ -65,6 +65,7 @@ export function useCalculations() {
       coldWaterVelocityFPS: plumbingSettings.cold_water_velocity_fps,
       hotWaterVelocityFPS: plumbingSettings.hot_water_velocity_fps,
       hotWaterFlowRatio: plumbingSettings.hot_water_flow_ratio,
+      useCalculatedHWRatio: plumbingSettings.use_calculated_hw_ratio ?? true,
     })
 
     // Add DHW gas load to total gas if using gas heaters

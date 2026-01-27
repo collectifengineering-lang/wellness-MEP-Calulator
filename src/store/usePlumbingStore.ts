@@ -19,6 +19,8 @@ export interface PlumbingProjectSettings {
   // Pipe sizing
   coldWaterVelocityFps: number
   hotWaterVelocityFps: number
+  hotWaterFlowRatio: number       // Manual HW/Total ratio (0.3-0.8)
+  useCalculatedHWRatio: boolean   // If true, use ratio calculated from fixture WSFU
   // DHW - ASHRAE Parameters
   dhwHeaterType: 'gas' | 'electric'
   dhwSystemType: 'storage' | 'tankless' | 'hybrid'
@@ -50,6 +52,8 @@ export interface PlumbingProject {
 export const defaultPlumbingSettings: PlumbingProjectSettings = {
   coldWaterVelocityFps: 8,
   hotWaterVelocityFps: 5,
+  hotWaterFlowRatio: 0.6,        // Manual fallback: 60% of total flow
+  useCalculatedHWRatio: true,    // Default: use calculated from fixture WSFU
   // DHW defaults for Gymnasium/Health Club (most common for this app)
   dhwHeaterType: 'gas',
   dhwSystemType: 'storage',

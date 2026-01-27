@@ -71,27 +71,63 @@ export default function PlumbingCalcs({ results, fixtures }: PlumbingCalcsProps)
             
             {/* HW/CW Flow Ratio */}
             <div>
-              <label className="block text-xs text-surface-400 mb-1">HW/CW Flow Ratio</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  value={plumbingSettings.hot_water_flow_ratio}
-                  onChange={(e) => updatePlumbingSettings({ hot_water_flow_ratio: Number(e.target.value) })}
-                  min={0.3}
-                  max={0.9}
-                  step={0.05}
-                  className="flex-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                />
-                <span className="text-surface-400 text-sm">×</span>
+              <label className="block text-xs text-surface-400 mb-1">HW/Total Flow Ratio</label>
+              
+              {/* Toggle for calculated vs manual */}
+              <div className="flex items-center gap-2 mb-2">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={plumbingSettings.use_calculated_hw_ratio ?? true}
+                    onChange={(e) => updatePlumbingSettings({ use_calculated_hw_ratio: e.target.checked })}
+                    className="w-4 h-4 rounded bg-surface-700 border-surface-600 text-primary-500 focus:ring-primary-500"
+                  />
+                  <span className="text-xs text-surface-300">Use calculated from fixtures</span>
+                </label>
               </div>
-              <p className="text-xs text-surface-500 mt-1">HW flow = CW × ratio</p>
+              
+              {plumbingSettings.use_calculated_hw_ratio ? (
+                <div className="bg-emerald-900/30 border border-emerald-700/30 rounded-lg p-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-emerald-400">From Fixture Units (ASPE):</span>
+                    <span className="text-emerald-300 font-mono font-bold">
+                      {plumbing.calculatedHWRatio !== undefined ? plumbing.calculatedHWRatio.toFixed(2) : '—'}
+                    </span>
+                  </div>
+                  {plumbing.wsfuCold !== undefined && plumbing.wsfuHot !== undefined && (
+                    <div className="text-xs text-emerald-500/80 mt-1">
+                      WSFU: {plumbing.wsfuHot} hot / {(plumbing.wsfuCold + plumbing.wsfuHot).toFixed(1)} total
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={plumbingSettings.hot_water_flow_ratio}
+                    onChange={(e) => updatePlumbingSettings({ hot_water_flow_ratio: Number(e.target.value) })}
+                    min={0.3}
+                    max={0.9}
+                    step={0.05}
+                    className="flex-1 px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+                  />
+                  <span className="text-surface-400 text-sm">×</span>
+                </div>
+              )}
+              <p className="text-xs text-surface-500 mt-1">
+                {plumbingSettings.use_calculated_hw_ratio 
+                  ? 'Ratio = Hot WSFU / Total WSFU'
+                  : 'HW flow = Total × ratio'}
+              </p>
             </div>
           </div>
           
           {/* Explanation */}
           <div className="mt-3 text-xs text-surface-500 bg-surface-900 rounded p-2">
             <strong className="text-surface-400">Note:</strong> Hot water pipes use lower velocity (3-5 FPS) to reduce erosion and noise.
-            Flow ratio determines HW pipe size based on CW flow (e.g., 0.6 = HW flow is 60% of CW).
+            {plumbingSettings.use_calculated_hw_ratio 
+              ? ' Calculated ratio uses fixture WSFU values per ASPE methodology.'
+              : ' Manual ratio allows custom override (typical: 0.5-0.7).'}
           </div>
         </div>
 

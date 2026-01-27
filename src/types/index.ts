@@ -351,11 +351,15 @@ export interface PlumbingCalcResult {
   // Velocity-based sizing details - separate for hot and cold
   coldWaterDesignVelocityFPS?: number
   hotWaterDesignVelocityFPS?: number
-  hotWaterFlowRatio?: number
+  hotWaterFlowRatio?: number        // The ratio actually used (either calculated or manual)
   coldWaterGPM?: number
   hotWaterGPM?: number
   coldActualVelocityFPS?: number
   hotActualVelocityFPS?: number
+  // Calculated ratio from fixture units (ASPE method)
+  calculatedHWRatio?: number        // Ratio calculated from wsfuHot / (wsfuHot + wsfuCold)
+  wsfuCold?: number                 // Total cold water fixture units
+  wsfuHot?: number                  // Total hot water fixture units
 }
 
 // =====================

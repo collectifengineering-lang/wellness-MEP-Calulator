@@ -37,11 +37,12 @@ export default function PipeSizingCalc() {
     })
   })
 
-  // Calculate pipe sizes
+  // Calculate pipe sizes with HW ratio setting
   const plumbingResult = calculatePlumbing(aggregatedFixtures, {
     coldWaterVelocityFPS: settings.coldWaterVelocityFps,
     hotWaterVelocityFPS: settings.hotWaterVelocityFps,
-    hotWaterFlowRatio: 0.7,
+    hotWaterFlowRatio: settings.hotWaterFlowRatio ?? 0.6,
+    useCalculatedHWRatio: settings.useCalculatedHWRatio ?? true,
   })
 
   // Pipe size tables
@@ -102,6 +103,51 @@ export default function PipeSizingCalc() {
                   className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white"
                 />
                 <p className="text-xs text-surface-500 mt-1">Recommended: 4-5 FPS</p>
+              </div>
+
+              {/* HW/Total Flow Ratio */}
+              <div className="pt-4 border-t border-surface-600">
+                <label className="block text-sm text-surface-400 mb-2">HW/Total Flow Ratio</label>
+                
+                {/* Toggle for calculated vs manual */}
+                <label className="flex items-center gap-2 cursor-pointer mb-3">
+                  <input
+                    type="checkbox"
+                    checked={settings.useCalculatedHWRatio ?? true}
+                    onChange={(e) => updateProjectSettings({ useCalculatedHWRatio: e.target.checked })}
+                    className="w-4 h-4 rounded bg-surface-700 border-surface-600 text-primary-500 focus:ring-primary-500"
+                  />
+                  <span className="text-xs text-surface-300">Calculate from fixture units</span>
+                </label>
+                
+                {(settings.useCalculatedHWRatio ?? true) ? (
+                  <div className="bg-emerald-900/30 border border-emerald-700/30 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-emerald-400">Calculated (ASPE):</span>
+                      <span className="text-emerald-300 font-mono font-bold text-lg">
+                        {plumbingResult.calculatedHWRatio?.toFixed(2) ?? '—'}
+                      </span>
+                    </div>
+                    {plumbingResult.wsfuCold !== undefined && plumbingResult.wsfuHot !== undefined && (
+                      <div className="text-xs text-emerald-500/80 mt-2">
+                        Hot WSFU: {plumbingResult.wsfuHot} / Total: {(plumbingResult.wsfuCold + plumbingResult.wsfuHot).toFixed(1)}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0.3"
+                      max="0.9"
+                      value={settings.hotWaterFlowRatio ?? 0.6}
+                      onChange={(e) => updateProjectSettings({ hotWaterFlowRatio: parseFloat(e.target.value) || 0.6 })}
+                      className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white"
+                    />
+                    <p className="text-xs text-surface-500 mt-1">Manual: 0.3 - 0.9 typical</p>
+                  </div>
+                )}
               </div>
             </div>
 

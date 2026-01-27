@@ -34,9 +34,10 @@ export interface DHWGlobalSettings {
 // Plumbing settings
 export interface PlumbingSettings {
   backwash_pit_threshold_gpm: number  // GPM threshold for backwash pit
-  hot_water_flow_ratio: number        // Hot water flow as fraction of cold water flow (0.5-0.8)
+  hot_water_flow_ratio: number        // Hot water flow as fraction of total (0.3-0.8)
   cold_water_velocity_fps: number     // Design velocity for COLD water pipe sizing (FPS)
   hot_water_velocity_fps: number      // Design velocity for HOT water pipe sizing (FPS)
+  use_calculated_hw_ratio: boolean    // If true, use ratio calculated from fixture units (ASPE method)
   // Legacy field for backwards compatibility
   design_velocity_fps?: number        // @deprecated - use cold_water_velocity_fps
   hot_water_demand_factor?: number    // @deprecated - use hot_water_flow_ratio
@@ -116,9 +117,10 @@ const defaultDHW: DHWGlobalSettings = {
 
 const defaultPlumbing: PlumbingSettings = {
   backwash_pit_threshold_gpm: 225,
-  hot_water_flow_ratio: 0.6,           // Hot water flow = 60% of cold water flow
+  hot_water_flow_ratio: 0.6,           // Manual override: Hot water flow = 60% of total
   cold_water_velocity_fps: 5,          // 5 FPS default for cold water
   hot_water_velocity_fps: 4,           // 4 FPS default for hot water (lower to reduce erosion)
+  use_calculated_hw_ratio: true,       // Default: use calculated ratio from fixture WSFU
 }
 
 // Climate multipliers based on ASHRAE guidelines
