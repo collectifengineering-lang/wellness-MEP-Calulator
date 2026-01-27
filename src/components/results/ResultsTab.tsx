@@ -5,6 +5,7 @@ import { getZoneDefaults, calculateLaundryLoads } from '../../data/zoneDefaults'
 import { getLegacyFixtureCounts } from '../../data/fixtureUtils'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import type { CalculationResults, ZoneFixtures, SavedReport } from '../../types'
+import SDPackageReport from './SDPackageReport'
 
 interface ResultsTabProps {
   calculations: {
@@ -42,6 +43,9 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
     plumbingNotes?: string
     fireProtectionNotes?: string
   }>({})
+  
+  // SD Package Report state
+  const [showSDPackage, setShowSDPackage] = useState(false)
   
   // Track when calculations change to show "updated" indicator
   useEffect(() => {
@@ -300,6 +304,19 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             History {savedReports.length > 0 && `(${savedReports.length})`}
+          </button>
+          
+          <span className="text-surface-600">|</span>
+          
+          {/* SD Package Report Button */}
+          <button
+            onClick={() => setShowSDPackage(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white rounded-lg text-sm font-medium transition-all shadow-lg shadow-violet-500/20"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            📄 SD Package
           </button>
           
           <span className="text-surface-600">|</span>
@@ -1027,6 +1044,14 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
           </div>
         )}
       </div>
+      
+      {/* SD Package Report Modal */}
+      {showSDPackage && (
+        <SDPackageReport
+          calculations={calculations}
+          onClose={() => setShowSDPackage(false)}
+        />
+      )}
     </div>
   )
 }
