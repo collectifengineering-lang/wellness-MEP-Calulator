@@ -26,6 +26,8 @@ export interface ExtractedSpace {
     widthPercent: number
     heightPercent: number
   }
+  // For polygon shapes - array of vertices as percentages
+  polygonPoints?: Array<{ xPercent: number; yPercent: number }>
 }
 
 export interface SymbolDefinition {

@@ -38,18 +38,30 @@ export default function ScanWorkspace() {
   const [customScale, setCustomScale] = useState<string>('')
   
   // Drawing mode for space boundaries
-  const [drawingMode, setDrawingMode] = useState<'none' | 'drawing' | 'editing'>('none')
+  const [drawingMode, setDrawingMode] = useState<'none' | 'rectangle' | 'polygon'>('none')
+  
   // Store regions as PERCENTAGES (0-100) so they scale with image display
+  // Supports both rectangles and polygons
   const [drawnRegions, setDrawnRegions] = useState<Array<{
     id: string
-    xPercent: number  // Left edge as % of image width
-    yPercent: number  // Top edge as % of image height
-    widthPercent: number
-    heightPercent: number
+    type: 'rectangle' | 'polygon'
+    // For rectangles
+    xPercent?: number
+    yPercent?: number
+    widthPercent?: number
+    heightPercent?: number
+    // For polygons - array of {xPercent, yPercent} points
+    points?: Array<{ xPercent: number; yPercent: number }>
     name: string
     analyzed: boolean
   }>>([])
+  
+  // Rectangle drawing state
   const [currentDrawing, setCurrentDrawing] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
+  
+  // Polygon drawing state
+  const [currentPolygon, setCurrentPolygon] = useState<Array<{ x: number; y: number }>>([])
+  const [polygonPreviewPoint, setPolygonPreviewPoint] = useState<{ x: number; y: number } | null>(null)
   const [imageBounds, setImageBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null)
   const [showRegionNameModal, setShowRegionNameModal] = useState(false)
@@ -308,8 +320,9 @@ export default function ScanWorkspace() {
   }, [calibrationMode, addCalibrationPoint])
 
   // Drawing mode handlers
+  // Rectangle drawing handlers
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (drawingMode !== 'drawing' || !imageContainerRef.current || !imageBounds) return
+    if (drawingMode !== 'rectangle' || !imageContainerRef.current || !imageBounds) return
     
     const containerRect = imageContainerRef.current.getBoundingClientRect()
     const x = e.clientX - containerRect.left - imageBounds.left
@@ -322,7 +335,7 @@ export default function ScanWorkspace() {
   }, [drawingMode, imageBounds])
 
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!currentDrawing || !imageContainerRef.current || !imageBounds) return
+    if (!imageContainerRef.current || !imageBounds) return
     
     const containerRect = imageContainerRef.current.getBoundingClientRect()
     let x = e.clientX - containerRect.left - imageBounds.left
@@ -332,8 +345,16 @@ export default function ScanWorkspace() {
     x = Math.max(0, Math.min(x, imageBounds.width))
     y = Math.max(0, Math.min(y, imageBounds.height))
     
-    setCurrentDrawing(prev => prev ? { ...prev, endX: x, endY: y } : null)
-  }, [currentDrawing, imageBounds])
+    // Rectangle mode: update drawing preview
+    if (currentDrawing) {
+      setCurrentDrawing(prev => prev ? { ...prev, endX: x, endY: y } : null)
+    }
+    
+    // Polygon mode: update preview line to cursor
+    if (drawingMode === 'polygon' && currentPolygon.length > 0) {
+      setPolygonPreviewPoint({ x, y })
+    }
+  }, [currentDrawing, drawingMode, currentPolygon.length, imageBounds])
 
   const handleCanvasMouseUp = useCallback(() => {
     if (!currentDrawing || !imageBounds) return
@@ -349,6 +370,7 @@ export default function ScanWorkspace() {
       
       const newRegion = {
         id: uuidv4(),
+        type: 'rectangle' as const,
         xPercent: (xPx / imageBounds.width) * 100,
         yPercent: (yPx / imageBounds.height) * 100,
         widthPercent: (width / imageBounds.width) * 100,
@@ -364,6 +386,93 @@ export default function ScanWorkspace() {
     
     setCurrentDrawing(null)
   }, [currentDrawing, drawnRegions.length, imageBounds])
+  
+  // Polygon drawing handlers
+  const handlePolygonClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (drawingMode !== 'polygon' || !imageContainerRef.current || !imageBounds) return
+    
+    const containerRect = imageContainerRef.current.getBoundingClientRect()
+    let x = e.clientX - containerRect.left - imageBounds.left
+    let y = e.clientY - containerRect.top - imageBounds.top
+    
+    // Clamp to image bounds
+    x = Math.max(0, Math.min(x, imageBounds.width))
+    y = Math.max(0, Math.min(y, imageBounds.height))
+    
+    // Check if clicking near first point to close polygon (within 15px)
+    if (currentPolygon.length >= 3) {
+      const firstPoint = currentPolygon[0]
+      const distance = Math.sqrt(Math.pow(x - firstPoint.x, 2) + Math.pow(y - firstPoint.y, 2))
+      
+      if (distance < 15) {
+        // Close the polygon and create region
+        finishPolygon()
+        return
+      }
+    }
+    
+    // Add point to polygon
+    setCurrentPolygon(prev => [...prev, { x, y }])
+  }, [drawingMode, currentPolygon, imageBounds])
+  
+  const handlePolygonDoubleClick = useCallback(() => {
+    if (currentPolygon.length >= 3) {
+      finishPolygon()
+    }
+  }, [currentPolygon])
+  
+  const finishPolygon = useCallback(() => {
+    if (!imageBounds || currentPolygon.length < 3) return
+    
+    // Convert pixel points to percentages
+    const percentPoints = currentPolygon.map(p => ({
+      xPercent: (p.x / imageBounds.width) * 100,
+      yPercent: (p.y / imageBounds.height) * 100,
+    }))
+    
+    const newRegion = {
+      id: uuidv4(),
+      type: 'polygon' as const,
+      points: percentPoints,
+      name: `Space ${drawnRegions.length + 1}`,
+      analyzed: false,
+    }
+    
+    setDrawnRegions(prev => [...prev, newRegion])
+    setSelectedRegionId(newRegion.id)
+    setNewRegionName(newRegion.name)
+    setShowRegionNameModal(true)
+    
+    // Reset polygon state
+    setCurrentPolygon([])
+    setPolygonPreviewPoint(null)
+  }, [imageBounds, currentPolygon, drawnRegions.length])
+  
+  // Cancel current polygon with Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && currentPolygon.length > 0) {
+        setCurrentPolygon([])
+        setPolygonPreviewPoint(null)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [currentPolygon.length])
+
+  // Helper to get bounding box from polygon points (for display)
+  const getPolygonBounds = (points: Array<{ xPercent: number; yPercent: number }>) => {
+    if (!points || points.length === 0) return null
+    const xValues = points.map(p => p.xPercent)
+    const yValues = points.map(p => p.yPercent)
+    return {
+      xPercent: Math.min(...xValues),
+      yPercent: Math.min(...yValues),
+      widthPercent: Math.max(...xValues) - Math.min(...xValues),
+      heightPercent: Math.max(...yValues) - Math.min(...yValues),
+    }
+  }
+
 
   const handleDeleteRegion = (regionId: string) => {
     setDrawnRegions(prev => prev.filter(r => r.id !== regionId))
@@ -382,6 +491,22 @@ export default function ScanWorkspace() {
   const handleAddRegionAsSpace = (region: typeof drawnRegions[0]) => {
     if (!currentScan) return
     
+    // Calculate bounding box for both rectangles and polygons
+    let boundingBox: { xPercent: number; yPercent: number; widthPercent: number; heightPercent: number }
+    
+    if (region.type === 'polygon' && region.points) {
+      const bounds = getPolygonBounds(region.points)
+      if (!bounds) return
+      boundingBox = bounds
+    } else {
+      boundingBox = {
+        xPercent: region.xPercent || 0,
+        yPercent: region.yPercent || 0,
+        widthPercent: region.widthPercent || 0,
+        heightPercent: region.heightPercent || 0,
+      }
+    }
+    
     const newSpace: ExtractedSpace = {
       id: uuidv4(),
       name: region.name,
@@ -389,13 +514,10 @@ export default function ScanWorkspace() {
       fixtures: {},
       equipment: [],
       confidence: 100, // Manual entry
-      // Store as percentages for consistent display at any scale
-      boundingBox: {
-        xPercent: region.xPercent,
-        yPercent: region.yPercent,
-        widthPercent: region.widthPercent,
-        heightPercent: region.heightPercent,
-      },
+      // Store bounding box (for polygons, this is the enclosing rectangle)
+      boundingBox,
+      // Store polygon points if this is a polygon region
+      polygonPoints: region.type === 'polygon' ? region.points : undefined,
     }
     
     setExtractedSpaces(currentScan.id, [...currentScan.extractedSpaces, newSpace])
@@ -456,6 +578,7 @@ export default function ScanWorkspace() {
       // Add detected regions to the drawn regions (keep as percentages)
       const newRegions = result.regions.map((region: DetectedRegion) => ({
         id: region.id,
+        type: 'rectangle' as const,
         // Store as percentages - the region already has pixel values, convert back to %
         xPercent: (region.x / imageWidth) * 100,
         yPercent: (region.y / imageHeight) * 100,
@@ -467,8 +590,8 @@ export default function ScanWorkspace() {
       
       setDrawnRegions(prev => [...prev, ...newRegions])
       
-      // Enable drawing mode to show the regions
-      setDrawingMode('drawing')
+      // Enable rectangle mode to show the regions (AI returns rectangles)
+      setDrawingMode('rectangle')
       
       setAnalysisProgress('')
     } catch (error) {
@@ -746,19 +869,38 @@ export default function ScanWorkspace() {
                     )}
                   </button>
                   
-                  {/* Drawing Mode Toggle */}
+                  {/* Rectangle Drawing Mode */}
                   <button
                     onClick={() => {
-                      setDrawingMode(drawingMode === 'drawing' ? 'none' : 'drawing')
+                      setDrawingMode(drawingMode === 'rectangle' ? 'none' : 'rectangle')
                       setCalibrationMode(false)
+                      setCurrentPolygon([])
                     }}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                      drawingMode === 'drawing'
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                      drawingMode === 'rectangle'
                         ? 'bg-violet-600 text-white'
                         : 'bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600'
                     }`}
+                    title="Draw rectangle boundaries"
                   >
-                    ✏️ {drawingMode === 'drawing' ? 'Drawing...' : 'Draw Spaces'}
+                    ▢ Rect
+                  </button>
+                  
+                  {/* Polygon Drawing Mode */}
+                  <button
+                    onClick={() => {
+                      setDrawingMode(drawingMode === 'polygon' ? 'none' : 'polygon')
+                      setCalibrationMode(false)
+                      setCurrentDrawing(null)
+                    }}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                      drawingMode === 'polygon'
+                        ? 'bg-cyan-600 text-white'
+                        : 'bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600'
+                    }`}
+                    title="Draw polygon boundaries (click to add points, double-click or click first point to close)"
+                  >
+                    ⬡ Polygon
                   </button>
                   
                   <button
@@ -993,11 +1135,19 @@ export default function ScanWorkspace() {
                   ) : (
                   <div 
                     ref={canvasContainerRef}
-                    className={`h-full overflow-auto p-6 bg-surface-900/50 ${drawingMode === 'drawing' ? 'cursor-crosshair' : ''}`}
+                    className={`h-full overflow-auto p-6 bg-surface-900/50 ${
+                      drawingMode === 'rectangle' ? 'cursor-crosshair' : 
+                      drawingMode === 'polygon' ? 'cursor-cell' : ''
+                    }`}
                     onMouseDown={handleCanvasMouseDown}
                     onMouseMove={handleCanvasMouseMove}
                     onMouseUp={handleCanvasMouseUp}
-                    onMouseLeave={() => setCurrentDrawing(null)}
+                    onClick={handlePolygonClick}
+                    onDoubleClick={handlePolygonDoubleClick}
+                    onMouseLeave={() => {
+                      setCurrentDrawing(null)
+                      setPolygonPreviewPoint(null)
+                    }}
                   >
                     <div ref={imageContainerRef} className="relative inline-block">
                       {renderedImageUrl ? (
@@ -1005,7 +1155,7 @@ export default function ScanWorkspace() {
                           ref={imageRef}
                           src={renderedImageUrl}
                           alt={selectedDrawing.fileName}
-                          className={`max-w-full h-auto ${calibrationMode ? 'cursor-crosshair' : ''} ${drawingMode === 'drawing' ? 'pointer-events-none' : ''}`}
+                          className={`max-w-full h-auto ${calibrationMode ? 'cursor-crosshair' : ''} ${drawingMode !== 'none' ? 'pointer-events-none' : ''}`}
                           onClick={handleImageClick}
                           onLoad={updateImageBounds}
                           onError={(e) => {
@@ -1050,8 +1200,8 @@ export default function ScanWorkspace() {
                       </div>
                     ))}
                     
-                    {/* Drawn Regions (user-drawn) - positioned using percentages */}
-                    {imageBounds && drawnRegions.map(region => (
+                    {/* Drawn Rectangle Regions (user-drawn) - positioned using percentages */}
+                    {imageBounds && drawnRegions.filter(r => r.type === 'rectangle').map(region => (
                       <div
                         key={region.id}
                         className={`absolute border-2 ${
@@ -1062,10 +1212,10 @@ export default function ScanWorkspace() {
                               : 'border-cyan-500 bg-cyan-500/10'
                         } cursor-pointer transition-colors`}
                         style={{
-                          left: (region.xPercent / 100) * imageBounds.width,
-                          top: (region.yPercent / 100) * imageBounds.height,
-                          width: (region.widthPercent / 100) * imageBounds.width,
-                          height: (region.heightPercent / 100) * imageBounds.height,
+                          left: ((region.xPercent || 0) / 100) * imageBounds.width,
+                          top: ((region.yPercent || 0) / 100) * imageBounds.height,
+                          width: ((region.widthPercent || 0) / 100) * imageBounds.width,
+                          height: ((region.heightPercent || 0) / 100) * imageBounds.height,
                         }}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -1076,7 +1226,7 @@ export default function ScanWorkspace() {
                         <div className={`absolute -top-7 left-0 px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${
                           region.analyzed ? 'bg-emerald-600 text-white' : 'bg-cyan-600 text-white'
                         }`}>
-                          {region.name}
+                          ▢ {region.name}
                           {region.analyzed && ' ✓'}
                         </div>
                         
@@ -1106,7 +1256,149 @@ export default function ScanWorkspace() {
                       </div>
                     ))}
                     
-                    {/* Current Drawing Preview - uses screen pixels during active drawing */}
+                    {/* SVG Layer for Polygons */}
+                    {imageBounds && (
+                      <svg 
+                        className="absolute inset-0 pointer-events-none" 
+                        style={{ width: imageBounds.width, height: imageBounds.height }}
+                      >
+                        {/* Rendered Polygon Regions */}
+                        {drawnRegions.filter(r => r.type === 'polygon' && r.points).map(region => {
+                          const pixelPoints = region.points!.map(p => ({
+                            x: (p.xPercent / 100) * imageBounds.width,
+                            y: (p.yPercent / 100) * imageBounds.height,
+                          }))
+                          const pointsString = pixelPoints.map(p => `${p.x},${p.y}`).join(' ')
+                          
+                          return (
+                            <polygon
+                              key={`poly-${region.id}`}
+                              points={pointsString}
+                              className={`pointer-events-auto cursor-pointer transition-colors ${
+                                selectedRegionId === region.id 
+                                  ? 'fill-violet-500/20 stroke-violet-500' 
+                                  : region.analyzed 
+                                    ? 'fill-emerald-500/10 stroke-emerald-500' 
+                                    : 'fill-cyan-500/10 stroke-cyan-500'
+                              }`}
+                              strokeWidth="2"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedRegionId(region.id)
+                              }}
+                            />
+                          )
+                        })}
+                        
+                        {/* Current Polygon Being Drawn */}
+                        {currentPolygon.length > 0 && (
+                          <>
+                            {/* Lines connecting points */}
+                            <polyline
+                              points={[...currentPolygon, polygonPreviewPoint].filter(Boolean).map(p => `${p!.x},${p!.y}`).join(' ')}
+                              fill="none"
+                              stroke="#a78bfa"
+                              strokeWidth="2"
+                              strokeDasharray="5,5"
+                            />
+                            
+                            {/* Points */}
+                            {currentPolygon.map((point, index) => (
+                              <circle
+                                key={index}
+                                cx={point.x}
+                                cy={point.y}
+                                r={index === 0 ? 8 : 5}
+                                className={index === 0 ? 'fill-cyan-400 stroke-white' : 'fill-violet-400 stroke-white'}
+                                strokeWidth="2"
+                              />
+                            ))}
+                            
+                            {/* Close hint on first point */}
+                            {currentPolygon.length >= 3 && polygonPreviewPoint && (
+                              <text
+                                x={currentPolygon[0].x + 12}
+                                y={currentPolygon[0].y - 5}
+                                className="fill-cyan-300 text-xs"
+                                fontSize="11"
+                              >
+                                Click to close
+                              </text>
+                            )}
+                          </>
+                        )}
+                        
+                        {/* Extracted Space Polygons */}
+                        {currentScan.extractedSpaces.filter(s => s.polygonPoints).map(space => {
+                          const pixelPoints = space.polygonPoints!.map(p => ({
+                            x: (p.xPercent / 100) * imageBounds.width,
+                            y: (p.yPercent / 100) * imageBounds.height,
+                          }))
+                          const pointsString = pixelPoints.map(p => `${p.x},${p.y}`).join(' ')
+                          
+                          return (
+                            <polygon
+                              key={`space-poly-${space.id}`}
+                              points={pointsString}
+                              className={`pointer-events-auto cursor-pointer ${
+                                selectedSpaceId === space.id 
+                                  ? 'fill-emerald-400/20 stroke-emerald-400' 
+                                  : 'fill-emerald-500/10 stroke-emerald-500/70'
+                              }`}
+                              strokeWidth="2"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedSpaceId(space.id)
+                              }}
+                            />
+                          )
+                        })}
+                      </svg>
+                    )}
+                    
+                    {/* Polygon Region Labels (HTML overlay) */}
+                    {imageBounds && drawnRegions.filter(r => r.type === 'polygon' && r.points).map(region => {
+                      const firstPoint = region.points![0]
+                      const labelX = (firstPoint.xPercent / 100) * imageBounds.width
+                      const labelY = (firstPoint.yPercent / 100) * imageBounds.height
+                      
+                      return (
+                        <div
+                          key={`label-${region.id}`}
+                          className="absolute pointer-events-auto"
+                          style={{ left: labelX, top: labelY - 28 }}
+                        >
+                          <div className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap inline-flex items-center gap-1 ${
+                            region.analyzed ? 'bg-emerald-600 text-white' : 'bg-cyan-600 text-white'
+                          }`}>
+                            ⬡ {region.name}
+                            {region.analyzed && ' ✓'}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteRegion(region.id)
+                              }}
+                              className="ml-1 w-4 h-4 bg-red-500 hover:bg-red-400 text-white rounded-full text-xs flex items-center justify-center"
+                            >
+                              ×
+                            </button>
+                            {!region.analyzed && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleAddRegionAsSpace(region)
+                                }}
+                                className="ml-1 px-1.5 py-0 bg-violet-600 hover:bg-violet-500 text-white rounded text-xs"
+                              >
+                                +
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    
+                    {/* Current Rectangle Drawing Preview - uses screen pixels during active drawing */}
                     {currentDrawing && imageBounds && (
                       <div
                         className="absolute border-2 border-dashed border-violet-400 bg-violet-400/20 pointer-events-none"
@@ -1167,9 +1459,19 @@ export default function ScanWorkspace() {
                 )}
                 
                 {/* Drawing Mode Instructions */}
-                {drawingMode === 'drawing' && !currentDrawing && (
+                {drawingMode === 'rectangle' && !currentDrawing && (
+                  <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-violet-600 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2">
+                    <span>▢</span> Click and drag to draw a rectangle boundary
+                  </div>
+                )}
+                {drawingMode === 'polygon' && (
                   <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-cyan-600 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2">
-                    <span>✏️</span> Click and drag to draw a space boundary
+                    <span>⬡</span> 
+                    {currentPolygon.length === 0 
+                      ? 'Click to place first point of polygon' 
+                      : currentPolygon.length < 3 
+                        ? `Click to add more points (${currentPolygon.length}/3 min)` 
+                        : 'Click first point or double-click to close polygon • ESC to cancel'}
                   </div>
                 )}
               </div>
