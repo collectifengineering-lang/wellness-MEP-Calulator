@@ -607,3 +607,241 @@ export function calculateScale(
   const pixelDistance = calculatePixelDistance(p1, p2)
   return pixelDistance / realDistanceFeet
 }
+
+// =============================================================================
+// AI BOUNDARY DETECTION - Draws initial pass of space boundaries
+// =============================================================================
+
+const BOUNDARY_DETECTION_PROMPT = `You are detecting ROOM BOUNDARIES in an architectural floor plan image.
+
+TASK: Identify distinct rooms/spaces and estimate their BOUNDING BOX positions as percentages of the image.
+
+HOW TO DETECT ROOMS:
+1. Look for WALLS and PARTITIONS that enclose spaces
+2. Look for ROOM LABELS/NAMES (text inside or near rooms)
+3. Identify major spaces like: Gym, Pool, Locker Room, Office, Conference Room, Lobby, etc.
+4. Skip circulation areas (corridors, stairs, elevators) unless they're labeled with SF
+
+FOR EACH ROOM, ESTIMATE:
+- xPercent: Left edge position as % of image width (0-100)
+- yPercent: Top edge position as % of image height (0-100)  
+- widthPercent: Width as % of image width
+- heightPercent: Height as % of image height
+
+IMPORTANT:
+- Be GENEROUS with bounding boxes - slightly larger is better than too small
+- Account for the room label to be inside the box
+- Don't try to be pixel-perfect, rough estimates are fine
+- Focus on MAJOR spaces first, then smaller rooms
+
+Respond with ONLY valid JSON:
+{
+  "regions": [
+    {
+      "name": "Gym",
+      "xPercent": 5,
+      "yPercent": 10,
+      "widthPercent": 40,
+      "heightPercent": 35,
+      "confidence": 85
+    },
+    {
+      "name": "Pool",
+      "xPercent": 50,
+      "yPercent": 15,
+      "widthPercent": 35,
+      "heightPercent": 40,
+      "confidence": 90
+    }
+  ],
+  "floor": "Level 3",
+  "notes": "Found X major spaces"
+}`
+
+export interface DetectedRegion {
+  id: string
+  name: string
+  x: number
+  y: number
+  width: number
+  height: number
+  confidence: number
+  analyzed: boolean
+}
+
+export interface BoundaryDetectionResult {
+  regions: DetectedRegion[]
+  floor: string
+  notes: string
+  provider: 'claude' | 'grok'
+}
+
+export async function detectSpaceBoundaries(
+  imageBase64: string,
+  mimeType: string = 'image/png',
+  imageWidth: number,
+  imageHeight: number
+): Promise<BoundaryDetectionResult> {
+  const errors: string[] = []
+  
+  console.log('🔲 AI Boundary Detection Starting...')
+  console.log(`   Image dimensions: ${imageWidth} x ${imageHeight}`)
+  
+  // Try Claude first
+  if (isClaudeReady()) {
+    try {
+      console.log('🔵 Attempting boundary detection with Claude...')
+      const result = await detectBoundariesWithClaude(imageBase64, mimeType, imageWidth, imageHeight)
+      console.log(`✅ Claude found ${result.regions.length} regions`)
+      return { ...result, provider: 'claude' }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      console.error('❌ Claude boundary detection failed:', msg)
+      errors.push(`Claude: ${msg}`)
+    }
+  }
+  
+  // Fallback to Grok
+  if (isGrokReady()) {
+    try {
+      console.log('🟠 Falling back to Grok for boundary detection...')
+      const result = await detectBoundariesWithGrok(imageBase64, mimeType, imageWidth, imageHeight)
+      console.log(`✅ Grok found ${result.regions.length} regions`)
+      return { ...result, provider: 'grok' }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      console.error('❌ Grok boundary detection failed:', msg)
+      errors.push(`Grok: ${msg}`)
+    }
+  }
+  
+  throw new Error(`Boundary detection failed:\n${errors.join('\n')}`)
+}
+
+async function detectBoundariesWithClaude(
+  imageBase64: string,
+  mimeType: string,
+  imageWidth: number,
+  imageHeight: number
+): Promise<Omit<BoundaryDetectionResult, 'provider'>> {
+  const response = await fetch(ANTHROPIC_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: mimeType,
+              data: imageBase64,
+            },
+          },
+          {
+            type: 'text',
+            text: BOUNDARY_DETECTION_PROMPT,
+          },
+        ],
+      }],
+    }),
+  })
+  
+  if (!response.ok) {
+    throw new Error(`Claude API error: ${response.status}`)
+  }
+  
+  const data = await response.json()
+  const text = data.content?.[0]?.text || ''
+  
+  return parseBoundaryResponse(text, imageWidth, imageHeight)
+}
+
+async function detectBoundariesWithGrok(
+  imageBase64: string,
+  mimeType: string,
+  imageWidth: number,
+  imageHeight: number
+): Promise<Omit<BoundaryDetectionResult, 'provider'>> {
+  const response = await fetch(XAI_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${XAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'grok-2-vision-latest',
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image_url',
+            image_url: {
+              url: `data:${mimeType};base64,${imageBase64}`,
+            },
+          },
+          {
+            type: 'text',
+            text: BOUNDARY_DETECTION_PROMPT,
+          },
+        ],
+      }],
+      max_tokens: 4096,
+    }),
+  })
+  
+  if (!response.ok) {
+    throw new Error(`Grok API error: ${response.status}`)
+  }
+  
+  const data = await response.json()
+  const text = data.choices?.[0]?.message?.content || ''
+  
+  return parseBoundaryResponse(text, imageWidth, imageHeight)
+}
+
+function parseBoundaryResponse(
+  text: string,
+  imageWidth: number,
+  imageHeight: number
+): Omit<BoundaryDetectionResult, 'provider'> {
+  // Extract JSON from response
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    throw new Error('No JSON found in AI response')
+  }
+  
+  let parsed
+  try {
+    parsed = JSON.parse(jsonMatch[0])
+  } catch (e) {
+    throw new Error('Failed to parse AI JSON response')
+  }
+  
+  const rawRegions = parsed.regions || []
+  
+  // Convert percentage-based regions to pixel coordinates
+  const regions: DetectedRegion[] = rawRegions.map((r: any) => ({
+    id: uuidv4(),
+    name: r.name || 'Unknown Space',
+    x: Math.round((r.xPercent / 100) * imageWidth),
+    y: Math.round((r.yPercent / 100) * imageHeight),
+    width: Math.round((r.widthPercent / 100) * imageWidth),
+    height: Math.round((r.heightPercent / 100) * imageHeight),
+    confidence: r.confidence || 50,
+    analyzed: false,
+  }))
+  
+  return {
+    regions,
+    floor: parsed.floor || 'Unknown',
+    notes: parsed.notes || '',
+  }
+}

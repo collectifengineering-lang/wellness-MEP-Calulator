@@ -4,7 +4,7 @@ import { Logo } from '../shared/Logo'
 import UserMenu from '../auth/UserMenu'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useScannerStore, ExtractedSpace, ScanDrawing } from '../../store/useScannerStore'
-import { analyzeDrawing, calculateScale } from '../../lib/planAnalyzer'
+import { analyzeDrawing, calculateScale, detectSpaceBoundaries, type DetectedRegion } from '../../lib/planAnalyzer'
 import { v4 as uuidv4 } from 'uuid'
 import ExportModal from './ExportModal'
 import { NYC_FIXTURE_DATABASE, getFixtureById } from '../../data/nycFixtures'
@@ -29,6 +29,7 @@ export default function ScanWorkspace() {
   const [renderingPdf, setRenderingPdf] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisProgress, setAnalysisProgress] = useState('')
+  const [detectingBoundaries, setDetectingBoundaries] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
   const [calibrationDistance, setCalibrationDistance] = useState<string>('')
   const [showCalibrationInput, setShowCalibrationInput] = useState(false)
@@ -378,6 +379,72 @@ export default function ScanWorkspace() {
     handleAnalyze()
   }
 
+  // AI Auto-Detect Boundaries
+  const handleAIAutoDetect = async () => {
+    if (!currentScan || !selectedDrawing || !renderedImageUrl || !imageRef.current) return
+    
+    setDetectingBoundaries(true)
+    setAnalysisProgress('AI is detecting room boundaries... 🔲🐐')
+    
+    try {
+      // Get image dimensions
+      const imageWidth = imageRef.current.naturalWidth || imageRef.current.width
+      const imageHeight = imageRef.current.naturalHeight || imageRef.current.height
+      
+      console.log(`Image dimensions: ${imageWidth} x ${imageHeight}`)
+      
+      // Get the base64 image data
+      let imageData: string
+      let mimeType = 'image/png'
+      
+      if (selectedDrawing.fileType === 'application/pdf') {
+        // Use the rendered image URL
+        const { base64, mime } = await renderPdfPageToImage(selectedDrawing.fileUrl)
+        imageData = base64
+        mimeType = mime
+      } else {
+        const base64Match = renderedImageUrl.match(/^data:([^;]+);base64,(.+)$/)
+        if (base64Match) {
+          mimeType = base64Match[1]
+          imageData = base64Match[2]
+        } else {
+          imageData = renderedImageUrl
+        }
+      }
+      
+      setAnalysisProgress('AI analyzing space boundaries...')
+      
+      // Call the AI to detect boundaries
+      const result = await detectSpaceBoundaries(imageData, mimeType, imageWidth, imageHeight)
+      
+      setAnalysisProgress(`Found ${result.regions.length} spaces! Adding to canvas...`)
+      
+      // Add detected regions to the drawn regions
+      const newRegions = result.regions.map((region: DetectedRegion) => ({
+        id: region.id,
+        x: region.x,
+        y: region.y,
+        width: region.width,
+        height: region.height,
+        name: region.name,
+        analyzed: false,
+      }))
+      
+      setDrawnRegions(prev => [...prev, ...newRegions])
+      
+      // Enable drawing mode to show the regions
+      setDrawingMode('drawing')
+      
+      setAnalysisProgress('')
+    } catch (error) {
+      console.error('AI auto-detect failed:', error)
+      setAnalysisProgress('')
+      alert(`AI detection failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+    
+    setDetectingBoundaries(false)
+  }
+
   const handleCalibrationSubmit = () => {
     if (!currentScan || calibrationPoints.length !== 2 || !calibrationDistance) return
     
@@ -627,6 +694,23 @@ export default function ScanWorkspace() {
               {/* Toolbar */}
               <div className="px-6 py-3 border-b border-surface-700 bg-surface-800/30 flex items-center justify-between">
                 <div className="flex items-center gap-2">
+                  {/* AI Auto-Detect Button */}
+                  <button
+                    onClick={handleAIAutoDetect}
+                    disabled={detectingBoundaries || !renderedImageUrl}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                      detectingBoundaries
+                        ? 'bg-amber-600 text-white animate-pulse'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {detectingBoundaries ? (
+                      <>🤖 Detecting...</>
+                    ) : (
+                      <>🤖 AI Auto-Detect</>
+                    )}
+                  </button>
+                  
                   {/* Drawing Mode Toggle */}
                   <button
                     onClick={() => {
