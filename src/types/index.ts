@@ -142,6 +142,10 @@ export interface MechanicalElectricalSettings {
   // Heating percentage - most heating via heat pumps/energy recovery
   heatingElectricPercent: number // Default: 0.15 (15% of heating is supplemental electric)
   
+  // Heating fuel type - switch between electric and gas (RTUs, boilers)
+  heatingFuelType: 'electric' | 'gas'  // Default: 'electric'
+  gasHeatingEfficiency: number   // Default: 0.90 (90% for condensing boilers/RTUs)
+  
   // Include/exclude flags
   includeChiller: boolean        // Include HVAC cooling load
   includeHeating: boolean        // Include electric heating load (if not gas)

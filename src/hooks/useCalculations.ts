@@ -93,6 +93,17 @@ export function useCalculations() {
       currentProject.electricPrimary
     )
     
+    // Add gas heating load to gas totals if using gas heating (RTU/Boiler)
+    if (mechanicalKVA.gasHeating.isGasHeating && mechanicalKVA.gasHeating.consumedMBH > 0) {
+      gas.totalCFH += mechanicalKVA.gasHeating.consumedCFH
+      gas.totalMBH += mechanicalKVA.gasHeating.consumedMBH
+      gas.equipmentBreakdown.unshift({
+        name: `Central Heating (Gas RTU/Boiler @ ${Math.round(mechanicalKVA.gasHeating.efficiency * 100)}% eff.)`,
+        mbh: mechanicalKVA.gasHeating.consumedMBH,
+        cfh: mechanicalKVA.gasHeating.consumedCFH,
+      })
+    }
+    
     // Recalculate electrical with mechanical loads included
     const electricalWithMechanical = recalculateServiceWithMechanical(
       electrical,

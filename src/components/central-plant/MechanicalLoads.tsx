@@ -1,5 +1,6 @@
 import { useProjectStore } from '../../store/useProjectStore'
 import type { CalculationResults, MechanicalElectricalSettings } from '../../types'
+import { gasHeatingEfficiencyPresets } from '../../data/defaults'
 
 interface MechanicalLoadsProps {
   results: CalculationResults
@@ -20,12 +21,17 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
   const dhwSettings = currentProject.dhwSettings
   
   // Helper to update a setting
-  const handleUpdate = (field: keyof MechanicalElectricalSettings, value: number | boolean) => {
+  const handleUpdate = (field: keyof MechanicalElectricalSettings, value: number | boolean | string) => {
     updateMechanicalSettings({ [field]: value })
   }
   
   // Get HVAC totals from results
   const { hvac, dhw } = results
+  
+  // Heating fuel type settings
+  const heatingFuelType = settings.heatingFuelType ?? 'electric'
+  const isGasHeating = heatingFuelType === 'gas'
+  const gasHeatingEfficiency = settings.gasHeatingEfficiency ?? 0.90
   
   // Calculate kVA for each load type
   // For cooling, subtract pool chiller from total (tracked separately)
@@ -37,9 +43,14 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
   // For heating, apply the electric heating percentage (most heating via heat pumps/energy recovery)
   const heatingElectricPercent = settings.heatingElectricPercent ?? 0.15
   const heatingElectricMBH = hvac.totalMBH * heatingElectricPercent
-  const heatingKVA = settings.includeHeating
+  // Only add to electrical if using electric heating
+  const heatingKVA = settings.includeHeating && !isGasHeating
     ? heatingElectricMBH * settings.heatingKvaPerMbh 
     : 0
+  
+  // Gas heating calculation (input MBH / efficiency = gas consumed)
+  const gasHeatingInputMBH = isGasHeating ? hvac.totalMBH : 0
+  const gasHeatingConsumedMBH = isGasHeating ? Math.round(gasHeatingInputMBH / gasHeatingEfficiency) : 0
     
   // Pool chiller - now comes from hvac.poolChillerTons (summed from zone line items)
   const poolChillerKVA = settings.includePoolChiller
@@ -128,57 +139,116 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
                 </td>
               </tr>
               
-              {/* Heating */}
-              <tr className="border-b border-surface-700/50">
+              {/* Heating - with Electric/Gas Toggle */}
+              <tr className={`border-b border-surface-700/50 ${isGasHeating ? 'bg-orange-950/30' : ''}`}>
                 <td className="py-3 px-2">
                   <input
                     type="checkbox"
                     checked={settings.includeHeating}
                     onChange={(e) => handleUpdate('includeHeating', e.target.checked)}
                     className="w-4 h-4 rounded accent-cyan-500"
+                    disabled={isGasHeating}
                   />
                 </td>
                 <td className="py-3 px-2">
-                  <div className="text-white">Supplemental Electric Heating</div>
+                  <div className="flex items-center gap-3">
+                    <div className={isGasHeating ? 'text-orange-400' : 'text-white'}>
+                      {isGasHeating ? 'Gas Heating (RTU/Boiler)' : 'Supplemental Electric Heating'}
+                    </div>
+                    {/* Electric/Gas Toggle Switch */}
+                    <button
+                      onClick={() => handleUpdate('heatingFuelType', isGasHeating ? 'electric' : 'gas')}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        isGasHeating ? 'bg-orange-500' : 'bg-surface-600'
+                      }`}
+                      title={isGasHeating ? 'Switch to Electric' : 'Switch to Gas'}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                          isGasHeating ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                      <span className="sr-only">{isGasHeating ? 'Gas' : 'Electric'}</span>
+                    </button>
+                    <span className={`text-xs font-medium ${isGasHeating ? 'text-orange-400' : 'text-cyan-400'}`}>
+                      {isGasHeating ? '⛽ Gas' : '⚡ Electric'}
+                    </span>
+                  </div>
                   <div className="text-xs text-surface-500 mt-0.5">
-                    {(heatingElectricPercent * 100).toFixed(0)}% of {hvac.totalMBH.toFixed(0)} MBH total
+                    {isGasHeating 
+                      ? `100% of ${hvac.totalMBH.toFixed(0)} MBH → Gas Equipment`
+                      : `${(heatingElectricPercent * 100).toFixed(0)}% of ${hvac.totalMBH.toFixed(0)} MBH total`
+                    }
                   </div>
                 </td>
                 <td className="py-3 px-2 text-right">
-                  <div className="flex flex-col items-end">
-                    <div className="flex items-center gap-1">
+                  {isGasHeating ? (
+                    <div className="flex flex-col items-end">
+                      <span className="text-orange-400 font-mono">{hvac.totalMBH.toFixed(0)} MBH</span>
+                      <span className="text-xs text-surface-500 mt-1">heating load</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-end">
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          step="5"
+                          min="0"
+                          max="100"
+                          value={Math.round(heatingElectricPercent * 100)}
+                          onChange={(e) => handleUpdate('heatingElectricPercent', Number(e.target.value) / 100)}
+                          className="w-14 px-2 py-1 bg-surface-900 border border-surface-600 rounded text-white text-right font-mono text-sm"
+                        />
+                        <span className="text-xs text-surface-500">%</span>
+                      </div>
+                      <span className="text-surface-400 font-mono text-xs mt-1">= {heatingElectricMBH.toFixed(0)} MBH</span>
+                    </div>
+                  )}
+                </td>
+                <td className="py-3 px-2 text-center text-surface-500">{isGasHeating ? '÷' : '×'}</td>
+                <td className="py-3 px-2">
+                  {isGasHeating ? (
+                    <div className="flex flex-col items-end gap-1">
+                      <select
+                        value={gasHeatingEfficiency}
+                        onChange={(e) => handleUpdate('gasHeatingEfficiency', Number(e.target.value))}
+                        className="px-2 py-1 bg-surface-900 border border-orange-600/50 rounded text-orange-400 text-right font-mono text-sm w-full"
+                      >
+                        {Object.entries(gasHeatingEfficiencyPresets).map(([key, preset]) => (
+                          <option key={key} value={preset.value}>
+                            {preset.label}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-xs text-surface-500">efficiency</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-end gap-1">
                       <input
                         type="number"
-                        step="5"
-                        min="0"
-                        max="100"
-                        value={Math.round(heatingElectricPercent * 100)}
-                        onChange={(e) => handleUpdate('heatingElectricPercent', Number(e.target.value) / 100)}
-                        className="w-14 px-2 py-1 bg-surface-900 border border-surface-600 rounded text-white text-right font-mono text-sm"
+                        step="0.01"
+                        min="0.1"
+                        max="1"
+                        value={settings.heatingKvaPerMbh}
+                        onChange={(e) => handleUpdate('heatingKvaPerMbh', Number(e.target.value))}
+                        className="w-16 px-2 py-1 bg-surface-900 border border-surface-600 rounded text-white text-right font-mono text-sm"
                       />
-                      <span className="text-xs text-surface-500">%</span>
+                      <span className="text-xs text-surface-500">kVA/MBH</span>
                     </div>
-                    <span className="text-surface-400 font-mono text-xs mt-1">= {heatingElectricMBH.toFixed(0)} MBH</span>
-                  </div>
-                </td>
-                <td className="py-3 px-2 text-center text-surface-500">×</td>
-                <td className="py-3 px-2">
-                  <div className="flex items-center justify-end gap-1">
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0.1"
-                      max="1"
-                      value={settings.heatingKvaPerMbh}
-                      onChange={(e) => handleUpdate('heatingKvaPerMbh', Number(e.target.value))}
-                      className="w-16 px-2 py-1 bg-surface-900 border border-surface-600 rounded text-white text-right font-mono text-sm"
-                    />
-                    <span className="text-xs text-surface-500">kVA/MBH</span>
-                  </div>
+                  )}
                 </td>
                 <td className="py-3 px-2 text-center text-surface-500">=</td>
-                <td className="py-3 px-2 text-right text-cyan-400 font-mono font-medium">
-                  {settings.includeHeating ? heatingKVA.toFixed(1) : '—'}
+                <td className="py-3 px-2 text-right font-mono font-medium">
+                  {isGasHeating ? (
+                    <div className="flex flex-col items-end">
+                      <span className="text-orange-400">{gasHeatingConsumedMBH.toLocaleString()} MBH</span>
+                      <span className="text-xs text-surface-500">gas consumed</span>
+                    </div>
+                  ) : (
+                    <span className="text-cyan-400">
+                      {settings.includeHeating ? heatingKVA.toFixed(1) : '—'}
+                    </span>
+                  )}
                 </td>
               </tr>
               
@@ -337,6 +407,22 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
           </table>
         </div>
         
+        {/* Gas Heating Summary (when enabled) */}
+        {isGasHeating && (
+          <div className="bg-orange-950/40 border border-orange-600/30 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-orange-400 text-lg">⛽</span>
+              <h4 className="text-sm font-medium text-orange-400">Gas Heating Active</h4>
+            </div>
+            <div className="text-sm text-orange-300/80">
+              Heating load of <strong>{hvac.totalMBH.toFixed(0)} MBH</strong> is served by gas equipment (RTU/Boiler) 
+              at <strong>{(gasHeatingEfficiency * 100).toFixed(0)}%</strong> efficiency, 
+              consuming <strong>{gasHeatingConsumedMBH.toLocaleString()} MBH</strong> of gas.
+              This load is <em>excluded</em> from the electrical service calculation and added to the gas totals below.
+            </div>
+          </div>
+        )}
+        
         {/* Conversion Factor Notes */}
         <div className="bg-surface-900/50 rounded-lg p-4">
           <h4 className="text-sm font-medium text-surface-300 mb-2">Default Conversion Factors</h4>
@@ -346,8 +432,10 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
               <p className="mt-0.5">Air-cooled chiller</p>
             </div>
             <div>
-              <strong className="text-surface-300">Heating:</strong> 0.293 kVA/MBH
-              <p className="mt-0.5">1 MBH = 293W electric</p>
+              <strong className={isGasHeating ? 'text-orange-400' : 'text-surface-300'}>
+                {isGasHeating ? 'Gas Heating:' : 'Heating:'} 
+              </strong> {isGasHeating ? `${(gasHeatingEfficiency * 100)}% eff.` : '0.293 kVA/MBH'}
+              <p className="mt-0.5">{isGasHeating ? 'RTU or boiler plant' : '1 MBH = 293W electric'}</p>
             </div>
             <div>
               <strong className="text-surface-300">Pool Chiller:</strong> 1.5 kVA/ton
@@ -368,7 +456,8 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
         <div className="text-xs text-surface-500">
           <p>
             💡 Mechanical loads are added to the electrical service sizing calculation.
-            Adjust conversion factors based on actual equipment specifications when available.
+            {isGasHeating && <span className="text-orange-400"> Gas heating loads are excluded from electrical and added to gas totals.</span>}
+            {' '}Adjust conversion factors based on actual equipment specifications when available.
           </p>
         </div>
         
@@ -404,6 +493,15 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
   )
 }
 
+// Gas heating result for adding to gas totals
+export interface GasHeatingResult {
+  isGasHeating: boolean
+  inputMBH: number        // Heating load in MBH
+  consumedMBH: number     // Gas consumed (input / efficiency)
+  consumedCFH: number     // Gas consumed in CFH (≈ MBH for natural gas)
+  efficiency: number
+}
+
 // Export the calculation function so ElectricalServiceSettings can use it
 export function calculateMechanicalKVA(
   hvac: CalculationResults['hvac'],
@@ -412,8 +510,13 @@ export function calculateMechanicalKVA(
   dhwHeaterType: 'electric' | 'gas',
   powerFactor: number,
   _electricPrimary: boolean // Prefixed with _ to indicate intentionally unused
-): { total: number; breakdown: { name: string; kva: number }[] } {
+): { total: number; breakdown: { name: string; kva: number }[]; gasHeating: GasHeatingResult } {
   const breakdown: { name: string; kva: number }[] = []
+  
+  // Determine if using gas heating
+  const heatingFuelType = settings.heatingFuelType ?? 'electric'
+  const isGasHeating = heatingFuelType === 'gas'
+  const gasHeatingEfficiency = settings.gasHeatingEfficiency ?? 0.90
   
   // Space cooling (total minus pool chiller)
   if (settings.includeChiller) {
@@ -422,8 +525,8 @@ export function calculateMechanicalKVA(
     breakdown.push({ name: 'Space Cooling', kva })
   }
   
-  // Supplemental electric heating (percentage of total heating)
-  if (settings.includeHeating) {
+  // Supplemental electric heating (percentage of total heating) - ONLY if electric
+  if (settings.includeHeating && !isGasHeating) {
     const heatingElectricPercent = settings.heatingElectricPercent ?? 0.15
     const heatingElectricMBH = hvac.totalMBH * heatingElectricPercent
     const kva = heatingElectricMBH * settings.heatingKvaPerMbh
@@ -459,5 +562,17 @@ export function calculateMechanicalKVA(
 
   const total = breakdown.reduce((sum, item) => sum + item.kva, 0)
   
-  return { total, breakdown }
+  // Calculate gas heating consumption
+  const gasHeatingInputMBH = isGasHeating ? hvac.totalMBH : 0
+  const gasHeatingConsumedMBH = isGasHeating ? Math.round(gasHeatingInputMBH / gasHeatingEfficiency) : 0
+  
+  const gasHeating: GasHeatingResult = {
+    isGasHeating,
+    inputMBH: gasHeatingInputMBH,
+    consumedMBH: gasHeatingConsumedMBH,
+    consumedCFH: gasHeatingConsumedMBH, // For natural gas, CFH ≈ MBH
+    efficiency: gasHeatingEfficiency,
+  }
+  
+  return { total, breakdown, gasHeating }
 }

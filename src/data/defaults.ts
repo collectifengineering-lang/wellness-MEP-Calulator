@@ -294,6 +294,10 @@ export function getDefaultMechanicalSettings(): MechanicalElectricalSettings {
     // Heating percentage - most heating via heat pumps/energy recovery
     heatingElectricPercent: 0.15, // 15% of heating is supplemental electric (default)
     
+    // Heating fuel type - electric by default, can switch to gas for RTUs/boilers
+    heatingFuelType: 'electric',
+    gasHeatingEfficiency: 0.90,  // 90% efficiency for condensing boilers/RTUs
+    
     // Include/exclude flags - all included by default
     includeChiller: true,
     includeHeating: true,        // Will only apply if not using gas heating
@@ -303,6 +307,14 @@ export function getDefaultMechanicalSettings(): MechanicalElectricalSettings {
     includeFans: true,           // Include fan power for ventilation/exhaust
   }
 }
+
+// Gas heating efficiency presets for different equipment types
+export const gasHeatingEfficiencyPresets = {
+  standard_boiler: { value: 0.80, label: '80% - Standard Boiler' },
+  mid_efficiency: { value: 0.85, label: '85% - Mid-Efficiency' },
+  condensing: { value: 0.90, label: '90% - Condensing Boiler/RTU' },
+  high_efficiency: { value: 0.95, label: '95% - High-Efficiency Condensing' },
+} as const
 
 export function getDefaultResultAdjustments(): ResultAdjustments {
   return {
