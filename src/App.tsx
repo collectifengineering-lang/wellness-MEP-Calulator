@@ -9,6 +9,7 @@ import LandingPage from './components/landing/LandingPage'
 import ConceptMEPHome from './components/concept-mep/ConceptMEPHome'
 import ProjectWorkspace from './components/ProjectWorkspace'
 import ScannerHome from './components/plan-scanner/ScannerHome'
+import ScanWorkspace from './components/plan-scanner/ScanWorkspace'
 import HVACHome from './components/hvac/HVACHome'
 import ElectricalHome from './components/electrical/ElectricalHome'
 import PlumbingHome from './components/plumbing/PlumbingHome'
@@ -90,6 +91,14 @@ function App() {
           element={
             <AuthGuard>
               <ScannerHome />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/plan-scanner/scan/:scanId"
+          element={
+            <AuthGuard>
+              <ScanWorkspace />
             </AuthGuard>
           }
         />
