@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 
-// Set worker source
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+// Set worker source - use unpkg for reliability
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 
 interface PDFViewerProps {
   fileUrl: string // Base64 data URL
@@ -54,7 +54,8 @@ export default function PDFViewer({
         setCurrentPage(1)
       } catch (err) {
         console.error('Error loading PDF:', err)
-        setError('Failed to load PDF. Please try a different file.')
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+        setError(`Failed to load PDF: ${errorMessage}. Try exporting as PNG/JPG instead.`)
       } finally {
         setLoading(false)
       }
@@ -129,10 +130,18 @@ export default function PDFViewer({
   if (error) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-center bg-red-500/10 rounded-2xl p-8 border border-red-500/30">
+        <div className="text-center bg-red-500/10 rounded-2xl p-8 border border-red-500/30 max-w-md">
           <div className="text-5xl mb-4">⚠️</div>
           <h3 className="text-xl font-bold text-red-400 mb-2">PDF Error</h3>
-          <p className="text-surface-400">{error}</p>
+          <p className="text-surface-400 mb-4">{error}</p>
+          <div className="text-left bg-surface-800 rounded-lg p-4 text-sm">
+            <p className="text-white font-medium mb-2">💡 Quick Fix:</p>
+            <ol className="text-surface-400 space-y-1 list-decimal list-inside">
+              <li>Open PDF in Adobe/Preview</li>
+              <li>Export as PNG or JPG</li>
+              <li>Upload the image instead</li>
+            </ol>
+          </div>
         </div>
       </div>
     )
