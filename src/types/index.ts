@@ -154,6 +154,10 @@ export interface MechanicalElectricalSettings {
   includeDehumid: boolean        // Include dehumidification
   includeDhw: boolean            // Include DHW if electric
   includeFans: boolean           // Include fan power for ventilation/exhaust
+  
+  // HVAC System Description - custom narrative for reports
+  hvacSystemDescription?: string // Free-form text describing HVAC systems
+  rtuCount?: number              // Override for RTU/AHU count (auto-calculated if not set)
 }
 
 // Process loads that are fixed per zone (not per SF)

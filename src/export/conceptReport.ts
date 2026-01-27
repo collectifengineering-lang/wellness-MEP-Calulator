@@ -87,10 +87,10 @@ export async function exportConceptPDF(
 
   const docDefinition: TDocumentDefinitions = {
     pageSize: 'LETTER',
-    pageMargins: [40, 72, 40, 40], // Top margin increased for logo clearance (72pt = ~1")
+    pageMargins: [40, 72, 40, 45], // Top margin for logo clearance
     defaultStyle: {
-      fontSize: 9,
-      lineHeight: 1.15,
+      fontSize: 10,
+      lineHeight: 1.2,
     },
     header: headerContent,
     footer: (currentPage: number, pageCount: number) => ({
@@ -142,7 +142,6 @@ export async function exportConceptPDF(
                 ul: [
                   `Cooling: ${results.hvac.totalTons} Tons (${Math.round(totalSF / results.hvac.totalTons)} SF/Ton)`,
                   `Heating: ${results.hvac.totalMBH.toLocaleString()} MBH`,
-                  `RTU/AHU Count: ~${results.hvac.rtuCount} units`,
                   ...(results.hvac.dehumidLbHr > 0 ? [`Dehumidification: ${results.hvac.dehumidLbHr} lb/hr`] : []),
                 ],
                 style: 'list',
@@ -163,8 +162,26 @@ export async function exportConceptPDF(
             ],
           },
         ],
-        margin: [0, 0, 0, 6],
+        margin: [0, 0, 0, 3],
       },
+      // HVAC System Description (if provided)
+      ...(project.mechanicalSettings?.hvacSystemDescription ? [
+        { 
+          text: project.mechanicalSettings.hvacSystemDescription, 
+          style: 'body', 
+          fontSize: 8,
+          margin: [0, 0, 0, 6] as [number, number, number, number],
+          italics: true,
+          color: '#444444',
+        }
+      ] : [
+        { 
+          text: `System: ~${project.mechanicalSettings?.rtuCount ?? results.hvac.rtuCount} RTU/AHU units`, 
+          style: 'list', 
+          fontSize: 8,
+          margin: [0, 0, 0, 6] as [number, number, number, number],
+        }
+      ]),
 
       // 2. Electrical
       { text: '2. Electrical / Fire Alarm', style: 'sectionHeader' },
@@ -394,19 +411,19 @@ export async function exportConceptPDF(
       },
     ],
     styles: {
-      title: { fontSize: 14, bold: true, margin: [0, 0, 0, 2] },
-      subtitle: { fontSize: 8, color: '#666666', margin: [0, 0, 0, 6] },
-      sectionHeader: { fontSize: 10, bold: true, margin: [0, 6, 0, 3], color: '#1a1a1a' },
-      subHeader: { fontSize: 8, bold: true, margin: [0, 2, 0, 1], color: '#333333' },
-      body: { fontSize: 9 },
-      list: { fontSize: 8, margin: [0, 0, 0, 3] },
+      title: { fontSize: 16, bold: true, margin: [0, 0, 0, 3] },
+      subtitle: { fontSize: 9, color: '#666666', margin: [0, 0, 0, 10] },
+      sectionHeader: { fontSize: 11, bold: true, margin: [0, 10, 0, 5], color: '#1a1a1a' },
+      subHeader: { fontSize: 9, bold: true, margin: [0, 3, 0, 2], color: '#333333' },
+      body: { fontSize: 10 },
+      list: { fontSize: 9, margin: [0, 0, 0, 5] },
       headerText: { fontSize: 8, color: '#666666' },
-      footerText: { fontSize: 7, color: '#999999' },
-      footerNote: { fontSize: 6, color: '#999999', italics: true, alignment: 'center' },
-      tableHeader: { fontSize: 7, bold: true },
-      tableCell: { fontSize: 7 },
-      summaryHeader: { fontSize: 8, bold: true, alignment: 'center', margin: [0, 2, 0, 2] },
-      summaryValue: { fontSize: 8, alignment: 'center', margin: [0, 3, 0, 3] },
+      footerText: { fontSize: 8, color: '#999999' },
+      footerNote: { fontSize: 7, color: '#999999', italics: true, alignment: 'center' },
+      tableHeader: { fontSize: 8, bold: true },
+      tableCell: { fontSize: 8 },
+      summaryHeader: { fontSize: 9, bold: true, alignment: 'center', margin: [0, 3, 0, 3] },
+      summaryValue: { fontSize: 9, alignment: 'center', margin: [0, 4, 0, 4] },
     },
   }
 
