@@ -19,14 +19,19 @@ export interface PlumbingProjectSettings {
   // Pipe sizing
   coldWaterVelocityFps: number
   hotWaterVelocityFps: number
-  // DHW
+  // DHW - ASHRAE Parameters
   dhwHeaterType: 'gas' | 'electric'
   dhwSystemType: 'storage' | 'tankless' | 'hybrid'
-  dhwStorageTemp: number
-  dhwDeliveryTemp: number
-  coldWaterTemp: number
-  dhwRecoveryFactor: number
-  dhwDemandFactor: number
+  dhwBuildingType: string  // ASHRAE building type (gymnasium, hotel, etc.)
+  dhwStorageTemp: number   // Storage tank temperature (°F)
+  dhwDeliveryTemp: number  // Delivery/fixture temp (°F)
+  coldWaterTemp: number    // Incoming cold water (°F)
+  dhwPeakDuration: number  // Hours of peak demand
+  dhwDemandFactor: number  // Simultaneity/diversity factor (0-1)
+  dhwStorageFactor: number // Usable tank percentage (0.5-0.9)
+  dhwRecoveryFactor: number // Heater sizing multiplier
+  dhwGasEfficiency: number // Gas heater efficiency (0.80-0.98)
+  dhwTanklessUnitBtu: number // Per-unit tankless capacity (BTU/hr)
   // Gas
   gasDiversityFactor: number
 }
@@ -45,13 +50,19 @@ export interface PlumbingProject {
 export const defaultPlumbingSettings: PlumbingProjectSettings = {
   coldWaterVelocityFps: 8,
   hotWaterVelocityFps: 5,
+  // DHW defaults for Gymnasium/Health Club (most common for this app)
   dhwHeaterType: 'gas',
   dhwSystemType: 'storage',
+  dhwBuildingType: 'gymnasium',
   dhwStorageTemp: 140,
   dhwDeliveryTemp: 110,
   coldWaterTemp: 55,
-  dhwRecoveryFactor: 0.7,
-  dhwDemandFactor: 0.7,
+  dhwPeakDuration: 2.0,        // 2 hours peak
+  dhwDemandFactor: 0.70,       // 70% simultaneity
+  dhwStorageFactor: 0.70,      // 70% usable storage
+  dhwRecoveryFactor: 1.0,      // 1.0x recovery factor
+  dhwGasEfficiency: 0.82,      // Power-vented efficiency
+  dhwTanklessUnitBtu: 199900,  // Navien standard unit
   gasDiversityFactor: 0.8,
 }
 
