@@ -39,6 +39,7 @@ export default function ScanWorkspace() {
   const imageRef = useRef<HTMLImageElement>(null)
   
   // Helper function to render PDF page to image for AI analysis
+  // Uses 3x scale for better text recognition (same as Concept MEP)
   const renderPdfPageToImage = async (pdfDataUrl: string): Promise<{ base64: string; mime: string }> => {
     const pdfjs = await import('pdfjs-dist')
     pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
@@ -53,9 +54,12 @@ export default function ScanWorkspace() {
     const pdf = await pdfjs.getDocument({ data: pdfBytes }).promise
     const page = await pdf.getPage(1) // Analyze first page
     
-    // Render at 1.5x scale (balance quality vs size)
-    const scale = 1.5
+    // Render at 3x scale for better quality (helps read smaller text in tables)
+    // This matches the Concept MEP PDF import resolution
+    const scale = 3.0
     const viewport = page.getViewport({ scale })
+    
+    console.log(`📄 Rendering PDF at ${scale}x scale: ${viewport.width}x${viewport.height}px`)
     
     const canvas = document.createElement('canvas')
     canvas.width = viewport.width
@@ -64,11 +68,13 @@ export default function ScanWorkspace() {
     
     await page.render({ canvasContext: ctx, viewport, canvas } as any).promise
     
-    // Convert to JPEG (smaller than PNG for large drawings)
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    // Convert to PNG for better quality (Claude handles it well)
+    const dataUrl = canvas.toDataURL('image/png')
     const imgBase64 = dataUrl.split(',')[1]
     
-    return { base64: imgBase64, mime: 'image/jpeg' }
+    console.log(`📸 Image converted: ${Math.round(imgBase64.length / 1024)}KB`)
+    
+    return { base64: imgBase64, mime: 'image/png' }
   }
 
   // Standard architectural scales (Imperial)
