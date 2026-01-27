@@ -275,19 +275,34 @@ export default function ScanWorkspace() {
 
   // Parse custom scale strings
   const parseCustomScale = (input: string): { pixelsPerFoot: number } | null => {
-    const cleaned = input.trim().toLowerCase()
+    const cleaned = input.trim()
+    
+    // Format: X" = Y'-Z" where X is decimal (e.g., ".4225" = 10'-0"" or "0.5" = 1'-0"")
+    const decimalMatch = cleaned.match(/^\.?(\d*\.?\d+)"?\s*=\s*(\d+)'(?:-?(\d+)"?)?$/i)
+    if (decimalMatch) {
+      const inches = parseFloat(decimalMatch[1].startsWith('.') ? '0' + decimalMatch[1] : decimalMatch[1])
+      const feet = parseInt(decimalMatch[2])
+      const extraInches = decimalMatch[3] ? parseInt(decimalMatch[3]) / 12 : 0
+      const totalFeet = feet + extraInches
+      // X inches on paper = totalFeet real
+      // So 1 foot real = (inches / totalFeet) inches on paper
+      // At 96 DPI: 1 foot = (inches / totalFeet) * 96 pixels
+      const pixelsPerFoot = (inches / totalFeet) * 96
+      console.log(`Parsed scale: ${inches}" = ${totalFeet}' → ${pixelsPerFoot.toFixed(2)} px/ft`)
+      return { pixelsPerFoot }
+    }
     
     // Format: 1/X" = 1'-0" (e.g., "1/8" = 1'-0"")
-    const fractionMatch = cleaned.match(/(\d+)\/(\d+)"?\s*=\s*1'/)
+    const fractionMatch = cleaned.match(/(\d+)\/(\d+)"?\s*=\s*1'/i)
     if (fractionMatch) {
       const num = parseInt(fractionMatch[1])
       const denom = parseInt(fractionMatch[2])
-      // At 96 DPI: fraction inch = 1 foot, so 1 foot = (denom/num) * 96 pixels
+      // At 96 DPI: fraction inch = 1 foot, so 1 foot = (num/denom) * 96 pixels
       return { pixelsPerFoot: (num / denom) * 96 }
     }
     
     // Format: 1" = X'-0" (e.g., "1" = 10'-0"")
-    const inchToFeetMatch = cleaned.match(/1"?\s*=\s*(\d+)'/)
+    const inchToFeetMatch = cleaned.match(/1"?\s*=\s*(\d+)'/i)
     if (inchToFeetMatch) {
       const feet = parseInt(inchToFeetMatch[1])
       // 1 inch on paper = X feet real, so 1 foot = 96/X pixels
@@ -295,7 +310,7 @@ export default function ScanWorkspace() {
     }
     
     // Format: 1:X (metric style, e.g., "1:100")
-    const ratioMatch = cleaned.match(/1\s*:\s*(\d+)/)
+    const ratioMatch = cleaned.match(/1\s*:\s*(\d+)/i)
     if (ratioMatch) {
       const ratio = parseInt(ratioMatch[1])
       // Assuming 96 DPI and ratio is in same units
@@ -538,7 +553,7 @@ export default function ScanWorkspace() {
                           type="text"
                           value={customScale}
                           onChange={(e) => setCustomScale(e.target.value)}
-                          placeholder="e.g., 3/16 = 1ft or 1:50"
+                          placeholder='.4225" = 10ft'
                           className="flex-1 px-4 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white placeholder-surface-500 focus:border-violet-500 focus:outline-none text-sm"
                         />
                         <button
@@ -550,7 +565,7 @@ export default function ScanWorkspace() {
                         </button>
                       </div>
                       <p className="text-xs text-surface-500 mt-2">
-                        {"Formats: 1/8\" = 1'-0\" • 1\" = 20'-0\" • 1:100"}
+                        {".4225\" = 10'-0\" • 1/8\" = 1'-0\" • 1\" = 20'-0\" • 1:100"}
                       </p>
                     </div>
                     
