@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useProjectStore } from '../../store/useProjectStore'
-import { exportToPDF, exportToExcelFile } from '../../export'
+import { exportToExcelFile } from '../../export'
+import { exportConceptPDF, exportConceptWord, setReportLogo, getReportLogo } from '../../export/conceptReport'
 import { getZoneDefaults, calculateLaundryLoads } from '../../data/zoneDefaults'
 import { getLegacyFixtureCounts } from '../../data/fixtureUtils'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
@@ -46,6 +47,10 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
   
   // SD Package Report state
   const [showSDPackage, setShowSDPackage] = useState(false)
+  
+  // Logo state
+  const [logoPreview, setLogoPreview] = useState<string | null>(getReportLogo().dataUrl)
+  const logoInputRef = useRef<HTMLInputElement>(null)
   
   // Track when calculations change to show "updated" indicator
   useEffect(() => {
@@ -226,9 +231,19 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
   const handleExportPDF = async () => {
     setExporting(true)
     try {
-      await exportToPDF(currentProject, zones, results, aggregatedFixtures, totalSF, includeDetailed)
+      await exportConceptPDF(currentProject, zones, results, aggregatedFixtures, totalSF, includeDetailed)
     } catch (error) {
       console.error('PDF export error:', error)
+    }
+    setExporting(false)
+  }
+
+  const handleExportWord = async () => {
+    setExporting(true)
+    try {
+      await exportConceptWord(currentProject, zones, results, aggregatedFixtures, totalSF)
+    } catch (error) {
+      console.error('Word export error:', error)
     }
     setExporting(false)
   }
@@ -242,6 +257,27 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
     }
     setExporting(false)
   }
+  
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string
+      // Extract base64 portion (without data:image/... prefix)
+      const base64 = dataUrl.split(',')[1]
+      setLogoPreview(dataUrl)
+      setReportLogo(base64, dataUrl)
+    }
+    reader.readAsDataURL(file)
+  }
+  
+  const clearLogo = () => {
+    setLogoPreview(null)
+    setReportLogo(null, null)
+    if (logoInputRef.current) logoInputRef.current.value = ''
+  }
 
   const climateLabels: Record<string, string> = {
     hot_humid: 'Hot & Humid',
@@ -254,6 +290,42 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
       {/* Export Bar */}
       <div className="sticky top-0 z-10 bg-surface-800 border-b border-surface-700 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
+          {/* Logo Upload */}
+          <div className="flex items-center gap-2">
+            <input
+              type="file"
+              ref={logoInputRef}
+              accept="image/*"
+              onChange={handleLogoUpload}
+              className="hidden"
+              id="logo-upload"
+            />
+            {logoPreview ? (
+              <div className="flex items-center gap-2 bg-surface-700 px-2 py-1 rounded-lg">
+                <img src={logoPreview} alt="Logo" className="h-6 w-auto max-w-[60px] object-contain" />
+                <button
+                  onClick={clearLogo}
+                  className="text-surface-400 hover:text-red-400 transition-colors"
+                  title="Remove logo"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <label 
+                htmlFor="logo-upload"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-surface-700 hover:bg-surface-600 text-surface-300 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Add Logo
+              </label>
+            )}
+          </div>
+          <span className="text-surface-600">|</span>
           <label className="flex items-center gap-2 text-sm text-surface-300">
             <input
               type="checkbox"
@@ -261,7 +333,7 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
               onChange={(e) => setIncludeDetailed(e.target.checked)}
               className="rounded bg-surface-700 border-surface-600 text-primary-500 focus:ring-primary-500"
             />
-            Include detailed calculations in export
+            Include detailed
           </label>
           <span className="text-surface-600">|</span>
           <button
@@ -275,7 +347,7 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            {showDetailedReport ? 'Hide' : 'Show'} Detailed Report
+            {showDetailedReport ? 'Hide' : 'Show'} Details
           </button>
         </div>
         <div className="flex items-center gap-2">
@@ -321,25 +393,40 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
           
           <span className="text-surface-600">|</span>
           
-          <button
-            onClick={handleExportPDF}
-            disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-500 disabled:bg-red-800 text-white rounded-lg text-sm font-medium transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            Export PDF
-          </button>
+          {/* Concept Report Exports */}
+          <div className="flex items-center gap-1 bg-surface-700/50 rounded-lg p-1">
+            <span className="text-xs text-surface-400 px-2">Concept:</span>
+            <button
+              onClick={handleExportPDF}
+              disabled={exporting}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:bg-red-800 text-white rounded text-xs font-medium transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+              </svg>
+              PDF
+            </button>
+            <button
+              onClick={handleExportWord}
+              disabled={exporting}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white rounded text-xs font-medium transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Word
+            </button>
+          </div>
+          
           <button
             onClick={handleExportExcel}
             disabled={exporting}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white rounded-lg text-sm font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 text-white rounded-lg text-xs font-medium transition-colors"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            Export Excel
+            Excel
           </button>
         </div>
       </div>
@@ -513,170 +600,170 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
         <div className="bg-white text-gray-900 rounded-lg shadow-2xl overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-r from-surface-900 to-surface-800 px-8 py-6 text-white">
-            <p className="text-sm text-surface-400 mb-1">COLLECTIF Engineering PLLC</p>
-            <h1 className="text-2xl font-bold">{currentProject.name}</h1>
-            <p className="text-sm text-surface-300 mt-1">MEP Due Diligence Report</p>
+            <div className="flex items-start justify-between">
+              <div>
+                {logoPreview ? (
+                  <img src={logoPreview} alt="Company Logo" className="h-10 w-auto mb-2" />
+                ) : (
+                  <p className="text-sm text-surface-400 mb-1">COLLECTIF Engineering PLLC</p>
+                )}
+                <h1 className="text-2xl font-bold">{currentProject.name}</h1>
+                <p className="text-sm text-surface-300 mt-1">MEP Concept Report</p>
+              </div>
+              <div className="text-right text-sm text-surface-400">
+                <p>{new Date().toLocaleDateString()}</p>
+              </div>
+            </div>
             <div className="flex items-center gap-4 mt-3 text-sm text-surface-400">
               <span>{totalSF.toLocaleString()} SF</span>
               <span>•</span>
               <span>{climateLabels[currentProject.climate]}</span>
               <span>•</span>
-              <span>{new Date().toLocaleDateString()}</span>
+              <span>{zones.length} Zones</span>
             </div>
           </div>
 
+          {/* Summary Cards */}
+          <section className="px-8 py-4 border-b border-gray-200">
+            <div className="grid grid-cols-4 gap-4">
+              <div className="bg-blue-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-blue-600 font-medium uppercase tracking-wide">HVAC</div>
+                <div className="text-lg font-bold text-blue-900">{results.hvac.totalTons} Tons</div>
+                <div className="text-xs text-blue-700">{results.hvac.totalMBH.toLocaleString()} MBH</div>
+              </div>
+              <div className="bg-amber-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-amber-600 font-medium uppercase tracking-wide">Electrical</div>
+                <div className="text-lg font-bold text-amber-900">{results.electrical.totalKW.toLocaleString()} kW</div>
+                <div className="text-xs text-amber-700">{results.electrical.recommendedService}</div>
+              </div>
+              <div className="bg-emerald-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-emerald-600 font-medium uppercase tracking-wide">Plumbing</div>
+                <div className="text-lg font-bold text-emerald-900">{results.plumbing.peakGPM} GPM</div>
+                <div className="text-xs text-emerald-700">{results.plumbing.totalWSFU} WSFU</div>
+              </div>
+              <div className="bg-red-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-red-600 font-medium uppercase tracking-wide">Gas</div>
+                <div className="text-lg font-bold text-red-900">{results.gas.totalCFH.toLocaleString()} CFH</div>
+                <div className="text-xs text-red-700">{results.gas.totalMBH.toLocaleString()} MBH</div>
+              </div>
+            </div>
+          </section>
+
           {/* Executive Summary */}
-          <section className="px-8 py-6 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-gray-900">Executive Summary</h2>
+          <section className="px-8 py-4 border-b border-gray-200">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-base font-bold text-gray-900">Executive Summary</h2>
               <button 
                 onClick={() => setEditMode(!editMode)}
                 className={`text-xs px-2 py-1 rounded ${editMode ? 'bg-primary-600 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
               >
-                {editMode ? '✓ Done Editing' : '✎ Edit Report'}
+                {editMode ? '✓ Done' : '✎ Edit'}
               </button>
             </div>
             {editMode ? (
               <textarea
-                value={reportEdits.executiveSummary ?? `COLLECTIF ENGINEERING has been engaged to determine the MEP requirements of a ~${Math.round(totalSF / 1000)}k SF wellness facility. This report identifies high-level requirements for utility services, MEP systems, and provides recommendations for landlord negotiation items.`}
+                value={reportEdits.executiveSummary ?? `This report summarizes the MEP requirements for the ~${Math.round(totalSF / 1000)}k SF facility. The analysis identifies utility service requirements, equipment sizing, and system recommendations for mechanical, electrical, plumbing, and fire protection systems.`}
                 onChange={(e) => setReportEdits(prev => ({ ...prev, executiveSummary: e.target.value }))}
-                className="w-full text-sm text-gray-600 leading-relaxed p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 min-h-[80px]"
+                className="w-full text-sm text-gray-600 leading-relaxed p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 min-h-[60px]"
               />
             ) : (
               <p className="text-sm text-gray-600 leading-relaxed">
-                {reportEdits.executiveSummary || `COLLECTIF ENGINEERING has been engaged to determine the MEP requirements of a ~${Math.round(totalSF / 1000)}k SF wellness facility. This report identifies high-level requirements for utility services, MEP systems, and provides recommendations for landlord negotiation items.`}
+                {reportEdits.executiveSummary || `This report summarizes the MEP requirements for the ~${Math.round(totalSF / 1000)}k SF facility. The analysis identifies utility service requirements, equipment sizing, and system recommendations for mechanical, electrical, plumbing, and fire protection systems.`}
               </p>
             )}
           </section>
 
           {/* HVAC Section */}
-          <section className="px-8 py-6 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-gray-900">1. HVAC (Mechanical)</h2>
-            </div>
-            <div className="space-y-3 text-sm text-gray-700">
+          <section className="px-8 py-4 border-b border-gray-200">
+            <h2 className="text-base font-bold text-gray-900 mb-2">1. Mechanical (HVAC)</h2>
+            <div className="grid grid-cols-2 gap-4 text-sm text-gray-700">
               <div>
-                <h3 className="font-semibold text-gray-900">Air Conditioning / Heating</h3>
-                <ul className="list-disc list-inside mt-1 space-y-1">
-                  <li>Estimated Cooling Capacity: <span className="font-mono">{results.hvac.totalTons} Tons</span></li>
-                  <li>Estimated Heating Capacity: <span className="font-mono">{results.hvac.totalMBH.toLocaleString()} MBH</span></li>
-                  <li>Recommended zoning: ~{results.hvac.rtuCount} RTUs/units for {zones.length} program areas</li>
+                <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-1">Cooling / Heating</h3>
+                <ul className="space-y-0.5 text-xs">
+                  <li>Cooling: <span className="font-mono font-medium">{results.hvac.totalTons} Tons</span> ({Math.round(totalSF / results.hvac.totalTons)} SF/Ton)</li>
+                  <li>Heating: <span className="font-mono font-medium">{results.hvac.totalMBH.toLocaleString()} MBH</span></li>
+                  <li>RTU/AHU Count: ~{results.hvac.rtuCount} units</li>
                   {results.hvac.dehumidLbHr > 0 && (
-                    <li>Pool dehumidification: <span className="font-mono">{results.hvac.dehumidLbHr} lb/hr</span></li>
+                    <li>Dehumidification: <span className="font-mono">{results.hvac.dehumidLbHr} lb/hr</span></li>
                   )}
                 </ul>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">Ventilation / Exhaust</h3>
-                <ul className="list-disc list-inside mt-1 space-y-1">
-                  <li>Fresh Air: <span className="font-mono">{results.hvac.totalVentCFM.toLocaleString()} CFM</span></li>
-                  <li>Exhaust: <span className="font-mono">{results.hvac.totalExhaustCFM.toLocaleString()} CFM</span></li>
+                <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-1">Ventilation / Exhaust</h3>
+                <ul className="space-y-0.5 text-xs">
+                  <li>Fresh Air (OA): <span className="font-mono font-medium">{results.hvac.totalVentCFM.toLocaleString()} CFM</span></li>
+                  <li>Exhaust: <span className="font-mono font-medium">{results.hvac.totalExhaustCFM.toLocaleString()} CFM</span></li>
                 </ul>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-lg mt-3">
-                <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wider mb-2">Lease Negotiation Recommendations - Mechanical</h3>
-                <ol className="list-decimal list-inside text-xs space-y-1 text-gray-600">
-                  <li>Landlord to allow roof penetrations for specialty exhaust systems.</li>
-                  <li>Landlord to allow equipment on roof with new dunnage.</li>
-                  <li>Landlord to allow exhaust flues along exterior facade.</li>
-                </ol>
               </div>
             </div>
           </section>
 
           {/* Electrical Section */}
-          <section className="px-8 py-6 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-gray-900">2. Electrical / Fire Alarm</h2>
-            </div>
-            <div className="space-y-3 text-sm text-gray-700">
-              <ol className="list-decimal list-inside space-y-2">
-                <li>
-                  Estimated service size: <span className="font-mono font-semibold">{results.electrical.amps_208v.toLocaleString()}A at 208V/3PH, 4W</span> 
-                  {' '}(or {results.electrical.amps_480v.toLocaleString()}A at 480V/3PH, 4W)
-                </li>
-                <li>Service based on: mechanical/plumbing loads, pool equipment, elevator, and general lighting/receptacle at 3 VA/SF.</li>
-                <li>Approximately {results.electrical.panelCount} panelboards required for distribution.</li>
-                <li>A ~60kW generator shall be provided for emergency and standby loads.</li>
-                <li>Fire alarm: Manual system with horn/strobe notification devices.</li>
-              </ol>
-              <div className="bg-gray-50 p-3 rounded-lg mt-3">
-                <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wider mb-2">Lease Negotiation Recommendations - Electrical</h3>
-                <ol className="list-decimal list-inside text-xs space-y-1 text-gray-600">
-                  <li>Landlord to provide incoming utility and coordination with utility company.</li>
-                  <li>Landlord to provide main switchboard rated {results.electrical.recommendedService}.</li>
-                  <li>Landlord to provide panelboards described above.</li>
-                  <li>Landlord to provide emergency power source for egress lighting and exhaust fans.</li>
-                </ol>
+          <section className="px-8 py-4 border-b border-gray-200">
+            <h2 className="text-base font-bold text-gray-900 mb-2">2. Electrical / Fire Alarm</h2>
+            <div className="grid grid-cols-2 gap-4 text-sm text-gray-700">
+              <div>
+                <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-1">Service Sizing</h3>
+                <ul className="space-y-0.5 text-xs">
+                  <li>Connected Load: <span className="font-mono font-medium">{results.electrical.totalKW.toLocaleString()} kW / {results.electrical.totalKVA.toLocaleString()} kVA</span></li>
+                  <li>@ 208V/3PH: <span className="font-mono font-medium">{results.electrical.amps_208v.toLocaleString()}A</span></li>
+                  <li>@ 480V/3PH: <span className="font-mono font-medium">{results.electrical.amps_480v.toLocaleString()}A</span></li>
+                  <li>Recommended: <span className="font-mono font-bold text-primary-600">{results.electrical.recommendedService}</span></li>
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-1">Distribution</h3>
+                <ul className="space-y-0.5 text-xs">
+                  <li>Panelboards: ~{results.electrical.panelCount} required</li>
+                  <li>Emergency: Generator for egress/life safety</li>
+                  <li>Fire Alarm: Manual pull stations, horn/strobes</li>
+                </ul>
               </div>
             </div>
           </section>
 
           {/* Plumbing Section */}
-          <section className="px-8 py-6 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-gray-900">3. Plumbing</h2>
-            </div>
-            <div className="space-y-3 text-sm text-gray-700">
+          <section className="px-8 py-4 border-b border-gray-200">
+            <h2 className="text-base font-bold text-gray-900 mb-2">3. Plumbing</h2>
+            <div className="grid grid-cols-3 gap-4 text-sm text-gray-700">
               <div>
-                <h3 className="font-semibold text-gray-900">Domestic Cold Water</h3>
-                <ul className="list-disc list-inside mt-1 space-y-1">
-                  <li>Base Building: <span className="font-mono">{results.plumbing.coldWaterMainSize}</span> Cold Water Connection</li>
-                  <li>Peak Demand: <span className="font-mono">{results.plumbing.peakGPM} GPM</span> ({results.plumbing.totalWSFU} WSFU)</li>
+                <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-1">Domestic Water</h3>
+                <ul className="space-y-0.5 text-xs">
+                  <li>CW Main: <span className="font-mono font-medium">{results.plumbing.coldWaterMainSize}</span></li>
+                  <li>HW Main: <span className="font-mono font-medium">{results.plumbing.hotWaterMainSize}</span></li>
+                  <li>Peak: <span className="font-mono font-medium">{results.plumbing.peakGPM} GPM</span></li>
+                  <li>WSFU: <span className="font-mono">{results.plumbing.totalWSFU}</span></li>
                 </ul>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">Domestic Hot Water</h3>
-                <ul className="list-disc list-inside mt-1 space-y-1">
-                  <li>Hot Water Plant: {results.dhw.tanklessUnits} Tankless Water Heaters @ 199,900 BTU each</li>
-                  <li>Total: <span className="font-mono">{(results.dhw.grossBTU / 1000).toLocaleString()} MBH</span></li>
-                  <li>Storage: <span className="font-mono">{results.dhw.storageGallons.toLocaleString()} gallons</span></li>
+                <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-1">Hot Water Plant</h3>
+                <ul className="space-y-0.5 text-xs">
+                  <li>{results.dhw.tanklessUnits} Water Heaters</li>
+                  <li><span className="font-mono font-medium">{(results.dhw.grossBTU / 1000).toLocaleString()} MBH</span> total</li>
+                  <li>Storage: <span className="font-mono">{results.dhw.storageGallons.toLocaleString()} gal</span></li>
+                  <li>Peak GPH: <span className="font-mono">{results.dhw.peakGPH}</span></li>
                 </ul>
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">Sanitary / Vent</h3>
-                <ul className="list-disc list-inside mt-1 space-y-1">
-                  <li>Building Drain: <span className="font-mono">{results.plumbing.recommendedDrainSize}</span> ({results.plumbing.totalDFU} DFU)</li>
+                <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-1">Sanitary / Gas</h3>
+                <ul className="space-y-0.5 text-xs">
+                  <li>Drain: <span className="font-mono font-medium">{results.plumbing.recommendedDrainSize}</span> ({results.plumbing.totalDFU} DFU)</li>
+                  <li>Gas: <span className="font-mono font-medium">{results.gas.totalCFH.toLocaleString()} CFH</span></li>
+                  <li>Gas Pipe: <span className="font-mono">{results.gas.recommendedPipeSize}</span></li>
+                  <li>Min Pressure: {results.gas.recommendedPressure}</li>
                 </ul>
-              </div>
-              <div>
-                <h3 className="font-semibold text-gray-900">Gas</h3>
-                <ul className="list-disc list-inside mt-1 space-y-1">
-                  <li>Total Gas Load: <span className="font-mono">{results.gas.totalCFH.toLocaleString()} CFH</span> at minimum {results.gas.recommendedPressure}</li>
-                  <li>Service Pipe: <span className="font-mono">{results.gas.recommendedPipeSize}</span></li>
-                </ul>
-              </div>
-              <div className="bg-gray-50 p-3 rounded-lg mt-3">
-                <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wider mb-2">Lease Negotiation Recommendations - Plumbing</h3>
-                <ol className="list-decimal list-inside text-xs space-y-1 text-gray-600">
-                  <li>Landlord shall provide domestic water service to building.</li>
-                  <li>Landlord shall provide high pressure gas service with meter rig.</li>
-                  <li>Minimum building drain size: {results.plumbing.recommendedDrainSize}.</li>
-                </ol>
               </div>
             </div>
           </section>
 
           {/* Fire Protection Section */}
-          <section className="px-8 py-6 border-b border-gray-200">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-bold text-gray-900">4. Fire Protection (Sprinklers)</h2>
-            </div>
-            <div className="space-y-3 text-sm text-gray-700">
-              <ol className="list-decimal list-inside space-y-2">
-                <li>Occupancy: Group A-3, Fire Protection required per applicable building code and NFPA-13.</li>
-                <li>Sprinkler main: 4" base building, 3" per floor loop.</li>
-                <li>Estimated sprinkler count: ~{Math.ceil(totalSF / 130)} heads total.</li>
-                <li>High-temp sprinkler heads required for sauna/banya areas.</li>
-              </ol>
-              <div className="bg-gray-50 p-3 rounded-lg mt-3">
-                <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wider mb-2">Lease Negotiation Recommendations - Fire Protection</h3>
-                <ol className="list-decimal list-inside text-xs space-y-1 text-gray-600">
-                  <li>Landlord shall provide Fire Protection system per applicable building code and NFPA.</li>
-                  <li>System shall include water service, risers, and base building layout.</li>
-                </ol>
-              </div>
-            </div>
+          <section className="px-8 py-4 border-b border-gray-200">
+            <h2 className="text-base font-bold text-gray-900 mb-2">4. Fire Protection</h2>
+            <ul className="text-xs text-gray-700 space-y-0.5">
+              <li>• Occupancy: Group A-3 (Assembly), NFPA-13 compliant wet pipe system</li>
+              <li>• Est. Sprinkler Count: ~{Math.ceil(totalSF / 130)} heads ({Math.round(130)} SF/head average)</li>
+              <li>• High-temp heads required for sauna/steam areas (200°F+)</li>
+            </ul>
           </section>
 
           {/* Footer */}
