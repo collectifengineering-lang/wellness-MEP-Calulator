@@ -228,8 +228,8 @@ export default function PlumbingHome() {
         {/* Title Row */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h2 className="text-2xl font-bold text-white">Your Plumbing Projects 🐐</h2>
-            <p className="text-surface-400 mt-1">Select a project or create a new one</p>
+            <h2 className="text-2xl font-bold text-white">Plumbing Projects 🚿</h2>
+            <p className="text-surface-400 mt-1">The GOAT needs a shower!! Select a project or create a new one 🐐</p>
           </div>
           <button
             onClick={() => setShowNewModal(true)}
