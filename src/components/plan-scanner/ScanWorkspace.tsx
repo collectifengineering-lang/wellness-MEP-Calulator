@@ -35,6 +35,23 @@ export default function ScanWorkspace() {
   const [selectedScale, setSelectedScale] = useState<string>('')
   const [customScale, setCustomScale] = useState<string>('')
   
+  // Drawing mode for space boundaries
+  const [drawingMode, setDrawingMode] = useState<'none' | 'drawing' | 'editing'>('none')
+  const [drawnRegions, setDrawnRegions] = useState<Array<{
+    id: string
+    x: number
+    y: number
+    width: number
+    height: number
+    name: string
+    analyzed: boolean
+  }>>([])
+  const [currentDrawing, setCurrentDrawing] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
+  const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null)
+  const [showRegionNameModal, setShowRegionNameModal] = useState(false)
+  const [newRegionName, setNewRegionName] = useState('')
+  const canvasContainerRef = useRef<HTMLDivElement>(null)
+  
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   
@@ -232,6 +249,98 @@ export default function ScanWorkspace() {
     
     addCalibrationPoint({ x, y })
   }, [calibrationMode, addCalibrationPoint])
+
+  // Drawing mode handlers
+  const handleCanvasMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (drawingMode !== 'drawing' || !canvasContainerRef.current) return
+    
+    const rect = canvasContainerRef.current.getBoundingClientRect()
+    const scrollLeft = canvasContainerRef.current.scrollLeft
+    const scrollTop = canvasContainerRef.current.scrollTop
+    const x = e.clientX - rect.left + scrollLeft
+    const y = e.clientY - rect.top + scrollTop
+    
+    setCurrentDrawing({ startX: x, startY: y, endX: x, endY: y })
+  }, [drawingMode])
+
+  const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!currentDrawing || !canvasContainerRef.current) return
+    
+    const rect = canvasContainerRef.current.getBoundingClientRect()
+    const scrollLeft = canvasContainerRef.current.scrollLeft
+    const scrollTop = canvasContainerRef.current.scrollTop
+    const x = e.clientX - rect.left + scrollLeft
+    const y = e.clientY - rect.top + scrollTop
+    
+    setCurrentDrawing(prev => prev ? { ...prev, endX: x, endY: y } : null)
+  }, [currentDrawing])
+
+  const handleCanvasMouseUp = useCallback(() => {
+    if (!currentDrawing) return
+    
+    const width = Math.abs(currentDrawing.endX - currentDrawing.startX)
+    const height = Math.abs(currentDrawing.endY - currentDrawing.startY)
+    
+    // Only create region if it's big enough
+    if (width > 20 && height > 20) {
+      const newRegion = {
+        id: uuidv4(),
+        x: Math.min(currentDrawing.startX, currentDrawing.endX),
+        y: Math.min(currentDrawing.startY, currentDrawing.endY),
+        width,
+        height,
+        name: `Space ${drawnRegions.length + 1}`,
+        analyzed: false,
+      }
+      setDrawnRegions(prev => [...prev, newRegion])
+      setSelectedRegionId(newRegion.id)
+      setNewRegionName(newRegion.name)
+      setShowRegionNameModal(true)
+    }
+    
+    setCurrentDrawing(null)
+  }, [currentDrawing, drawnRegions.length])
+
+  const handleDeleteRegion = (regionId: string) => {
+    setDrawnRegions(prev => prev.filter(r => r.id !== regionId))
+    if (selectedRegionId === regionId) setSelectedRegionId(null)
+  }
+
+  const handleRenameRegion = () => {
+    if (selectedRegionId && newRegionName) {
+      setDrawnRegions(prev => prev.map(r => 
+        r.id === selectedRegionId ? { ...r, name: newRegionName } : r
+      ))
+    }
+    setShowRegionNameModal(false)
+  }
+
+  const handleAddRegionAsSpace = (region: typeof drawnRegions[0]) => {
+    if (!currentScan) return
+    
+    const newSpace: ExtractedSpace = {
+      id: uuidv4(),
+      name: region.name,
+      sf: 0,
+      fixtures: {},
+      equipment: [],
+      confidence: 100, // Manual entry
+    }
+    
+    setExtractedSpaces(currentScan.id, [...currentScan.extractedSpaces, newSpace])
+    setDrawnRegions(prev => prev.map(r => 
+      r.id === region.id ? { ...r, analyzed: true } : r
+    ))
+    
+    // Switch to spaces tab to edit
+    setActiveTab('spaces')
+    setSelectedSpaceId(newSpace.id)
+  }
+
+  const handleAnalyzeAllDrawings = async () => {
+    // Original full-page analysis
+    handleAnalyze()
+  }
 
   const handleCalibrationSubmit = () => {
     if (!currentScan || calibrationPoints.length !== 2 || !calibrationDistance) return
@@ -481,39 +590,65 @@ export default function ScanWorkspace() {
             <div className="flex-1 flex flex-col">
               {/* Toolbar */}
               <div className="px-6 py-3 border-b border-surface-700 bg-surface-800/30 flex items-center justify-between">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  {/* Drawing Mode Toggle */}
+                  <button
+                    onClick={() => {
+                      setDrawingMode(drawingMode === 'drawing' ? 'none' : 'drawing')
+                      setCalibrationMode(false)
+                    }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+                      drawingMode === 'drawing'
+                        ? 'bg-violet-600 text-white'
+                        : 'bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600'
+                    }`}
+                  >
+                    ✏️ {drawingMode === 'drawing' ? 'Drawing...' : 'Draw Spaces'}
+                  </button>
+                  
                   <button
                     onClick={() => setShowScaleModal(true)}
                     className="px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600"
                   >
-                    📏 Set Scale
+                    📏 Scale
                   </button>
                   
-                  {currentScan.scale ? (
-                    <span className="text-sm text-emerald-400 font-medium">
-                      ✓ {selectedScale || `${currentScan.scale.pixelsPerFoot.toFixed(1)} px/ft`}
-                    </span>
-                  ) : (
-                    <span className="text-sm text-yellow-400">
-                      ⚠️ No scale set
+                  {drawnRegions.length > 0 && (
+                    <span className="text-sm text-violet-400 font-medium ml-2">
+                      {drawnRegions.length} region{drawnRegions.length !== 1 ? 's' : ''} drawn
                     </span>
                   )}
                 </div>
                 
-                <button
-                  onClick={handleAnalyze}
-                  disabled={analyzing || !selectedDrawing}
-                  className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
-                >
-                  {analyzing ? (
-                    <>
-                      <span className="animate-spin">🔄</span>
-                      {analysisProgress || 'Analyzing...'}
-                    </>
-                  ) : (
-                    <>🤖 Analyze with AI</>
+                <div className="flex items-center gap-2">
+                  {drawnRegions.length > 0 && (
+                    <button
+                      onClick={() => {
+                        drawnRegions.forEach(region => {
+                          if (!region.analyzed) handleAddRegionAsSpace(region)
+                        })
+                      }}
+                      className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                    >
+                      ➕ Add All as Spaces
+                    </button>
                   )}
-                </button>
+                  
+                  <button
+                    onClick={handleAnalyzeAllDrawings}
+                    disabled={analyzing || !selectedDrawing}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {analyzing ? (
+                      <>
+                        <span className="animate-spin">🔄</span>
+                        {analysisProgress || 'Analyzing...'}
+                      </>
+                    ) : (
+                      <>🤖 Auto-Detect All</>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Scale Settings Modal */}
@@ -611,6 +746,42 @@ export default function ScanWorkspace() {
                 </div>
               )}
 
+              {/* Region Name Modal */}
+              {showRegionNameModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-surface-800 border border-surface-600 rounded-xl p-6 shadow-2xl max-w-sm w-full">
+                    <h3 className="text-lg font-bold text-white mb-4">Name This Space</h3>
+                    <input
+                      type="text"
+                      value={newRegionName}
+                      onChange={(e) => setNewRegionName(e.target.value)}
+                      placeholder="e.g., Men's Locker Room"
+                      className="w-full px-4 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white placeholder-surface-500 focus:border-violet-500 focus:outline-none mb-4"
+                      autoFocus
+                      onKeyDown={(e) => e.key === 'Enter' && handleRenameRegion()}
+                    />
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => {
+                          setShowRegionNameModal(false)
+                          // Delete the region if they cancel
+                          if (selectedRegionId) handleDeleteRegion(selectedRegionId)
+                        }}
+                        className="flex-1 px-4 py-2 bg-surface-700 hover:bg-surface-600 text-white rounded-lg"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleRenameRegion}
+                        className="flex-1 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Calibration Distance Input (for two-point) */}
               {showCalibrationInput && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -663,19 +834,27 @@ export default function ScanWorkspace() {
                       calibrationMode={calibrationMode}
                     />
                   ) : (
-                  <div className="h-full overflow-auto p-6 bg-surface-900/50">
+                  <div 
+                    ref={canvasContainerRef}
+                    className={`h-full overflow-auto p-6 bg-surface-900/50 ${drawingMode === 'drawing' ? 'cursor-crosshair' : ''}`}
+                    onMouseDown={handleCanvasMouseDown}
+                    onMouseMove={handleCanvasMouseMove}
+                    onMouseUp={handleCanvasMouseUp}
+                    onMouseLeave={() => setCurrentDrawing(null)}
+                  >
                     <div className="relative inline-block">
                       {selectedDrawing.fileUrl ? (
                         <img
                           ref={imageRef}
                           src={selectedDrawing.fileUrl}
                           alt={selectedDrawing.fileName}
-                          className={`max-w-full h-auto ${calibrationMode ? 'cursor-crosshair' : ''}`}
+                          className={`max-w-full h-auto ${calibrationMode ? 'cursor-crosshair' : ''} ${drawingMode === 'drawing' ? 'pointer-events-none' : ''}`}
                           onClick={handleImageClick}
                           onError={(e) => {
                             console.error('Image failed to load:', selectedDrawing.fileName)
                             e.currentTarget.style.display = 'none'
                           }}
+                          draggable={false}
                         />
                       ) : (
                         <div className="flex items-center justify-center h-64 bg-surface-800 rounded-xl border border-surface-700">
@@ -686,6 +865,75 @@ export default function ScanWorkspace() {
                           </div>
                         </div>
                       )}
+                    
+                    {/* Drawn Regions */}
+                    {drawnRegions.map(region => (
+                      <div
+                        key={region.id}
+                        className={`absolute border-2 ${
+                          selectedRegionId === region.id 
+                            ? 'border-violet-500 bg-violet-500/20' 
+                            : region.analyzed 
+                              ? 'border-emerald-500 bg-emerald-500/10' 
+                              : 'border-cyan-500 bg-cyan-500/10'
+                        } cursor-pointer transition-colors`}
+                        style={{
+                          left: region.x,
+                          top: region.y,
+                          width: region.width,
+                          height: region.height,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedRegionId(region.id)
+                        }}
+                      >
+                        {/* Region Label */}
+                        <div className={`absolute -top-7 left-0 px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${
+                          region.analyzed ? 'bg-emerald-600 text-white' : 'bg-cyan-600 text-white'
+                        }`}>
+                          {region.name}
+                          {region.analyzed && ' ✓'}
+                        </div>
+                        
+                        {/* Delete Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteRegion(region.id)
+                          }}
+                          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-400 text-white rounded-full text-xs flex items-center justify-center"
+                        >
+                          ×
+                        </button>
+                        
+                        {/* Add as Space Button (if not analyzed) */}
+                        {!region.analyzed && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleAddRegionAsSpace(region)
+                            }}
+                            className="absolute bottom-1 right-1 px-2 py-0.5 bg-violet-600 hover:bg-violet-500 text-white rounded text-xs"
+                          >
+                            + Add
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    
+                    {/* Current Drawing Preview */}
+                    {currentDrawing && (
+                      <div
+                        className="absolute border-2 border-dashed border-violet-400 bg-violet-400/20 pointer-events-none"
+                        style={{
+                          left: Math.min(currentDrawing.startX, currentDrawing.endX),
+                          top: Math.min(currentDrawing.startY, currentDrawing.endY),
+                          width: Math.abs(currentDrawing.endX - currentDrawing.startX),
+                          height: Math.abs(currentDrawing.endY - currentDrawing.startY),
+                        }}
+                      />
+                    )}
                     
                     {/* Calibration Points */}
                     {calibrationMode && calibrationPoints.map((point, index) => (
@@ -731,6 +979,13 @@ export default function ScanWorkspace() {
                 {calibrationMode && calibrationPoints.length < 2 && (
                   <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-violet-600 text-white px-6 py-3 rounded-full shadow-lg">
                     Click point {calibrationPoints.length + 1} of 2 on a known distance
+                  </div>
+                )}
+                
+                {/* Drawing Mode Instructions */}
+                {drawingMode === 'drawing' && !currentDrawing && (
+                  <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-cyan-600 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-2">
+                    <span>✏️</span> Click and drag to draw a space boundary
                   </div>
                 )}
               </div>
