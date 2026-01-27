@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { Logo } from '../shared/Logo'
 import UserMenu from '../auth/UserMenu'
 import { useAuthStore } from '../../store/useAuthStore'
-import { usePlumbingStore, createPlumbingProject, type PlumbingProject } from '../../store/usePlumbingStore'
+import { usePlumbingStore, createPlumbingProject, type PlumbingProject, type PlumbingSpace } from '../../store/usePlumbingStore'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
+import type { Project, Zone } from '../../types'
 
 export default function PlumbingHome() {
   const navigate = useNavigate()
@@ -16,6 +17,9 @@ export default function PlumbingHome() {
   const [newProjectName, setNewProjectName] = useState('')
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [conceptMEPProjects, setConceptMEPProjects] = useState<Project[]>([])
+  const [loadingConceptMEP, setLoadingConceptMEP] = useState(false)
 
   useEffect(() => {
     loadProjects()
@@ -196,6 +200,116 @@ export default function PlumbingHome() {
     setEditingProjectId(null)
     await loadProjects()
   }
+
+  // Load Concept MEP projects for import
+  const loadConceptMEPProjects = async () => {
+    setLoadingConceptMEP(true)
+    
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .order('updated_at', { ascending: false })
+      
+      if (!error && data) {
+        setConceptMEPProjects(data as Project[])
+      }
+    } else {
+      const stored = localStorage.getItem('concept_mep_projects')
+      if (stored) {
+        setConceptMEPProjects(JSON.parse(stored))
+      }
+    }
+    
+    setLoadingConceptMEP(false)
+    setShowImportModal(true)
+  }
+
+  // Import a Concept MEP project
+  const handleImportFromConceptMEP = async (sourceProject: Project) => {
+    const userId = user?.id || 'dev-user'
+    
+    // Create new plumbing project (decoupled copy)
+    const newProject = createPlumbingProject(userId, `${sourceProject.name} (Plumbing Import)`)
+    
+    // Load zones from the source project
+    let zones: Zone[] = []
+    
+    if (isSupabaseConfigured()) {
+      const { data } = await supabase
+        .from('zones')
+        .select('*')
+        .eq('project_id', sourceProject.id)
+        .order('sort_order')
+      
+      if (data) {
+        zones = data as Zone[]
+      }
+    } else {
+      const stored = localStorage.getItem(`zones_${sourceProject.id}`)
+      if (stored) {
+        zones = JSON.parse(stored)
+      }
+    }
+
+    // Convert zones to plumbing spaces
+    const spaces: PlumbingSpace[] = zones.map((zone, index) => ({
+      id: crypto.randomUUID(),
+      projectId: newProject.id,
+      name: zone.name,
+      sf: zone.sf,
+      fixtures: zone.fixtures || {},
+      occupancy: undefined,
+      notes: `Imported from Concept MEP: ${zone.type}`,
+      sortOrder: index,
+    }))
+
+    // Save the new project
+    if (isSupabaseConfigured()) {
+      const { error: projectError } = await supabase
+        .from('plumbing_projects')
+        .insert({
+          id: newProject.id,
+          user_id: newProject.userId,
+          name: newProject.name,
+          settings: newProject.settings,
+        } as never)
+      
+      if (projectError) {
+        console.error('Error creating imported project:', projectError)
+        alert('Failed to import project')
+        return
+      }
+
+      // Save the spaces
+      if (spaces.length > 0) {
+        const dbSpaces = spaces.map(s => ({
+          id: s.id,
+          project_id: s.projectId,
+          name: s.name,
+          sf: s.sf,
+          fixtures: s.fixtures,
+          occupancy: s.occupancy,
+          notes: s.notes,
+          sort_order: s.sortOrder,
+        }))
+        
+        await supabase.from('plumbing_spaces').insert(dbSpaces as never)
+      }
+    } else {
+      const updated = [newProject, ...projects]
+      localStorage.setItem('plumbing_projects', JSON.stringify(updated))
+      localStorage.setItem(`plumbing_spaces_${newProject.id}`, JSON.stringify(spaces))
+    }
+
+    setShowImportModal(false)
+    await loadProjects()
+    
+    // Open the newly imported project
+    setCurrentProject(newProject)
+    setSpaces(spaces)
+    navigate(`/plumbing/project/${newProject.id}`)
+  }
   
   return (
     <div className="min-h-screen bg-surface-900">
@@ -231,15 +345,26 @@ export default function PlumbingHome() {
             <h2 className="text-2xl font-bold text-white">Plumbing Projects 🚿</h2>
             <p className="text-surface-400 mt-1">The GOAT needs a shower!! Select a project or create a new one 🐐</p>
           </div>
-          <button
-            onClick={() => setShowNewModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white rounded-lg font-medium transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Project
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={loadConceptMEPProjects}
+              className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg font-medium transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Import from Concept MEP
+            </button>
+            <button
+              onClick={() => setShowNewModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-500 text-white rounded-lg font-medium transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Project
+            </button>
+          </div>
         </div>
 
         {/* Projects Grid */}
@@ -389,6 +514,76 @@ export default function PlumbingHome() {
                 className="flex-1 px-4 py-2 bg-pink-600 hover:bg-pink-500 disabled:bg-surface-600 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
               >
                 Create Project 🐐
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import from Concept MEP Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-surface-800 rounded-2xl border border-surface-700 w-full max-w-2xl p-6 shadow-xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-white">Import from Concept MEP 🏗️</h2>
+                <p className="text-sm text-surface-400 mt-1">
+                  Select a project to import. Creates a decoupled copy.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowImportModal(false)}
+                className="text-surface-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto">
+              {loadingConceptMEP ? (
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-4 animate-bounce">🐐</div>
+                  <p className="text-surface-400">Loading Concept MEP projects...</p>
+                </div>
+              ) : conceptMEPProjects.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-4">📋</div>
+                  <p className="text-surface-400">No Concept MEP projects found</p>
+                  <p className="text-sm text-surface-500 mt-1">Create one in the Concept MEP Design section first</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {conceptMEPProjects.map(project => (
+                    <button
+                      key={project.id}
+                      onClick={() => handleImportFromConceptMEP(project)}
+                      className="w-full flex items-center gap-4 p-4 bg-surface-700/50 hover:bg-surface-700 rounded-xl text-left transition-colors group"
+                    >
+                      <div className="w-12 h-12 rounded-xl bg-violet-500/20 flex items-center justify-center group-hover:bg-violet-500/30">
+                        <span className="text-2xl">🏗️</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-white font-medium truncate">{project.name}</h3>
+                        <p className="text-sm text-surface-400">
+                          {project.targetSF?.toLocaleString() || 0} SF target
+                          {project.updatedAt && ` • Updated ${new Date(project.updatedAt).toLocaleDateString()}`}
+                        </p>
+                      </div>
+                      <div className="text-violet-400 text-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                        Import →
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-end pt-4 border-t border-surface-700 mt-4">
+              <button
+                onClick={() => setShowImportModal(false)}
+                className="px-4 py-2 bg-surface-700 hover:bg-surface-600 text-white rounded-lg transition-colors"
+              >
+                Cancel
               </button>
             </div>
           </div>
