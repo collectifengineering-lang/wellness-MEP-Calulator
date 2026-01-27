@@ -7,6 +7,7 @@ import { useScannerStore, ExtractedSpace, ScanDrawing } from '../../store/useSca
 import { analyzeDrawing, calculateScale } from '../../lib/planAnalyzer'
 import { v4 as uuidv4 } from 'uuid'
 import ExportModal from './ExportModal'
+import PDFViewer from './PDFViewer'
 
 type TabType = 'drawings' | 'spaces' | 'export'
 
@@ -411,46 +412,41 @@ export default function ScanWorkspace() {
                 </div>
               )}
 
-              {/* Image Display */}
-              <div className="flex-1 overflow-auto p-6 bg-surface-900/50 relative">
+              {/* Image/PDF Display */}
+              <div className="flex-1 overflow-hidden relative">
                 {selectedDrawing ? (
                   selectedDrawing.fileType === 'application/pdf' ? (
-                    // PDF placeholder - PDFs can't be displayed in img tags
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-center bg-surface-800 rounded-2xl p-8 border border-surface-700">
-                        <div className="text-6xl mb-4">📄</div>
-                        <h3 className="text-xl font-bold text-white mb-2">{selectedDrawing.fileName}</h3>
-                        <p className="text-surface-400 mb-4">
-                          PDF files need to be converted to images first.
-                        </p>
-                        <p className="text-sm text-surface-500">
-                          Please export your PDF as PNG or JPG images and upload those instead.
-                        </p>
-                      </div>
-                    </div>
+                    // PDF Viewer
+                    <PDFViewer
+                      fileUrl={selectedDrawing.fileUrl}
+                      fileName={selectedDrawing.fileName}
+                      calibrationMode={calibrationMode}
+                      onImageClick={handleImageClick as unknown as (e: React.MouseEvent<HTMLCanvasElement>) => void}
+                    />
                   ) : (
-                  <div className="relative inline-block">
-                    {selectedDrawing.fileUrl ? (
-                      <img
-                        ref={imageRef}
-                        src={selectedDrawing.fileUrl}
-                        alt={selectedDrawing.fileName}
-                        className={`max-w-full h-auto ${calibrationMode ? 'cursor-crosshair' : ''}`}
-                        onClick={handleImageClick}
-                        onError={(e) => {
-                          console.error('Image failed to load:', selectedDrawing.fileName)
-                          e.currentTarget.style.display = 'none'
-                        }}
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center h-64 bg-surface-800 rounded-xl border border-surface-700">
-                        <div className="text-center">
-                          <div className="text-4xl mb-2">🖼️</div>
-                          <p className="text-surface-400">Image not loaded</p>
-                          <p className="text-sm text-surface-500">Try re-uploading the file</p>
+                  <div className="h-full overflow-auto p-6 bg-surface-900/50">
+                    <div className="relative inline-block">
+                      {selectedDrawing.fileUrl ? (
+                        <img
+                          ref={imageRef}
+                          src={selectedDrawing.fileUrl}
+                          alt={selectedDrawing.fileName}
+                          className={`max-w-full h-auto ${calibrationMode ? 'cursor-crosshair' : ''}`}
+                          onClick={handleImageClick}
+                          onError={(e) => {
+                            console.error('Image failed to load:', selectedDrawing.fileName)
+                            e.currentTarget.style.display = 'none'
+                          }}
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center h-64 bg-surface-800 rounded-xl border border-surface-700">
+                          <div className="text-center">
+                            <div className="text-4xl mb-2">🖼️</div>
+                            <p className="text-surface-400">Image not loaded</p>
+                            <p className="text-sm text-surface-500">Try re-uploading the file</p>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
                     
                     {/* Calibration Points */}
                     {calibrationMode && calibrationPoints.map((point, index) => (
@@ -479,6 +475,7 @@ export default function ScanWorkspace() {
                         />
                       </svg>
                     )}
+                    </div>
                   </div>
                   )
                 ) : (
