@@ -5,19 +5,19 @@ import UserMenu from '../auth/UserMenu'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useScannerStore, ScanProject } from '../../store/useScannerStore'
 import { v4 as uuidv4 } from 'uuid'
+import SymbolLegendEditor from './SymbolLegendEditor'
 
 export default function ScannerHome() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { scans, legends, createScan, deleteScan, setCurrentScan, addDrawing, addLegend } = useScannerStore()
+  const { scans, legends, createScan, deleteScan, setCurrentScan, addDrawing, deleteLegend } = useScannerStore()
   
   const [showNewScanModal, setShowNewScanModal] = useState(false)
   const [newScanName, setNewScanName] = useState('')
   const [dragOver, setDragOver] = useState(false)
-  const [uploadingLegend, setUploadingLegend] = useState(false)
+  const [showLegendEditor, setShowLegendEditor] = useState(false)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const legendInputRef = useRef<HTMLInputElement>(null)
 
   const handleCreateScan = () => {
     if (!newScanName.trim()) return
@@ -78,38 +78,6 @@ export default function ScannerHome() {
     
     // Navigate to the scan workspace
     navigate(`/plan-scanner/scan/${scan.id}`)
-  }
-
-  const handleLegendUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    
-    setUploadingLegend(true)
-    
-    try {
-      await fileToBase64(file) // Process file to verify it's readable
-      
-      // Create a new legend entry
-      const legend = {
-        id: uuidv4(),
-        name: file.name.replace(/\.[^/.]+$/, ''),
-        symbols: [], // Will be populated after AI analysis
-        uploadedAt: new Date().toISOString(),
-      }
-      
-      addLegend(legend)
-      
-      // TODO: Analyze legend with AI to extract symbols
-      alert('Legend uploaded! 🐐 Symbol extraction coming soon.')
-    } catch (error) {
-      console.error('Error uploading legend:', error)
-      alert('Failed to upload legend')
-    } finally {
-      setUploadingLegend(false)
-      if (legendInputRef.current) {
-        legendInputRef.current.value = ''
-      }
-    }
   }
 
   const fileToBase64 = (file: File): Promise<string> => {
@@ -233,31 +201,32 @@ export default function ScannerHome() {
               <h3 className="text-lg font-semibold text-white">Symbol Legends</h3>
             </div>
             <p className="text-surface-300 text-sm mb-4">
-              Upload your firm's symbol legend for more accurate fixture detection.
+              Define your firm's symbols for accurate fixture detection.
             </p>
             
-            <input
-              ref={legendInputRef}
-              type="file"
-              accept=".pdf,.png,.jpg,.jpeg"
-              className="hidden"
-              onChange={handleLegendUpload}
-            />
-            
             <button
-              onClick={() => legendInputRef.current?.click()}
-              disabled={uploadingLegend}
-              className="w-full px-4 py-2 bg-violet-600/50 hover:bg-violet-600 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+              onClick={() => setShowLegendEditor(true)}
+              className="w-full px-4 py-2 bg-violet-600/50 hover:bg-violet-600 text-white text-sm rounded-lg transition-colors"
             >
-              {uploadingLegend ? 'Uploading...' : '+ Upload Legend'}
+              + Create Symbol Legend
             </button>
             
             {legends.length > 0 && (
               <div className="mt-4 space-y-2">
                 {legends.slice(0, 3).map(legend => (
-                  <div key={legend.id} className="flex items-center justify-between p-2 bg-surface-800/50 rounded-lg text-sm">
-                    <span className="text-white truncate">{legend.name}</span>
-                    <span className="text-surface-500 text-xs">{legend.symbols.length} symbols</span>
+                  <div key={legend.id} className="flex items-center justify-between p-2 bg-surface-800/50 rounded-lg text-sm group">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-white truncate">{legend.name}</span>
+                      <span className="text-surface-500 text-xs whitespace-nowrap">{legend.symbols.length} symbols</span>
+                    </div>
+                    <button
+                      onClick={() => deleteLegend(legend.id)}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-surface-500 hover:text-red-400 transition-all"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
                 ))}
               </div>
@@ -421,6 +390,11 @@ export default function ScannerHome() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Symbol Legend Editor Modal */}
+      {showLegendEditor && (
+        <SymbolLegendEditor onClose={() => setShowLegendEditor(false)} />
       )}
     </div>
   )
