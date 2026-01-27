@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import type { Project } from '../../types'
 
 interface ProjectCardProps {
   project: Project
   onClick: () => void
   onDelete: () => void
+  onCopy: () => void
+  onRename: (newName: string) => void
 }
 
 const climateLabels: Record<string, string> = {
@@ -25,27 +28,86 @@ function formatRelativeDate(date: Date): string {
   return `${Math.floor(days / 365)}y ago`
 }
 
-export default function ProjectCard({ project, onClick, onDelete }: ProjectCardProps) {
+export default function ProjectCard({ project, onClick, onDelete, onCopy, onRename }: ProjectCardProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editName, setEditName] = useState(project.name)
+  
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation()
     onDelete()
   }
+  
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onCopy()
+  }
+  
+  const handleStartEdit = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditName(project.name)
+    setIsEditing(true)
+  }
+  
+  const handleSaveEdit = (e?: React.MouseEvent | React.KeyboardEvent | React.FocusEvent) => {
+    e?.stopPropagation?.()
+    if (editName.trim() && editName !== project.name) {
+      onRename(editName.trim())
+    }
+    setIsEditing(false)
+  }
+  
+  const handleCancelEdit = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation()
+    setIsEditing(false)
+    setEditName(project.name)
+  }
+  
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSaveEdit(e)
+    } else if (e.key === 'Escape') {
+      handleCancelEdit(e)
+    }
+  }
 
   return (
     <div
-      onClick={onClick}
-      className="group relative bg-surface-800 hover:bg-surface-750 border border-surface-700 hover:border-surface-600 rounded-xl p-5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:shadow-black/20"
+      onClick={isEditing ? undefined : onClick}
+      className={`group relative bg-surface-800 hover:bg-surface-750 border border-surface-700 hover:border-surface-600 rounded-xl p-5 transition-all duration-200 hover:shadow-lg hover:shadow-black/20 ${isEditing ? '' : 'cursor-pointer'}`}
     >
-      {/* Delete button */}
-      <button
-        onClick={handleDelete}
-        className="absolute top-3 right-3 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-surface-600 rounded-lg transition-all"
-        title="Delete project"
-      >
-        <svg className="w-4 h-4 text-surface-400 hover:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-        </svg>
-      </button>
+      {/* Action buttons */}
+      <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+        {/* Copy button */}
+        <button
+          onClick={handleCopy}
+          className="p-1.5 hover:bg-surface-600 rounded-lg transition-all"
+          title="Duplicate project"
+        >
+          <svg className="w-4 h-4 text-surface-400 hover:text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        </button>
+        {/* Rename button */}
+        <button
+          onClick={handleStartEdit}
+          className="p-1.5 hover:bg-surface-600 rounded-lg transition-all"
+          title="Rename project"
+        >
+          <svg className="w-4 h-4 text-surface-400 hover:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+        </button>
+        {/* Delete button */}
+        <button
+          onClick={handleDelete}
+          className="p-1.5 hover:bg-surface-600 rounded-lg transition-all"
+          title="Delete project"
+        >
+          <svg className="w-4 h-4 text-surface-400 hover:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+        </button>
+      </div>
 
       {/* Icon */}
       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500/20 to-primary-700/20 border border-primary-500/30 flex items-center justify-center mb-4">
@@ -54,10 +116,24 @@ export default function ProjectCard({ project, onClick, onDelete }: ProjectCardP
         </svg>
       </div>
 
-      {/* Title */}
-      <h3 className="text-lg font-semibold text-white mb-1 truncate pr-8">
-        {project.name}
-      </h3>
+      {/* Title - Editable */}
+      {isEditing ? (
+        <div className="mb-1 pr-20" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={handleSaveEdit}
+            autoFocus
+            className="w-full text-lg font-semibold text-white bg-surface-700 border border-primary-500 rounded px-2 py-0.5 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+        </div>
+      ) : (
+        <h3 className="text-lg font-semibold text-white mb-1 truncate pr-20">
+          {project.name}
+        </h3>
+      )}
 
       {/* Details */}
       <div className="flex items-center gap-3 text-sm text-surface-400">

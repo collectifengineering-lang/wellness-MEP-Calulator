@@ -109,6 +109,93 @@ export default function ProjectsGrid() {
     
     await loadProjects()
   }
+  
+  const handleCopyProject = async (project: Project) => {
+    const userId = user?.id || 'dev-user'
+    const copiedProject = createNewProject(
+      userId, 
+      `${project.name} (Copy)`, 
+      project.targetSF, 
+      project.climate, 
+      project.electricPrimary
+    )
+    
+    // Copy over settings from original
+    copiedProject.dhwSettings = { ...project.dhwSettings }
+    copiedProject.electricalSettings = { ...project.electricalSettings }
+    copiedProject.mechanicalSettings = { ...project.mechanicalSettings }
+    copiedProject.contingency = project.contingency
+    copiedProject.resultAdjustments = { ...project.resultAdjustments }
+    
+    if (isSupabaseConfigured()) {
+      // Create the project copy
+      const { error: projectError } = await supabase
+        .from('projects')
+        .insert(projectToDbProject(copiedProject) as unknown as never)
+      
+      if (projectError) {
+        console.error('Error copying project:', projectError)
+        return
+      }
+      
+      // Copy zones from original project
+      const { data: originalZones } = await supabase
+        .from('zones')
+        .select('*')
+        .eq('project_id', project.id)
+      
+      if (originalZones && originalZones.length > 0) {
+        const copiedZones = originalZones.map((zone: Record<string, unknown>) => ({
+          ...zone,
+          id: crypto.randomUUID(),
+          project_id: copiedProject.id,
+        }))
+        
+        await supabase.from('zones').insert(copiedZones as never[])
+      }
+    } else {
+      // Development: save to localStorage
+      const updated = [copiedProject, ...projects]
+      localStorage.setItem('mep_projects', JSON.stringify(updated))
+      
+      // Copy zones
+      const originalZones = localStorage.getItem(`mep_zones_${project.id}`)
+      if (originalZones) {
+        const zones = JSON.parse(originalZones).map((z: Record<string, unknown>) => ({
+          ...z,
+          id: crypto.randomUUID(),
+          projectId: copiedProject.id,
+        }))
+        localStorage.setItem(`mep_zones_${copiedProject.id}`, JSON.stringify(zones))
+      }
+    }
+    
+    await loadProjects()
+  }
+  
+  const handleRenameProject = async (projectId: string, newName: string) => {
+    if (isSupabaseConfigured()) {
+      const { error } = await supabase
+        .from('projects')
+        .update({ name: newName, updated_at: new Date().toISOString() } as never)
+        .eq('id', projectId)
+      
+      if (error) {
+        console.error('Error renaming project:', error)
+        return
+      }
+    } else {
+      // Development: update localStorage
+      const updated = projects.map(p => 
+        p.id === projectId 
+          ? { ...p, name: newName, updatedAt: new Date() }
+          : p
+      )
+      localStorage.setItem('mep_projects', JSON.stringify(updated))
+    }
+    
+    await loadProjects()
+  }
 
   return (
     <div className="min-h-screen bg-surface-900">
@@ -195,6 +282,8 @@ export default function ProjectsGrid() {
                 project={project}
                 onClick={() => handleOpenProject(project)}
                 onDelete={() => handleDeleteProject(project.id)}
+                onCopy={() => handleCopyProject(project)}
+                onRename={(newName) => handleRenameProject(project.id, newName)}
               />
             ))}
           </div>
