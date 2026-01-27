@@ -39,23 +39,49 @@ export default function ScanWorkspace() {
   
   // Drawing mode for space boundaries
   const [drawingMode, setDrawingMode] = useState<'none' | 'drawing' | 'editing'>('none')
+  // Store regions as PERCENTAGES (0-100) so they scale with image display
   const [drawnRegions, setDrawnRegions] = useState<Array<{
     id: string
-    x: number
-    y: number
-    width: number
-    height: number
+    xPercent: number  // Left edge as % of image width
+    yPercent: number  // Top edge as % of image height
+    widthPercent: number
+    heightPercent: number
     name: string
     analyzed: boolean
   }>>([])
   const [currentDrawing, setCurrentDrawing] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null)
+  const [imageBounds, setImageBounds] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null)
   const [showRegionNameModal, setShowRegionNameModal] = useState(false)
   const [newRegionName, setNewRegionName] = useState('')
   const canvasContainerRef = useRef<HTMLDivElement>(null)
+  const imageContainerRef = useRef<HTMLDivElement>(null)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
+  
+  // Track displayed image bounds for coordinate conversion
+  const updateImageBounds = useCallback(() => {
+    if (imageRef.current && imageContainerRef.current) {
+      const imgRect = imageRef.current.getBoundingClientRect()
+      const containerRect = imageContainerRef.current.getBoundingClientRect()
+      
+      // Calculate image position relative to container
+      setImageBounds({
+        left: imgRect.left - containerRect.left,
+        top: imgRect.top - containerRect.top,
+        width: imgRect.width,
+        height: imgRect.height,
+      })
+    }
+  }, [])
+  
+  // Update bounds when image loads or window resizes
+  useEffect(() => {
+    updateImageBounds()
+    window.addEventListener('resize', updateImageBounds)
+    return () => window.removeEventListener('resize', updateImageBounds)
+  }, [updateImageBounds, renderedImageUrl])
   
   // Helper function to render PDF page to image for AI analysis
   // Uses 3x scale for better text recognition (same as Concept MEP)
@@ -283,43 +309,50 @@ export default function ScanWorkspace() {
 
   // Drawing mode handlers
   const handleCanvasMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (drawingMode !== 'drawing' || !canvasContainerRef.current) return
+    if (drawingMode !== 'drawing' || !imageContainerRef.current || !imageBounds) return
     
-    const rect = canvasContainerRef.current.getBoundingClientRect()
-    const scrollLeft = canvasContainerRef.current.scrollLeft
-    const scrollTop = canvasContainerRef.current.scrollTop
-    const x = e.clientX - rect.left + scrollLeft
-    const y = e.clientY - rect.top + scrollTop
+    const containerRect = imageContainerRef.current.getBoundingClientRect()
+    const x = e.clientX - containerRect.left - imageBounds.left
+    const y = e.clientY - containerRect.top - imageBounds.top
     
-    setCurrentDrawing({ startX: x, startY: y, endX: x, endY: y })
-  }, [drawingMode])
+    // Only start drawing if click is within image bounds
+    if (x >= 0 && y >= 0 && x <= imageBounds.width && y <= imageBounds.height) {
+      setCurrentDrawing({ startX: x, startY: y, endX: x, endY: y })
+    }
+  }, [drawingMode, imageBounds])
 
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!currentDrawing || !canvasContainerRef.current) return
+    if (!currentDrawing || !imageContainerRef.current || !imageBounds) return
     
-    const rect = canvasContainerRef.current.getBoundingClientRect()
-    const scrollLeft = canvasContainerRef.current.scrollLeft
-    const scrollTop = canvasContainerRef.current.scrollTop
-    const x = e.clientX - rect.left + scrollLeft
-    const y = e.clientY - rect.top + scrollTop
+    const containerRect = imageContainerRef.current.getBoundingClientRect()
+    let x = e.clientX - containerRect.left - imageBounds.left
+    let y = e.clientY - containerRect.top - imageBounds.top
+    
+    // Clamp to image bounds
+    x = Math.max(0, Math.min(x, imageBounds.width))
+    y = Math.max(0, Math.min(y, imageBounds.height))
     
     setCurrentDrawing(prev => prev ? { ...prev, endX: x, endY: y } : null)
-  }, [currentDrawing])
+  }, [currentDrawing, imageBounds])
 
   const handleCanvasMouseUp = useCallback(() => {
-    if (!currentDrawing) return
+    if (!currentDrawing || !imageBounds) return
     
     const width = Math.abs(currentDrawing.endX - currentDrawing.startX)
     const height = Math.abs(currentDrawing.endY - currentDrawing.startY)
     
-    // Only create region if it's big enough
+    // Only create region if it's big enough (min 20px on screen)
     if (width > 20 && height > 20) {
+      // Convert pixel coordinates to percentages
+      const xPx = Math.min(currentDrawing.startX, currentDrawing.endX)
+      const yPx = Math.min(currentDrawing.startY, currentDrawing.endY)
+      
       const newRegion = {
         id: uuidv4(),
-        x: Math.min(currentDrawing.startX, currentDrawing.endX),
-        y: Math.min(currentDrawing.startY, currentDrawing.endY),
-        width,
-        height,
+        xPercent: (xPx / imageBounds.width) * 100,
+        yPercent: (yPx / imageBounds.height) * 100,
+        widthPercent: (width / imageBounds.width) * 100,
+        heightPercent: (height / imageBounds.height) * 100,
         name: `Space ${drawnRegions.length + 1}`,
         analyzed: false,
       }
@@ -330,7 +363,7 @@ export default function ScanWorkspace() {
     }
     
     setCurrentDrawing(null)
-  }, [currentDrawing, drawnRegions.length])
+  }, [currentDrawing, drawnRegions.length, imageBounds])
 
   const handleDeleteRegion = (regionId: string) => {
     setDrawnRegions(prev => prev.filter(r => r.id !== regionId))
@@ -356,11 +389,12 @@ export default function ScanWorkspace() {
       fixtures: {},
       equipment: [],
       confidence: 100, // Manual entry
+      // Store as percentages for consistent display at any scale
       boundingBox: {
-        x: region.x,
-        y: region.y,
-        width: region.width,
-        height: region.height,
+        xPercent: region.xPercent,
+        yPercent: region.yPercent,
+        widthPercent: region.widthPercent,
+        heightPercent: region.heightPercent,
       },
     }
     
@@ -414,18 +448,19 @@ export default function ScanWorkspace() {
       
       setAnalysisProgress('AI analyzing space boundaries...')
       
-      // Call the AI to detect boundaries
+      // Call the AI to detect boundaries (returns percentages)
       const result = await detectSpaceBoundaries(imageData, mimeType, imageWidth, imageHeight)
       
       setAnalysisProgress(`Found ${result.regions.length} spaces! Adding to canvas...`)
       
-      // Add detected regions to the drawn regions
+      // Add detected regions to the drawn regions (keep as percentages)
       const newRegions = result.regions.map((region: DetectedRegion) => ({
         id: region.id,
-        x: region.x,
-        y: region.y,
-        width: region.width,
-        height: region.height,
+        // Store as percentages - the region already has pixel values, convert back to %
+        xPercent: (region.x / imageWidth) * 100,
+        yPercent: (region.y / imageHeight) * 100,
+        widthPercent: (region.width / imageWidth) * 100,
+        heightPercent: (region.height / imageHeight) * 100,
         name: region.name,
         analyzed: false,
       }))
@@ -964,7 +999,7 @@ export default function ScanWorkspace() {
                     onMouseUp={handleCanvasMouseUp}
                     onMouseLeave={() => setCurrentDrawing(null)}
                   >
-                    <div className="relative inline-block">
+                    <div ref={imageContainerRef} className="relative inline-block">
                       {renderedImageUrl ? (
                         <img
                           ref={imageRef}
@@ -972,6 +1007,7 @@ export default function ScanWorkspace() {
                           alt={selectedDrawing.fileName}
                           className={`max-w-full h-auto ${calibrationMode ? 'cursor-crosshair' : ''} ${drawingMode === 'drawing' ? 'pointer-events-none' : ''}`}
                           onClick={handleImageClick}
+                          onLoad={updateImageBounds}
                           onError={(e) => {
                             console.error('Image failed to load:', selectedDrawing.fileName)
                             e.currentTarget.style.display = 'none'
@@ -988,8 +1024,8 @@ export default function ScanWorkspace() {
                         </div>
                       )}
                     
-                    {/* Extracted Spaces (from AI analysis) */}
-                    {currentScan.extractedSpaces.filter(s => s.boundingBox).map(space => (
+                    {/* Extracted Spaces (from AI analysis) - positioned using percentages */}
+                    {imageBounds && currentScan.extractedSpaces.filter(s => s.boundingBox).map(space => (
                       <div
                         key={`extracted-${space.id}`}
                         className={`absolute border-2 ${
@@ -998,10 +1034,10 @@ export default function ScanWorkspace() {
                             : 'border-emerald-500/70 bg-emerald-500/10'
                         } cursor-pointer transition-colors`}
                         style={{
-                          left: space.boundingBox!.x,
-                          top: space.boundingBox!.y,
-                          width: space.boundingBox!.width,
-                          height: space.boundingBox!.height,
+                          left: (space.boundingBox!.xPercent / 100) * imageBounds.width,
+                          top: (space.boundingBox!.yPercent / 100) * imageBounds.height,
+                          width: (space.boundingBox!.widthPercent / 100) * imageBounds.width,
+                          height: (space.boundingBox!.heightPercent / 100) * imageBounds.height,
                         }}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -1014,8 +1050,8 @@ export default function ScanWorkspace() {
                       </div>
                     ))}
                     
-                    {/* Drawn Regions (user-drawn) */}
-                    {drawnRegions.map(region => (
+                    {/* Drawn Regions (user-drawn) - positioned using percentages */}
+                    {imageBounds && drawnRegions.map(region => (
                       <div
                         key={region.id}
                         className={`absolute border-2 ${
@@ -1026,10 +1062,10 @@ export default function ScanWorkspace() {
                               : 'border-cyan-500 bg-cyan-500/10'
                         } cursor-pointer transition-colors`}
                         style={{
-                          left: region.x,
-                          top: region.y,
-                          width: region.width,
-                          height: region.height,
+                          left: (region.xPercent / 100) * imageBounds.width,
+                          top: (region.yPercent / 100) * imageBounds.height,
+                          width: (region.widthPercent / 100) * imageBounds.width,
+                          height: (region.heightPercent / 100) * imageBounds.height,
                         }}
                         onClick={(e) => {
                           e.stopPropagation()
@@ -1070,8 +1106,8 @@ export default function ScanWorkspace() {
                       </div>
                     ))}
                     
-                    {/* Current Drawing Preview */}
-                    {currentDrawing && (
+                    {/* Current Drawing Preview - uses screen pixels during active drawing */}
+                    {currentDrawing && imageBounds && (
                       <div
                         className="absolute border-2 border-dashed border-violet-400 bg-violet-400/20 pointer-events-none"
                         style={{

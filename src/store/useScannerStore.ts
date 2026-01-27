@@ -18,7 +18,14 @@ export interface ExtractedSpace {
     unit?: string
   }>
   confidence: number // 0-100
-  boundingBox?: { x: number; y: number; width: number; height: number }
+  // Bounding box as percentages (0-100) of the image dimensions
+  // This ensures regions display correctly regardless of image scaling
+  boundingBox?: { 
+    xPercent: number
+    yPercent: number
+    widthPercent: number
+    heightPercent: number
+  }
 }
 
 export interface SymbolDefinition {
