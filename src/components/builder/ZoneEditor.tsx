@@ -24,6 +24,17 @@ const defaultProcessLoads: ZoneProcessLoads = {
   ceiling_height_ft: 10,
 }
 
+// Helper to count washers from any fixture ID format
+function getWasherCount(fixtures: Record<string, number>): number {
+  return (
+    (fixtures.washingMachines || 0) +
+    (fixtures.washing_machine_commercial || 0) +
+    (fixtures.washing_machine_8lb_private || 0) +
+    (fixtures.washing_machine_8lb_public || 0) +
+    (fixtures.washing_machine_15lb || 0)
+  )
+}
+
 export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
   const { updateZone, deleteZone } = useProjectStore()
   const { getZoneDefaults, customZoneTypes } = useSettingsStore()
@@ -308,11 +319,11 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
             hasLaundryEquipment={!!defaults.laundry_equipment}
           />
 
-          {/* Commercial Washer Settings - Show when zone has laundry equipment */}
-          {defaults.laundry_equipment && (localZone.fixtures.washingMachines > 0 || localZone.fixtures.washing_machine_commercial > 0) && (
+          {/* Commercial Washer Settings - Show when ANY zone has washers */}
+          {(getWasherCount(localZone.fixtures) > 0) && (
             <WasherWaterSettings
               laundryEquipment={localZone.laundryEquipment}
-              washerCount={localZone.fixtures.washingMachines || localZone.fixtures.washing_machine_commercial || 0}
+              washerCount={getWasherCount(localZone.fixtures)}
               dryerCount={localZone.fixtures.dryers || localZone.fixtures.dryer_condensate || 0}
               dryerType={localZone.subType === 'gas' ? 'gas' : 'electric'}
               onUpdate={(newEquip) => handleUpdate({ laundryEquipment: { ...localZone.laundryEquipment, ...newEquip } })}
