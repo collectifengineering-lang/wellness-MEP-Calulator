@@ -342,6 +342,39 @@ export const useScannerStore = create<ScannerState>()(
           imageRegion: undefined, // Don't persist image regions
         })),
       }),
+      // Handle storage errors gracefully
+      storage: {
+        getItem: (name) => {
+          try {
+            const value = localStorage.getItem(name)
+            return value ? JSON.parse(value) : null
+          } catch (e) {
+            console.warn('Failed to load scanner store from localStorage:', e)
+            return null
+          }
+        },
+        setItem: (name, value) => {
+          try {
+            localStorage.setItem(name, JSON.stringify(value))
+          } catch (e) {
+            console.warn('Failed to save scanner store to localStorage:', e)
+            // Clear and retry once
+            try {
+              localStorage.removeItem(name)
+              localStorage.setItem(name, JSON.stringify(value))
+            } catch {
+              // Give up - localStorage is full or unavailable
+            }
+          }
+        },
+        removeItem: (name) => {
+          try {
+            localStorage.removeItem(name)
+          } catch {
+            // Ignore
+          }
+        },
+      },
     }
   )
 )
