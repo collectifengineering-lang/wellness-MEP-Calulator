@@ -11,6 +11,8 @@ interface PlumbingCalcOptions {
   coldWaterVelocityFPS?: number   // Design velocity for cold water (default 5 FPS)
   hotWaterVelocityFPS?: number    // Design velocity for hot water (default 4 FPS)
   hotWaterFlowRatio?: number      // Hot water flow as fraction of cold (default 0.6)
+                                   // ASHRAE mixing formula: HW_Flow = Total × (Tf-Tc)/(Ts-Tc)
+                                   // Example: (120-55)/(140-55) = 0.76, conservative default 0.6
   // Legacy fields for backwards compatibility
   designVelocityFPS?: number      // @deprecated - use coldWaterVelocityFPS
   hotWaterDemandFactor?: number   // @deprecated - use hotWaterFlowRatio

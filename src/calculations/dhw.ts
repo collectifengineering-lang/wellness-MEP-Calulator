@@ -28,6 +28,12 @@ export interface DHWCalcBreakdown {
   
   // Building type info
   buildingTypeInfo: typeof dhwBuildingTypeFactors.gymnasium
+  
+  // ASHRAE mixing calculations (for storage systems)
+  mixingRatio?: number       // (Tf - Tc) / (Ts - Tc)
+  storageTempRise?: number   // Ts - Tc
+  deliveryTempRise?: number  // Tf - Tc
+  heaterGPH?: number         // GPH flowing through heater (different from fixture GPH for storage)
 }
 
 export function calculateDHW(
@@ -114,17 +120,65 @@ export function calculateDHW(
   const peakHourFactor = buildingFactors.peakHourFactor
   const peakHourGPH = adjustedDemandGPH * peakHourFactor
   
-  // Temperature calculations
-  const deltaT = settings.storageTemp - settings.coldWaterTemp
+  // ASHRAE Temperature calculations
+  // For STORAGE systems: heater must heat water to storage temp (Ts)
+  // For TANKLESS systems: heater delivers directly at delivery temp (Tf)
+  const storageTempRise = settings.storageTemp - settings.coldWaterTemp  // Ts - Tc (e.g., 140 - 55 = 85°F)
+  const deliveryTempRise = settings.deliveryTemp - settings.coldWaterTemp  // Tf - Tc (e.g., 120 - 55 = 65°F)
   
-  // Calculate BTU/hr based on peak demand
-  // BTU/hr = GPH × 8.33 lb/gal × ΔT °F
-  const netBTU = peakHourGPH * 8.33 * deltaT
+  // Mixing ratio: hot water from tank gets mixed with cold at fixture
+  // Formula: Qs = Qf × (Tf - Tc) / (Ts - Tc)
+  const mixingRatio = storageTempRise > 0 ? deliveryTempRise / storageTempRise : 1
   
   // Efficiency based on heater type
   const efficiency = settings.heaterType === 'gas' 
     ? settings.gasEfficiency 
     : settings.electricEfficiency
+  
+  // Storage tank sizing (ASHRAE method with mixing correction)
+  // Storage = (Peak GPH × Peak Duration × Mixing Ratio) / Storage Factor
+  // Mixing ratio reduces required storage because we store at higher temp
+  const storageFactor = settings.storageFactor ?? buildingFactors.storageFactor
+  const peakDuration = settings.peakDuration ?? buildingFactors.typicalPeakDuration
+  
+  let storageGallons: number
+  if (settings.tankSizingMethod === 'manual' && settings.manualStorageGallons) {
+    storageGallons = settings.manualStorageGallons
+  } else {
+    // ASHRAE: Storage accounts for mixing - need less stored hot water at higher temp
+    storageGallons = (peakHourGPH * peakDuration * mixingRatio) / storageFactor
+  }
+  
+  // Calculate BTU/hr based on system type
+  // ASHRAE: Storage systems sized for RECOVERY rate, tankless for PEAK rate
+  let netBTU: number
+  let deltaT: number
+  let heaterGPH: number  // GPH that actually flows through the heater
+  
+  if (settings.systemType === 'instantaneous') {
+    // TANKLESS: Must meet 100% of instantaneous peak demand
+    // Heat ALL gallons to delivery temp (no storage, no mixing)
+    // BTU/hr = GPH × 8.33 lb/gal × (Tf - Tc)
+    deltaT = deliveryTempRise
+    heaterGPH = peakHourGPH  // Full peak demand
+    netBTU = heaterGPH * 8.33 * deltaT
+  } else if (settings.systemType === 'storage') {
+    // STORAGE: Heater sized for RECOVERY rate (smaller than peak)
+    // Tank acts as buffer, heater recovers over time
+    // Recovery GPH = Storage Volume × Recovery Factor / Peak Duration
+    // We heat at storage temp, water mixes with cold at fixture
+    deltaT = storageTempRise
+    const recoveryGPH = (storageGallons * (settings.recoveryFactor ?? 1.0)) / peakDuration
+    heaterGPH = recoveryGPH
+    netBTU = heaterGPH * 8.33 * deltaT
+  } else {
+    // HYBRID: Small storage tank + tankless for peak overflow
+    // Tank covers ~60% of peak, tankless handles rest
+    // Heater BTU based on delivery temp (tankless component dominates)
+    deltaT = deliveryTempRise
+    heaterGPH = peakHourGPH * 0.7  // Tank handles 30%, tankless handles 70%
+    netBTU = heaterGPH * 8.33 * deltaT
+  }
   
   // Gross BTU required (before efficiency loss)
   const grossBTU = netBTU / efficiency
@@ -139,21 +193,12 @@ export function calculateDHW(
   // For electric: convert BTU/hr to kW (1 kW = 3,412 BTU/hr)
   const electricKW = settings.heaterType === 'electric' ? recoveryBTUhr / 3412 : 0
   
-  // Storage tank sizing (ASHRAE method)
-  // Storage = (Peak GPH × Peak Duration) / Storage Factor
-  const storageFactor = settings.storageFactor ?? buildingFactors.storageFactor
-  const peakDuration = settings.peakDuration ?? buildingFactors.typicalPeakDuration
-  
-  let storageGallons: number
-  if (settings.tankSizingMethod === 'manual' && settings.manualStorageGallons) {
-    storageGallons = settings.manualStorageGallons
-  } else {
-    storageGallons = (peakHourGPH * peakDuration) / storageFactor
-  }
-  
-  // Tankless units needed
+  // Tankless units needed (always sized for delivery temp and full peak)
+  // This shows how many tankless units would be needed as an alternative
   const tanklessUnitBtu = settings.tanklessUnitBtu ?? dhwDefaults.tankless_unit_btu
-  const tanklessUnits = Math.ceil(recoveryBTUhr / tanklessUnitBtu)
+  // Tankless must meet full peak demand at delivery temp
+  const tanklessBTU = (peakHourGPH * 8.33 * deliveryTempRise / efficiency) * (settings.recoveryFactor ?? 1.0)
+  const tanklessUnits = Math.ceil(tanklessBTU / tanklessUnitBtu)
   
   // Apply contingency
   const finalGrossBTU = recoveryBTUhr * (1 + contingency)
@@ -181,6 +226,11 @@ export function calculateDHW(
     tanklessUnits,
     recoveryBTUhr: Math.round(recoveryBTUhr),
     buildingTypeInfo: buildingFactors,
+    // ASHRAE mixing info
+    mixingRatio,
+    storageTempRise,
+    deliveryTempRise,
+    heaterGPH: Math.round(heaterGPH),
   }
 
   return {
