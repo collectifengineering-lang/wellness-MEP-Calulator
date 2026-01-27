@@ -7,7 +7,6 @@ import { useScannerStore, ExtractedSpace, ScanDrawing } from '../../store/useSca
 import { analyzeDrawing, calculateScale } from '../../lib/planAnalyzer'
 import { v4 as uuidv4 } from 'uuid'
 import ExportModal from './ExportModal'
-import PDFViewer from './PDFViewer'
 import { NYC_FIXTURE_DATABASE, getFixtureById } from '../../data/nycFixtures'
 
 type TabType = 'drawings' | 'spaces' | 'export'
@@ -26,6 +25,8 @@ export default function ScanWorkspace() {
   
   const [activeTab, setActiveTab] = useState<TabType>('drawings')
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null)
+  const [renderedImageUrl, setRenderedImageUrl] = useState<string | null>(null)
+  const [renderingPdf, setRenderingPdf] = useState(false)
   const [analyzing, setAnalyzing] = useState(false)
   const [analysisProgress, setAnalysisProgress] = useState('')
   const [showExportModal, setShowExportModal] = useState(false)
@@ -145,6 +146,35 @@ export default function ScanWorkspace() {
   }, [calibrationPoints])
 
   const selectedDrawing = currentScan?.drawings.find(d => d.id === selectedDrawingId)
+
+  // Convert PDF to image when selected (must be after selectedDrawing is defined)
+  useEffect(() => {
+    const renderPdfToImage = async () => {
+      if (!selectedDrawing) {
+        setRenderedImageUrl(null)
+        return
+      }
+      
+      // If it's already an image, use it directly
+      if (selectedDrawing.fileType !== 'application/pdf') {
+        setRenderedImageUrl(selectedDrawing.fileUrl)
+        return
+      }
+      
+      // Render PDF to image
+      setRenderingPdf(true)
+      try {
+        const { base64, mime } = await renderPdfPageToImage(selectedDrawing.fileUrl)
+        setRenderedImageUrl(`data:${mime};base64,${base64}`)
+      } catch (err) {
+        console.error('Failed to render PDF:', err)
+        setRenderedImageUrl(null)
+      }
+      setRenderingPdf(false)
+    }
+    
+    renderPdfToImage()
+  }, [selectedDrawing?.id, selectedDrawing?.fileUrl, selectedDrawing?.fileType])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -325,6 +355,12 @@ export default function ScanWorkspace() {
       fixtures: {},
       equipment: [],
       confidence: 100, // Manual entry
+      boundingBox: {
+        x: region.x,
+        y: region.y,
+        width: region.width,
+        height: region.height,
+      },
     }
     
     setExtractedSpaces(currentScan.id, [...currentScan.extractedSpaces, newSpace])
@@ -711,8 +747,8 @@ export default function ScanWorkspace() {
                       </p>
                     </div>
                     
-                    {/* Two-Point Calibration (Images only) */}
-                    {selectedDrawing && selectedDrawing.fileType !== 'application/pdf' && (
+                    {/* Two-Point Calibration */}
+                    {selectedDrawing && (
                       <div className="border-t border-surface-700 pt-6">
                         <h4 className="text-sm font-semibold text-surface-300 mb-3">Two-Point Calibration</h4>
                         <p className="text-xs text-surface-400 mb-3">
@@ -823,16 +859,18 @@ export default function ScanWorkspace() {
                 </div>
               )}
 
-              {/* Image/PDF Display */}
+              {/* Image/PDF Display - All rendered as images for drawing support */}
               <div className="flex-1 overflow-hidden relative">
                 {selectedDrawing ? (
-                  selectedDrawing.fileType === 'application/pdf' ? (
-                    // PDF Viewer
-                    <PDFViewer
-                      fileUrl={selectedDrawing.fileUrl}
-                      fileName={selectedDrawing.fileName}
-                      calibrationMode={calibrationMode}
-                    />
+                  renderingPdf ? (
+                    // Loading PDF render
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <div className="text-5xl mb-4 animate-bounce">📄</div>
+                        <p className="text-surface-400">Rendering PDF for editing...</p>
+                        <p className="text-sm text-surface-500">{selectedDrawing.fileName}</p>
+                      </div>
+                    </div>
                   ) : (
                   <div 
                     ref={canvasContainerRef}
@@ -843,10 +881,10 @@ export default function ScanWorkspace() {
                     onMouseLeave={() => setCurrentDrawing(null)}
                   >
                     <div className="relative inline-block">
-                      {selectedDrawing.fileUrl ? (
+                      {renderedImageUrl ? (
                         <img
                           ref={imageRef}
-                          src={selectedDrawing.fileUrl}
+                          src={renderedImageUrl}
                           alt={selectedDrawing.fileName}
                           className={`max-w-full h-auto ${calibrationMode ? 'cursor-crosshair' : ''} ${drawingMode === 'drawing' ? 'pointer-events-none' : ''}`}
                           onClick={handleImageClick}
@@ -866,7 +904,33 @@ export default function ScanWorkspace() {
                         </div>
                       )}
                     
-                    {/* Drawn Regions */}
+                    {/* Extracted Spaces (from AI analysis) */}
+                    {currentScan.extractedSpaces.filter(s => s.boundingBox).map(space => (
+                      <div
+                        key={`extracted-${space.id}`}
+                        className={`absolute border-2 ${
+                          selectedSpaceId === space.id 
+                            ? 'border-emerald-400 bg-emerald-400/20' 
+                            : 'border-emerald-500/70 bg-emerald-500/10'
+                        } cursor-pointer transition-colors`}
+                        style={{
+                          left: space.boundingBox!.x,
+                          top: space.boundingBox!.y,
+                          width: space.boundingBox!.width,
+                          height: space.boundingBox!.height,
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedSpaceId(space.id)
+                        }}
+                      >
+                        <div className="absolute -top-6 left-0 px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap bg-emerald-600 text-white">
+                          {space.name} • {space.sf} SF
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {/* Drawn Regions (user-drawn) */}
                     {drawnRegions.map(region => (
                       <div
                         key={region.id}
