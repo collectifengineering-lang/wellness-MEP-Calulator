@@ -14,6 +14,8 @@ export default function PlumbingHome() {
   const [loading, setLoading] = useState(true)
   const [showNewModal, setShowNewModal] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
 
   useEffect(() => {
     loadProjects()
@@ -112,6 +114,88 @@ export default function PlumbingHome() {
     
     await loadProjects()
   }
+
+  const handleCopyProject = async (project: PlumbingProject) => {
+    const userId = user?.id || 'dev-user'
+    const copiedProject = createPlumbingProject(userId, `${project.name} (Copy)`)
+    copiedProject.settings = { ...project.settings }
+    
+    if (isSupabaseConfigured()) {
+      // Create copied project
+      const { error: projectError } = await supabase
+        .from('plumbing_projects')
+        .insert({
+          id: copiedProject.id,
+          user_id: copiedProject.userId,
+          name: copiedProject.name,
+          settings: copiedProject.settings,
+        } as never)
+      
+      if (projectError) {
+        console.error('Error copying project:', projectError)
+        return
+      }
+      
+      // Copy spaces
+      const { data: sourceSpaces } = await supabase
+        .from('plumbing_spaces')
+        .select('*')
+        .eq('project_id', project.id)
+      
+      if (sourceSpaces && sourceSpaces.length > 0) {
+        const copiedSpaces = sourceSpaces.map((space: Record<string, unknown>) => ({
+          ...space,
+          id: crypto.randomUUID(),
+          project_id: copiedProject.id,
+        }))
+        
+        await supabase.from('plumbing_spaces').insert(copiedSpaces as never)
+      }
+    } else {
+      const updated = [copiedProject, ...projects]
+      localStorage.setItem('plumbing_projects', JSON.stringify(updated))
+      
+      // Copy spaces locally
+      const sourceSpaces = localStorage.getItem(`plumbing_spaces_${project.id}`)
+      if (sourceSpaces) {
+        const spaces = JSON.parse(sourceSpaces).map((s: Record<string, unknown>) => ({
+          ...s,
+          id: crypto.randomUUID(),
+          projectId: copiedProject.id,
+        }))
+        localStorage.setItem(`plumbing_spaces_${copiedProject.id}`, JSON.stringify(spaces))
+      }
+    }
+    
+    await loadProjects()
+  }
+
+  const handleRenameProject = async (projectId: string) => {
+    if (!editingName.trim()) {
+      setEditingProjectId(null)
+      return
+    }
+    
+    if (isSupabaseConfigured()) {
+      const { error } = await supabase
+        .from('plumbing_projects')
+        .update({ name: editingName.trim(), updated_at: new Date().toISOString() } as never)
+        .eq('id', projectId)
+      
+      if (error) {
+        console.error('Error renaming project:', error)
+        return
+      }
+    } else {
+      const updated = projects.map(p =>
+        p.id === projectId ? { ...p, name: editingName.trim(), updatedAt: new Date().toISOString() } : p
+      )
+      localStorage.setItem('plumbing_projects', JSON.stringify(updated))
+    }
+    
+    setEditingProjectId(null)
+    await loadProjects()
+  }
   
   return (
     <div className="min-h-screen bg-surface-900">
@@ -187,26 +271,75 @@ export default function PlumbingHome() {
               <div
                 key={project.id}
                 className="bg-surface-800 border border-surface-700 rounded-xl p-6 hover:border-pink-500/50 transition-colors cursor-pointer group"
-                onClick={() => handleOpenProject(project)}
+                onClick={() => editingProjectId !== project.id && handleOpenProject(project)}
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="w-12 h-12 rounded-xl bg-pink-500/20 flex items-center justify-center">
                     <span className="text-2xl">🚿</span>
                   </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      handleDeleteProject(project.id)
-                    }}
-                    className="p-2 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-surface-500 hover:text-red-400 transition-all"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                  <div className="flex gap-1">
+                    {/* Copy Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleCopyProject(project)
+                      }}
+                      className="p-2 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-emerald-500/20 text-surface-500 hover:text-emerald-400 transition-all"
+                      title="Copy Project"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
+                    {/* Rename Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setEditingProjectId(project.id)
+                        setEditingName(project.name)
+                      }}
+                      className="p-2 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-blue-500/20 text-surface-500 hover:text-blue-400 transition-all"
+                      title="Rename Project"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    {/* Delete Button */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteProject(project.id)
+                      }}
+                      className="p-2 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-surface-500 hover:text-red-400 transition-all"
+                      title="Delete Project"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 
-                <h3 className="text-lg font-semibold text-white mb-2">{project.name}</h3>
+                {/* Project Name - Editable or Display */}
+                {editingProjectId === project.id ? (
+                  <input
+                    type="text"
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onBlur={() => handleRenameProject(project.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleRenameProject(project.id)
+                      if (e.key === 'Escape') setEditingProjectId(null)
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="w-full text-lg font-semibold bg-surface-700 border border-pink-500 rounded px-2 py-1 text-white mb-2 focus:outline-none"
+                    autoFocus
+                  />
+                ) : (
+                  <h3 className="text-lg font-semibold text-white mb-2">{project.name}</h3>
+                )}
+                
                 <p className="text-sm text-surface-400 mb-4">
                   Updated {new Date(project.updatedAt).toLocaleDateString()}
                 </p>
