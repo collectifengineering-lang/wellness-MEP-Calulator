@@ -228,7 +228,9 @@ async function analyzeWithClaude(
   })
 
   if (!response.ok) {
-    throw new Error(`Claude API error: ${response.status}`)
+    const errorBody = await response.text()
+    console.error('Claude API error body:', errorBody)
+    throw new Error(`Claude API error: ${response.status} - ${errorBody.slice(0, 200)}`)
   }
 
   const data = await response.json()
@@ -306,7 +308,9 @@ async function analyzeWithGrok(
   })
   
   if (!response.ok) {
-    throw new Error(`Grok API error: ${response.status}`)
+    const errorBody = await response.text()
+    console.error('Grok API error body:', errorBody)
+    throw new Error(`Grok API error: ${response.status} - ${errorBody.slice(0, 200)}`)
   }
   
   const data = await response.json()

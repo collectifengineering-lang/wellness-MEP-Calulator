@@ -37,6 +37,39 @@ export default function ScanWorkspace() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageRef = useRef<HTMLImageElement>(null)
   
+  // Helper function to render PDF page to image for AI analysis
+  const renderPdfPageToImage = async (pdfDataUrl: string): Promise<{ base64: string; mime: string }> => {
+    const pdfjs = await import('pdfjs-dist')
+    pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
+    
+    // Extract base64 from data URL
+    const base64Match = pdfDataUrl.match(/^data:([^;]+);base64,(.+)$/)
+    if (!base64Match) throw new Error('Invalid PDF data URL')
+    
+    const pdfBase64 = base64Match[2]
+    const pdfBytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0))
+    
+    const pdf = await pdfjs.getDocument({ data: pdfBytes }).promise
+    const page = await pdf.getPage(1) // Analyze first page
+    
+    // Render at 1.5x scale (balance quality vs size)
+    const scale = 1.5
+    const viewport = page.getViewport({ scale })
+    
+    const canvas = document.createElement('canvas')
+    canvas.width = viewport.width
+    canvas.height = viewport.height
+    const ctx = canvas.getContext('2d')!
+    
+    await page.render({ canvasContext: ctx, viewport, canvas } as any).promise
+    
+    // Convert to JPEG (smaller than PNG for large drawings)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+    const imgBase64 = dataUrl.split(',')[1]
+    
+    return { base64: imgBase64, mime: 'image/jpeg' }
+  }
+
   // Standard architectural scales (Imperial)
   // At 96 DPI, we calculate pixels per foot based on the scale
   // e.g., 1/8" = 1'-0" means 1/8 inch on paper = 1 foot real
@@ -126,14 +159,25 @@ export default function ScanWorkspace() {
     setAnalysisProgress('Preparing image...')
     
     try {
-      // Get base64 data (remove data URL prefix if present)
-      let imageData = selectedDrawing.fileUrl
-      const base64Match = imageData.match(/^data:([^;]+);base64,(.+)$/)
+      let imageData: string
       let mimeType = 'image/png'
       
-      if (base64Match) {
-        mimeType = base64Match[1]
-        imageData = base64Match[2]
+      // Check if this is a PDF - need to render to image first
+      if (selectedDrawing.fileType === 'application/pdf') {
+        setAnalysisProgress('Converting PDF page to image...')
+        const { base64, mime } = await renderPdfPageToImage(selectedDrawing.fileUrl)
+        imageData = base64
+        mimeType = mime
+        console.log(`PDF converted to image: ${Math.round(imageData.length / 1024)}KB`)
+      } else {
+        // Regular image - extract base64
+        const base64Match = selectedDrawing.fileUrl.match(/^data:([^;]+);base64,(.+)$/)
+        if (base64Match) {
+          mimeType = base64Match[1]
+          imageData = base64Match[2]
+        } else {
+          imageData = selectedDrawing.fileUrl
+        }
       }
       
       setAnalysisProgress('AI is analyzing the drawing... 🤖🐐')
