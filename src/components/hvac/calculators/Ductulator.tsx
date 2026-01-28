@@ -105,13 +105,13 @@ export default function Ductulator() {
     }
   }, [cfm, sizingMode, frictionInput, velocityInput, insulationThickness])
   
-  // Generate rectangular equivalents based on the round duct AREA
+  // Generate rectangular equivalents - spread around the round duct area (smaller AND larger)
   const rectangularDucts = useMemo((): RectDuctResult[] => {
-    const targetArea = roundDuct.area // sq ft - match this area
+    const targetArea = roundDuct.area // sq ft - this is our target/median
     
     const results: RectDuctResult[] = []
     
-    // Generate various width/height combinations that approximate the target area
+    // Generate various width/height combinations
     for (const width of STANDARD_RECT_SIZES) {
       for (const height of STANDARD_RECT_SIZES) {
         if (height > width) continue // Skip duplicates (12x8 = 8x12)
@@ -124,9 +124,9 @@ export default function Ductulator() {
         const interiorArea = interiorWidth * interiorHeight
         const areaSqFt = interiorArea / 144
         
-        // Only include if within ±30% of target area
+        // Include a wider range: ±50% of target area
         const areaRatio = areaSqFt / targetArea
-        if (areaRatio < 0.7 || areaRatio > 1.3) continue
+        if (areaRatio < 0.5 || areaRatio > 1.5) continue
         
         const velocity = cfm / areaSqFt
         const equivalentDia = calculateEquivalentDia(interiorWidth, interiorHeight)
@@ -149,14 +149,25 @@ export default function Ductulator() {
       }
     }
     
-    // Sort by how close the area is to target, then by aspect ratio
-    return results
-      .sort((a, b) => {
-        const aDiff = Math.abs(a.area - targetArea)
-        const bDiff = Math.abs(b.area - targetArea)
-        return aDiff - bDiff
-      })
-      .slice(0, 12) // Show top 12 options
+    // Sort by area (smallest to largest) so we get a spread
+    const sorted = results.sort((a, b) => a.area - b.area)
+    
+    // Find the index of the duct closest to target area
+    let closestIdx = 0
+    let closestDiff = Infinity
+    sorted.forEach((d, i) => {
+      const diff = Math.abs(d.area - targetArea)
+      if (diff < closestDiff) {
+        closestDiff = diff
+        closestIdx = i
+      }
+    })
+    
+    // Select ducts around the closest match - 6 smaller, closest, 5 larger (12 total)
+    const startIdx = Math.max(0, closestIdx - 6)
+    const endIdx = Math.min(sorted.length, startIdx + 12)
+    
+    return sorted.slice(startIdx, endIdx)
   }, [roundDuct.area, cfm, insulationThickness])
   
   return (
@@ -339,7 +350,7 @@ export default function Ductulator() {
           ▬ Rectangular Alternatives
         </h3>
         <p className="text-sm text-surface-400 mb-4">
-          Ducts with similar area to the {roundDuct.nominalSize}" round ({(roundDuct.area * 144).toFixed(0)} sq.in)
+          Sizes smaller AND larger than {roundDuct.nominalSize}" round ({(roundDuct.area * 144).toFixed(0)} sq.in target)
         </p>
         
         {rectangularDucts.length === 0 ? (
@@ -351,6 +362,7 @@ export default function Ductulator() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-surface-400 border-b border-surface-700">
+                  <th className="pb-3 pr-4"></th>
                   <th className="pb-3 pr-4">Size (W×H)</th>
                   <th className="pb-3 pr-4">Aspect</th>
                   <th className="pb-3 pr-4">Area (SF)</th>
@@ -360,18 +372,33 @@ export default function Ductulator() {
                 </tr>
               </thead>
               <tbody>
-                {rectangularDucts.map((duct, i) => {
-                  const isClosestArea = i === 0
+                {rectangularDucts.map((duct) => {
+                  // Find if this is the closest to target area
+                  const areaDiff = Math.abs(duct.area - roundDuct.area)
+                  const isClosest = areaDiff === Math.min(...rectangularDucts.map(d => Math.abs(d.area - roundDuct.area)))
+                  const areaPercent = (duct.area / roundDuct.area) * 100
+                  const isSmaller = duct.area < roundDuct.area
+                  const isLarger = duct.area > roundDuct.area
+                  
                   return (
                     <tr 
                       key={`${duct.width}x${duct.height}`} 
-                      className={`border-b border-surface-700/50 ${isClosestArea ? 'bg-cyan-900/20' : ''}`}
+                      className={`border-b border-surface-700/50 ${isClosest ? 'bg-cyan-900/30 border-cyan-700' : ''}`}
                     >
+                      <td className="py-3 pr-2 text-center w-8">
+                        {isClosest ? (
+                          <span className="text-cyan-400" title="Closest to round duct">≈</span>
+                        ) : isSmaller ? (
+                          <span className="text-blue-400" title="Smaller area">▼</span>
+                        ) : isLarger ? (
+                          <span className="text-orange-400" title="Larger area">▲</span>
+                        ) : null}
+                      </td>
                       <td className="py-3 pr-4">
-                        <span className={`font-medium ${isClosestArea ? 'text-cyan-400' : 'text-white'}`}>
+                        <span className={`font-medium ${isClosest ? 'text-cyan-400' : 'text-white'}`}>
                           {duct.width}" × {duct.height}"
                         </span>
-                        {isClosestArea && (
+                        {isClosest && (
                           <span className="ml-2 text-xs text-cyan-400">✓ Best match</span>
                         )}
                         {insulationThickness > 0 && (
@@ -381,10 +408,16 @@ export default function Ductulator() {
                         )}
                       </td>
                       <td className="py-3 pr-4 text-surface-300">{duct.aspectRatio}</td>
-                      <td className="py-3 pr-4 text-white">
-                        {duct.area.toFixed(2)}
-                        <span className="text-xs text-surface-500 ml-1">
-                          ({((duct.area / roundDuct.area) * 100).toFixed(0)}%)
+                      <td className="py-3 pr-4">
+                        <span className={isClosest ? 'text-cyan-400 font-medium' : 'text-white'}>
+                          {duct.area.toFixed(2)}
+                        </span>
+                        <span className={`text-xs ml-1 ${
+                          areaPercent >= 95 && areaPercent <= 105 ? 'text-emerald-400' :
+                          areaPercent >= 85 && areaPercent <= 115 ? 'text-surface-400' :
+                          'text-amber-400'
+                        }`}>
+                          ({areaPercent.toFixed(0)}%)
                         </span>
                       </td>
                       <td className="py-3 pr-4 text-white">{duct.equivalentDia.toFixed(1)}"</td>
@@ -405,6 +438,13 @@ export default function Ductulator() {
                 })}
               </tbody>
             </table>
+            
+            {/* Legend */}
+            <div className="mt-4 flex items-center gap-4 text-xs text-surface-400">
+              <span><span className="text-blue-400">▼</span> Smaller than round</span>
+              <span><span className="text-cyan-400">≈</span> Closest match</span>
+              <span><span className="text-orange-400">▲</span> Larger than round</span>
+            </div>
           </div>
         )}
         
