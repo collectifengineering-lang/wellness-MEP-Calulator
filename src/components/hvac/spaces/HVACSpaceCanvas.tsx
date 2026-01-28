@@ -591,10 +591,17 @@ interface ScanProject {
   }>
 }
 
+interface ImportableSpace {
+  name: string
+  areaSf: number
+  spaceType: string
+  ceilingHeightFt: number
+}
+
 interface ImportSpacesModalProps {
   source: 'concept' | 'scanner'
   onClose: () => void
-  onImport: (spaces: Array<Partial<Parameters<typeof useHVACStore.getState>['addSpace']>[0]>>) => void
+  onImport: (spaces: ImportableSpace[]) => void
 }
 
 function ImportSpacesModal({ source, onClose, onImport }: ImportSpacesModalProps) {
