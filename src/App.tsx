@@ -14,6 +14,7 @@ import HVACHome from './components/hvac/HVACHome'
 import ElectricalHome from './components/electrical/ElectricalHome'
 import PlumbingHome from './components/plumbing/PlumbingHome'
 import PlumbingWorkspace from './components/plumbing/PlumbingWorkspace'
+import HVACWorkspace from './components/hvac/HVACWorkspace'
 import SettingsPage from './components/settings/SettingsPage'
 
 function App() {
@@ -103,12 +104,20 @@ function App() {
           }
         />
         
-        {/* HVAC Module (placeholder) */}
+        {/* HVAC Module */}
         <Route
           path="/hvac"
           element={
             <AuthGuard>
               <HVACHome />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/hvac/:projectId"
+          element={
+            <AuthGuard>
+              <HVACWorkspace />
             </AuthGuard>
           }
         />
