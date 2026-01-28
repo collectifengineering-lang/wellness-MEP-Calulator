@@ -138,8 +138,8 @@ export default function HVACWorkspace() {
     return (
       <div className="min-h-screen bg-surface-900 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-4xl mb-4">🌡️🐐</div>
-          <div className="text-surface-400">Loading HVAC project...</div>
+          <div className="text-4xl mb-4 animate-bounce">🐐💨</div>
+          <div className="text-surface-400">Loading HVAC project... GOAT is ventilating!</div>
         </div>
       </div>
     )
@@ -180,9 +180,9 @@ export default function HVACWorkspace() {
               <div className="flex items-center gap-2">
                 <span className="text-2xl">🌡️</span>
                 <div>
-                  <h1 className="text-lg font-semibold text-white">{currentProject.name} 🐐</h1>
+                  <h1 className="text-lg font-semibold text-white">{currentProject.name} 🐐💨</h1>
                   <div className="flex items-center gap-2 text-xs">
-                    <span className="text-surface-400">HVAC Ventilation Calculator</span>
+                    <span className="text-surface-400">HVAC Ventilation Calculator - Fresh Air for GOATs!</span>
                     {saving && <span className="text-cyan-400 animate-pulse">💾 Saving...</span>}
                     {!saving && synced && <span className="text-emerald-400">✓ Synced</span>}
                   </div>

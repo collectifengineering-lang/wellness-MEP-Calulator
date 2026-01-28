@@ -13,7 +13,8 @@ export default function VentilationSummary() {
   if (!results) {
     return (
       <div className="p-6 text-center text-surface-400">
-        Configure project settings to see ventilation calculations
+        <div className="text-4xl mb-4">🐐💨</div>
+        Configure project settings to see ventilation calculations - this GOAT needs to know where it's breathing!
       </div>
     )
   }
@@ -88,9 +89,9 @@ export default function VentilationSummary() {
         
         {results.systems.length === 0 ? (
           <div className="bg-surface-800 rounded-xl border border-surface-700 p-8 text-center">
-            <div className="text-4xl mb-2">🌀</div>
-            <div className="text-surface-400">No systems configured</div>
-            <div className="text-sm text-surface-500 mt-1">Add systems in the Zones & Systems tab</div>
+            <div className="text-4xl mb-2">🐐💨🌀</div>
+            <div className="text-surface-400">No systems configured - this GOAT is holding its breath!</div>
+            <div className="text-sm text-surface-500 mt-1">Add systems in the Zones & Systems tab to let it breathe</div>
           </div>
         ) : (
           results.systems.map(system => (

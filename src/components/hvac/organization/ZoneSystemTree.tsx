@@ -153,8 +153,8 @@ export default function ZoneSystemTree() {
             {systems.length === 0 ? (
               <div className="min-h-[200px] bg-surface-800 rounded-lg border border-surface-700 flex items-center justify-center">
                 <div className="text-center text-surface-500">
-                  <div className="text-3xl mb-2">🌀</div>
-                  <div className="text-sm">No systems yet</div>
+                  <div className="text-3xl mb-2">🐐💨🌀</div>
+                  <div className="text-sm">No systems yet - GOAT needs an AHU!</div>
                 </div>
               </div>
             ) : (

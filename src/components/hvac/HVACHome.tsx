@@ -132,10 +132,10 @@ export default function HVACHome() {
       <main className="max-w-4xl mx-auto px-6 py-12">
         {/* Welcome Message */}
         <div className="text-center mb-12">
-          <div className="text-6xl mb-4">🌡️🐐</div>
+          <div className="text-6xl mb-4">🐐💨</div>
           <h2 className="text-3xl font-bold text-white mb-2">HVAC Ventilation Projects</h2>
           <p className="text-surface-400">
-            ASHRAE 62.1 ventilation calculations with space-zone-system hierarchy
+            Even GOATs need fresh air! ASHRAE 62.1 ventilation calculations 🌬️
           </p>
         </div>
         
@@ -188,14 +188,14 @@ export default function HVACHome() {
           
           {loading ? (
             <div className="text-center py-12 text-surface-400">
-              <div className="text-4xl mb-4 animate-pulse">🌡️</div>
-              Loading projects...
+              <div className="text-4xl mb-4 animate-bounce">🐐💨</div>
+              Loading projects... the GOAT is catching its breath!
             </div>
           ) : projects.length === 0 ? (
             <div className="text-center py-12 bg-surface-800 rounded-xl border border-surface-700">
-              <div className="text-4xl mb-4">📁</div>
-              <p className="text-surface-400">No HVAC projects yet</p>
-              <p className="text-sm text-surface-500 mt-1">Create your first project to get started</p>
+              <div className="text-4xl mb-4">🐐🌬️</div>
+              <p className="text-surface-400">No HVAC projects yet - it's getting stuffy in here!</p>
+              <p className="text-sm text-surface-500 mt-1">Create your first project and let the GOAT breathe 💨</p>
             </div>
           ) : (
             <div className="space-y-3">

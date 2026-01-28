@@ -61,14 +61,14 @@ export default function HVACSpaceCanvas() {
       {/* Space Grid */}
       {spaces.length === 0 ? (
         <div className="text-center py-16 bg-surface-800 rounded-xl border border-surface-700">
-          <div className="text-6xl mb-4">🏠</div>
-          <h3 className="text-xl font-semibold text-white mb-2">No spaces yet</h3>
-          <p className="text-surface-400 mb-4">Add spaces to start calculating ventilation requirements</p>
+          <div className="text-6xl mb-4">🐐🏠</div>
+          <h3 className="text-xl font-semibold text-white mb-2">No spaces yet - the barn is empty!</h3>
+          <p className="text-surface-400 mb-4">Add spaces so this GOAT can calculate some fresh air 💨</p>
           <button
             onClick={() => setShowAddModal(true)}
             className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors"
           >
-            Add Your First Space
+            Add Your First Space 🐐
           </button>
         </div>
       ) : (
