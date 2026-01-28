@@ -34,6 +34,10 @@ export interface PlumbingProjectSettings {
   dhwRecoveryFactor: number // Heater sizing multiplier
   dhwGasEfficiency: number // Gas heater efficiency (0.80-0.98)
   dhwTanklessUnitBtu: number // Per-unit tankless capacity (BTU/hr)
+  // Heat Pump Water Heater (for electric systems)
+  dhwUseHeatPump: boolean         // Enable heat pump water heater mode
+  dhwHeatPumpCOP: number          // Coefficient of Performance (2.0-4.5)
+  dhwHeatPumpDesignConditions: 'standard' | 'cold_climate' | 'high_temp' | 'custom'
   // Gas
   gasDiversityFactor: number
 }
@@ -67,6 +71,10 @@ export const defaultPlumbingSettings: PlumbingProjectSettings = {
   dhwRecoveryFactor: 1.0,      // 1.0x recovery factor
   dhwGasEfficiency: 0.82,      // Power-vented efficiency
   dhwTanklessUnitBtu: 199900,  // Navien standard unit
+  // Heat Pump defaults
+  dhwUseHeatPump: false,       // Default off (most use gas)
+  dhwHeatPumpCOP: 3.2,         // Standard commercial COP (Colmac baseline)
+  dhwHeatPumpDesignConditions: 'standard',
   gasDiversityFactor: 0.8,
 }
 

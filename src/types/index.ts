@@ -224,6 +224,11 @@ export interface DHWSettings {
   gasEfficiency: number
   electricEfficiency: number
   
+  // Heat Pump settings (for electric systems)
+  useHeatPump: boolean            // Enable heat pump water heater mode
+  heatPumpCOP: number             // Coefficient of Performance (typically 2.0-4.5)
+  heatPumpDesignConditions: 'standard' | 'cold_climate' | 'high_temp' | 'custom'
+  
   // Temperatures
   storageTemp: number       // Storage tank temperature (°F)
   deliveryTemp: number      // Delivery/fixture temperature (°F)  

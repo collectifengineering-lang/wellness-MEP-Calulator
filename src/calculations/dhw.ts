@@ -20,6 +20,13 @@ export interface DHWCalcBreakdown {
   grossBTUhr: number
   efficiency: number
   
+  // Heat pump info
+  useHeatPump?: boolean
+  heatPumpCOP?: number
+  electricKWWithoutHeatPump?: number  // What kW would be without heat pump (for comparison)
+  electricKWWithHeatPump?: number     // Actual kW with heat pump
+  electricKWSavings?: number          // kW saved by using heat pump
+  
   // System sizing
   recommendedSystemType: string
   storageGallons: number
@@ -191,7 +198,20 @@ export function calculateDHW(
   const gasCFH = settings.heaterType === 'gas' ? recoveryBTUhr / 1000 : 0
   
   // For electric: convert BTU/hr to kW (1 kW = 3,412 BTU/hr)
-  const electricKW = settings.heaterType === 'electric' ? recoveryBTUhr / 3412 : 0
+  // If heat pump enabled, divide by COP to get actual electrical input
+  let electricKW = 0
+  let heatPumpCOP = 1  // Default COP of 1 = resistance heating (100% efficient conversion)
+  
+  if (settings.heaterType === 'electric') {
+    if (settings.useHeatPump && settings.heatPumpCOP > 1) {
+      // Heat pump: electrical input = thermal output / COP
+      heatPumpCOP = settings.heatPumpCOP
+      electricKW = recoveryBTUhr / 3412 / heatPumpCOP
+    } else {
+      // Standard resistance electric: direct conversion
+      electricKW = recoveryBTUhr / 3412
+    }
+  }
   
   // Tankless units needed (always sized for delivery temp and full peak)
   // This shows how many tankless units would be needed as an alternative
@@ -207,6 +227,13 @@ export function calculateDHW(
   const finalStorageGallons = storageGallons * (1 + contingency)
   const finalTanklessUnits = Math.ceil(finalGrossBTU / tanklessUnitBtu)
 
+  // Calculate comparison values for heat pump
+  const electricKWWithoutHP = recoveryBTUhr / 3412  // What standard resistance would require
+  const electricKWWithHP = settings.useHeatPump && settings.heatPumpCOP > 1 
+    ? recoveryBTUhr / 3412 / settings.heatPumpCOP 
+    : electricKWWithoutHP
+  const kWSavings = electricKWWithoutHP - electricKWWithHP
+
   // Build breakdown for UI
   const breakdown: DHWCalcBreakdown = {
     showerDemandGPH: Math.round(showerDemandGPH),
@@ -220,6 +247,12 @@ export function calculateDHW(
     netBTUhr: Math.round(netBTU),
     grossBTUhr: Math.round(grossBTU),
     efficiency,
+    // Heat pump info
+    useHeatPump: settings.useHeatPump,
+    heatPumpCOP: heatPumpCOP,
+    electricKWWithoutHeatPump: Math.round(electricKWWithoutHP * 10) / 10,
+    electricKWWithHeatPump: Math.round(electricKWWithHP * 10) / 10,
+    electricKWSavings: Math.round(kWSavings * 10) / 10,
     recommendedSystemType: peakHourGPH > 500 ? 'Storage with booster' : 
                            peakHourGPH > 200 ? 'Multiple tankless' : 'Single tankless',
     storageGallons: Math.round(storageGallons),
@@ -254,6 +287,39 @@ export const gasHeaterEfficiencyPresets = [
   { value: 0.95, label: 'Condensing (95%)' },
   { value: 0.98, label: 'Ultra Condensing (98%)' },
 ] as const
+
+// Heat Pump Water Heater COP presets based on commercial manufacturers
+// COP = Heating Output (BTU) / Electrical Input (BTU equivalent)
+// Higher COP = more efficient, varies by design conditions
+export const heatPumpCOPPresets = [
+  // Standard conditions (air temp 68°F, inlet water 58°F, outlet 140°F)
+  { value: 2.5, label: 'Standard Residential (COP 2.5)', conditions: 'standard', notes: 'Typical residential HPWH' },
+  { value: 3.0, label: 'High Efficiency Residential (COP 3.0)', conditions: 'standard', notes: 'Premium residential HPWH' },
+  
+  // Commercial - Colmac, Lync by Watts, Transom
+  { value: 3.2, label: 'Colmac CxA (COP 3.2)', conditions: 'standard', notes: 'Colmac air-source, 140°F outlet' },
+  { value: 3.5, label: 'Lync by Watts LYN (COP 3.5)', conditions: 'standard', notes: 'Commercial modular system' },
+  { value: 3.8, label: 'Transom HPA (COP 3.8)', conditions: 'standard', notes: 'High performance air-source' },
+  { value: 4.0, label: 'Premium Commercial (COP 4.0)', conditions: 'standard', notes: 'Optimal operating conditions' },
+  
+  // Cold climate ratings (at lower ambient temps)
+  { value: 2.0, label: 'Cold Climate 47°F (COP 2.0)', conditions: 'cold_climate', notes: 'Performance at 47°F ambient' },
+  { value: 2.2, label: 'Cold Climate Optimized (COP 2.2)', conditions: 'cold_climate', notes: 'Enhanced cold weather design' },
+  
+  // High temperature output (160°F+)
+  { value: 2.8, label: 'High Temp 160°F (COP 2.8)', conditions: 'high_temp', notes: 'Legionella-safe storage temps' },
+  { value: 3.0, label: 'CO2 Transcritical (COP 3.0)', conditions: 'high_temp', notes: 'CO2 refrigerant, 185°F capable' },
+] as const
+
+export type HeatPumpDesignCondition = 'standard' | 'cold_climate' | 'high_temp' | 'custom'
+
+// Get recommended COP presets based on design conditions
+export function getHeatPumpPresetsForConditions(conditions: HeatPumpDesignCondition) {
+  if (conditions === 'custom') {
+    return heatPumpCOPPresets
+  }
+  return heatPumpCOPPresets.filter(p => p.conditions === conditions || p.conditions === 'standard')
+}
 
 // Hot water mixing equation helper
 // Qs = Qf × (Tf - Tc) / (Ts - Tc)

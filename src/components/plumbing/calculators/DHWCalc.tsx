@@ -1,7 +1,7 @@
 import { usePlumbingStore } from '../../../store/usePlumbingStore'
 import { NYC_FIXTURE_DATABASE } from '../../../data/nycFixtures'
 import { dhwBuildingTypeFactors } from '../../../data/defaults'
-import { gasHeaterEfficiencyPresets } from '../../../calculations/dhw'
+import { gasHeaterEfficiencyPresets, getHeatPumpPresetsForConditions } from '../../../calculations/dhw'
 
 export default function DHWCalc() {
   const { spaces, currentProject, updateProjectSettings } = usePlumbingStore()
@@ -57,7 +57,20 @@ export default function DHWCalc() {
   const grossBTUH = recoveryGPH * btuPerGallon
   const netBTUH = grossBTUH * (settings.dhwHeaterType === 'gas' ? settings.dhwGasEfficiency : 0.98)
   const heaterMBH = grossBTUH / 1000
-  const heaterKW = netBTUH / 3412
+  
+  // Electric kW - factor in heat pump COP if enabled
+  let heaterKW: number
+  let heaterKWWithoutHP: number | null = null
+  if (settings.dhwHeaterType === 'electric') {
+    heaterKWWithoutHP = netBTUH / 3412  // Standard resistance
+    if (settings.dhwUseHeatPump && settings.dhwHeatPumpCOP > 1) {
+      heaterKW = netBTUH / 3412 / settings.dhwHeatPumpCOP
+    } else {
+      heaterKW = heaterKWWithoutHP
+    }
+  } else {
+    heaterKW = 0  // Gas heaters don't use kW
+  }
 
   // Tankless Sizing
   const tanklessGPM = peakDemandGPH / 60
@@ -163,6 +176,92 @@ export default function DHWCalc() {
                     <option key={preset.value} value={preset.value}>{preset.label}</option>
                   ))}
                 </select>
+              </div>
+            )}
+
+            {/* Heat Pump Water Heater Options (Electric only) */}
+            {settings.dhwHeaterType === 'electric' && (
+              <div className="mt-4 bg-surface-900/50 rounded-lg p-3 border border-emerald-700/30">
+                <div className="flex items-center gap-2 mb-3">
+                  <input
+                    type="checkbox"
+                    id="dhwUseHeatPump"
+                    checked={settings.dhwUseHeatPump || false}
+                    onChange={(e) => updateProjectSettings({ dhwUseHeatPump: e.target.checked })}
+                    className="w-4 h-4 rounded border-surface-500 bg-surface-800 text-emerald-500"
+                  />
+                  <label htmlFor="dhwUseHeatPump" className="text-sm text-surface-300 cursor-pointer">
+                    🌡️ Heat Pump (HPWH)
+                  </label>
+                </div>
+                
+                {settings.dhwUseHeatPump && (
+                  <div className="space-y-3 pl-6">
+                    {/* Design Conditions */}
+                    <div>
+                      <label className="block text-xs text-surface-400 mb-1">Operating Conditions</label>
+                      <select
+                        value={settings.dhwHeatPumpDesignConditions || 'standard'}
+                        onChange={(e) => {
+                          const conditions = e.target.value as 'standard' | 'cold_climate' | 'high_temp' | 'custom'
+                          const defaultCOPs = {
+                            standard: 3.2, cold_climate: 2.1, high_temp: 2.8, custom: settings.dhwHeatPumpCOP || 3.2,
+                          }
+                          updateProjectSettings({ 
+                            dhwHeatPumpDesignConditions: conditions,
+                            dhwHeatPumpCOP: defaultCOPs[conditions]
+                          })
+                        }}
+                        className="w-full px-2 py-1.5 bg-surface-800 border border-surface-600 rounded text-white text-xs"
+                      >
+                        <option value="standard">Standard (68°F, 140°F)</option>
+                        <option value="cold_climate">Cold Climate (47°F)</option>
+                        <option value="high_temp">High Temp (160°F+)</option>
+                        <option value="custom">Custom COP</option>
+                      </select>
+                    </div>
+
+                    {/* COP Selection */}
+                    <div>
+                      <label className="block text-xs text-surface-400 mb-1">COP</label>
+                      {settings.dhwHeatPumpDesignConditions === 'custom' ? (
+                        <input
+                          type="number"
+                          value={settings.dhwHeatPumpCOP || 3.2}
+                          onChange={(e) => updateProjectSettings({ dhwHeatPumpCOP: Number(e.target.value) })}
+                          min={1.5}
+                          max={5.0}
+                          step={0.1}
+                          className="w-full px-2 py-1.5 bg-surface-800 border border-surface-600 rounded text-white text-xs"
+                        />
+                      ) : (
+                        <select
+                          value={settings.dhwHeatPumpCOP || 3.2}
+                          onChange={(e) => updateProjectSettings({ dhwHeatPumpCOP: Number(e.target.value) })}
+                          className="w-full px-2 py-1.5 bg-surface-800 border border-surface-600 rounded text-white text-xs"
+                        >
+                          {getHeatPumpPresetsForConditions(settings.dhwHeatPumpDesignConditions || 'standard').map(preset => (
+                            <option key={`${preset.value}-${preset.label}`} value={preset.value}>
+                              {preset.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    {/* Manufacturer refs */}
+                    <div className="text-xs text-surface-500">
+                      <span className="text-surface-400">Reference:</span>
+                      <span className="ml-1">Colmac 3.2 | Lync 3.5 | Transom 3.8</span>
+                    </div>
+                  </div>
+                )}
+                
+                {!settings.dhwUseHeatPump && (
+                  <p className="text-xs text-surface-500 pl-6">
+                    50-75% energy savings vs resistance heating
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -306,9 +405,23 @@ export default function DHWCalc() {
               <p className="text-xs text-surface-400">Heater (MBH)</p>
             </div>
             {settings.dhwHeaterType === 'electric' && (
-              <div className="bg-surface-800 border border-yellow-500/30 rounded-xl p-4 text-center">
-                <p className="text-2xl font-bold text-yellow-400 mb-1">{heaterKW.toFixed(1)}</p>
-                <p className="text-xs text-surface-400">Electric (kW)</p>
+              <div className={`bg-surface-800 border rounded-xl p-4 text-center ${
+                settings.dhwUseHeatPump ? 'border-emerald-500/30' : 'border-yellow-500/30'
+              }`}>
+                <p className={`text-2xl font-bold mb-1 ${
+                  settings.dhwUseHeatPump ? 'text-emerald-400' : 'text-yellow-400'
+                }`}>{heaterKW.toFixed(1)}</p>
+                <p className="text-xs text-surface-400">
+                  Electric (kW)
+                  {settings.dhwUseHeatPump && (
+                    <span className="block text-emerald-400 mt-0.5">HPWH COP {settings.dhwHeatPumpCOP}</span>
+                  )}
+                </p>
+                {settings.dhwUseHeatPump && heaterKWWithoutHP && (
+                  <p className="text-xs text-surface-500 mt-1 line-through">
+                    {heaterKWWithoutHP.toFixed(1)} kW std
+                  </p>
+                )}
               </div>
             )}
             {settings.dhwHeaterType === 'gas' && (

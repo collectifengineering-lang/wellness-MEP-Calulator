@@ -87,6 +87,20 @@ export const dhwDefaults = {
     condensing: 0.95,
     ultra_condensing: 0.98,
   } as Record<string, number>,
+  // Heat Pump Water Heater defaults
+  heat_pump: {
+    default_cop: 3.2,           // Standard commercial COP
+    use_heat_pump: false,       // Default to off
+    design_conditions: 'standard' as const,
+    // Manufacturer reference COPs at standard conditions (68°F air, 58°F inlet, 140°F outlet)
+    manufacturers: {
+      colmac_cxa: 3.2,          // Colmac CxA series
+      lync_lyn: 3.5,            // Lync by Watts LYN series
+      transom_hpa: 3.8,         // Transom HPA series
+      aermec_nrb: 3.3,          // Aermec NRB series
+      sanden_sanco2: 3.0,       // Sanden SANCO2 (high temp CO2)
+    },
+  },
 }
 
 // ASHRAE Service Water Heating demand factors by building type
@@ -250,6 +264,11 @@ export function getDefaultDHWSettings(climate: ClimateType): DHWSettings {
     // Efficiency
     gasEfficiency: dhwDefaults.efficiency_presets.condensing,
     electricEfficiency: 0.98,
+    
+    // Heat Pump settings (for electric heaters)
+    useHeatPump: dhwDefaults.heat_pump.use_heat_pump,
+    heatPumpCOP: dhwDefaults.heat_pump.default_cop,
+    heatPumpDesignConditions: dhwDefaults.heat_pump.design_conditions,
     
     // Temperatures
     storageTemp: dhwDefaults.storage_temp_f,
