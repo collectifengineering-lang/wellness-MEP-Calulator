@@ -34,7 +34,7 @@ export default function ZoneSystemTree() {
     e.preventDefault()
     const spaceId = e.dataTransfer.getData('spaceId')
     if (spaceId) {
-      assignSpaceToZone(spaceId, undefined)
+      assignSpaceToZone(spaceId, null)
     }
     setDraggedSpace(null)
   }
@@ -50,7 +50,7 @@ export default function ZoneSystemTree() {
     e.preventDefault()
     const zoneId = e.dataTransfer.getData('zoneId')
     if (zoneId) {
-      assignZoneToSystem(zoneId, undefined)
+      assignZoneToSystem(zoneId, null)
     }
     setDraggedZone(null)
   }

@@ -4,9 +4,7 @@
  * Uses the same calculation logic as Concept MEP Pool Room Tab
  */
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { v4 as uuidv4 } from 'uuid'
 import { useHVACStore } from '../../../store/useHVACStore'
-import PoolEditor from '../../pool-design/PoolEditor'
 import {
   calculatePoolRoomLoads,
   getDefaultPoolRoomParams,
@@ -25,7 +23,7 @@ interface PoolSpaceConfig {
 }
 
 export default function PoolDehumidification() {
-  const { spaces, currentProject, updateSpace } = useHVACStore()
+  const { spaces } = useHVACStore()
   
   // Selected space for pool calculations
   const [selectedSpaceId, setSelectedSpaceId] = useState<string | null>(null)
@@ -100,7 +98,7 @@ export default function PoolDehumidification() {
   
   // Pool CRUD operations
   const addPool = (type: PoolType = 'recreational') => {
-    const newPool = createDefaultPool(type, pools.length + 1)
+    const newPool = createDefaultPool(`pool-${Date.now()}`, type)
     setPools([...pools, newPool])
   }
   
@@ -190,17 +188,17 @@ export default function PoolDehumidification() {
                 <label className="block text-xs text-surface-400 mb-1">Room Area (SF)</label>
                 <input
                   type="number"
-                  value={params.roomAreaSf}
-                  onChange={e => setParams({ ...params, roomAreaSf: Number(e.target.value) })}
+                  value={params.roomSF}
+                  onChange={e => setParams({ ...params, roomSF: Number(e.target.value) })}
                   className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs text-surface-400 mb-1">Deck Area (SF)</label>
+                <label className="block text-xs text-surface-400 mb-1">Wet Deck Area (SF)</label>
                 <input
                   type="number"
-                  value={params.deckAreaSf}
-                  onChange={e => setParams({ ...params, deckAreaSf: Number(e.target.value) })}
+                  value={params.wetDeckAreaSF}
+                  onChange={e => setParams({ ...params, wetDeckAreaSF: Number(e.target.value) })}
                   className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
                 />
               </div>
@@ -217,8 +215,8 @@ export default function PoolDehumidification() {
                 <label className="block text-xs text-surface-400 mb-1">Room Air Temp (°F)</label>
                 <input
                   type="number"
-                  value={params.roomAirTempF}
-                  onChange={e => setParams({ ...params, roomAirTempF: Number(e.target.value) })}
+                  value={params.airTempF}
+                  onChange={e => setParams({ ...params, airTempF: Number(e.target.value) })}
                   className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
                 />
               </div>
@@ -226,53 +224,27 @@ export default function PoolDehumidification() {
                 <label className="block text-xs text-surface-400 mb-1">Room RH (%)</label>
                 <input
                   type="number"
-                  value={params.roomRhPercent}
-                  onChange={e => setParams({ ...params, roomRhPercent: Number(e.target.value) })}
+                  value={params.relativeHumidity}
+                  onChange={e => setParams({ ...params, relativeHumidity: Number(e.target.value) })}
                   className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs text-surface-400 mb-1">Outdoor DB (°F)</label>
+                <label className="block text-xs text-surface-400 mb-1">Spectators</label>
                 <input
                   type="number"
-                  value={params.outdoorDbF}
-                  onChange={e => setParams({ ...params, outdoorDbF: Number(e.target.value) })}
+                  value={params.spectatorCount}
+                  onChange={e => setParams({ ...params, spectatorCount: Number(e.target.value) })}
                   className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs text-surface-400 mb-1">Outdoor WB (°F)</label>
+                <label className="block text-xs text-surface-400 mb-1">Air Changes/Hr</label>
                 <input
                   type="number"
-                  value={params.outdoorWbF}
-                  onChange={e => setParams({ ...params, outdoorWbF: Number(e.target.value) })}
-                  className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Max Spectators</label>
-                <input
-                  type="number"
-                  value={params.maxSpectators}
-                  onChange={e => setParams({ ...params, maxSpectators: Number(e.target.value) })}
-                  className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Max Swimmers</label>
-                <input
-                  type="number"
-                  value={params.maxSwimmers}
-                  onChange={e => setParams({ ...params, maxSwimmers: Number(e.target.value) })}
-                  className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Wet Deck %</label>
-                <input
-                  type="number"
-                  value={params.wetDeckPercent}
-                  onChange={e => setParams({ ...params, wetDeckPercent: Number(e.target.value) })}
+                  step="0.5"
+                  value={params.airChangesPerHour}
+                  onChange={e => setParams({ ...params, airChangesPerHour: Number(e.target.value) })}
                   className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
                 />
               </div>
@@ -325,12 +297,12 @@ export default function PoolDehumidification() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <span className="text-2xl">
-                          {pool.type === 'whirlpool' ? '🛁' : pool.type === 'cold_plunge' ? '🥶' : '🏊'}
+                          {pool.poolType === 'whirlpool' ? '🛁' : pool.poolType === 'cold_plunge' ? '🥶' : '🏊'}
                         </span>
                         <div>
                           <div className="font-medium text-white">{pool.name}</div>
                           <div className="text-sm text-surface-400">
-                            {pool.surfaceAreaSf.toLocaleString()} SF • {pool.waterTempF}°F • {POOL_TYPE_PRESETS[pool.type].name}
+                            {pool.surfaceAreaSF.toLocaleString()} SF • {pool.waterTempF}°F • {POOL_TYPE_PRESETS[pool.poolType].name}
                           </div>
                         </div>
                       </div>
@@ -354,11 +326,56 @@ export default function PoolDehumidification() {
           
           {/* Pool Editor */}
           {editingPool && (
-            <PoolEditor
-              pool={editingPool}
-              onUpdate={updates => updatePool(editingPool.id, updates)}
-              onClose={() => setEditingPoolId(null)}
-            />
+            <div className="bg-surface-800 rounded-xl border border-cyan-500 p-4">
+              <h4 className="text-md font-semibold text-white mb-4">Edit: {editingPool.name}</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-xs text-surface-400 mb-1">Pool Name</label>
+                  <input
+                    type="text"
+                    value={editingPool.name}
+                    onChange={e => updatePool(editingPool.id, { name: e.target.value })}
+                    className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-surface-400 mb-1">Surface Area (SF)</label>
+                  <input
+                    type="number"
+                    value={editingPool.surfaceAreaSF}
+                    onChange={e => updatePool(editingPool.id, { surfaceAreaSF: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-surface-400 mb-1">Water Temp (°F)</label>
+                  <input
+                    type="number"
+                    value={editingPool.waterTempF}
+                    onChange={e => updatePool(editingPool.id, { waterTempF: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-surface-400 mb-1">Activity Factor</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.5"
+                    max="1.5"
+                    value={editingPool.activityFactor}
+                    onChange={e => updatePool(editingPool.id, { activityFactor: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm"
+                  />
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingPoolId(null)}
+                className="mt-4 px-4 py-2 bg-surface-700 hover:bg-surface-600 text-white rounded-lg text-sm"
+              >
+                Done Editing
+              </button>
+            </div>
           )}
           
           {/* Results */}
@@ -376,46 +393,46 @@ export default function PoolDehumidification() {
                   icon="💧"
                 />
                 <ResultCard
-                  label="Latent Load"
-                  value={(results.totalLatentLoadBtuh / 1000).toFixed(1)}
-                  unit="MBH"
-                  icon="🌡️"
-                />
-                <ResultCard
-                  label="Sensible Load"
-                  value={(results.sensibleLoadBtuh / 1000).toFixed(1)}
-                  unit="MBH"
-                  icon="🔥"
-                />
-                <ResultCard
-                  label="Total Load"
-                  value={(results.totalLoadBtuh / 1000).toFixed(1)}
-                  unit="MBH"
-                  icon="⚡"
-                />
-                <ResultCard
-                  label="Cooling Tons"
-                  value={results.totalTons.toFixed(1)}
-                  unit="tons"
-                  icon="❄️"
-                />
-                <ResultCard
-                  label="ASHRAE Ventilation"
-                  value={results.ashraeVentilationCfm.toFixed(0)}
-                  unit="CFM"
-                  icon="💨"
-                />
-                <ResultCard
-                  label="Recommended Supply"
-                  value={results.recommendedSupplyCfm.toFixed(0)}
+                  label="Supply Air"
+                  value={results.supplyAirCFM.toFixed(0)}
                   unit="CFM"
                   icon="📤"
                 />
                 <ResultCard
-                  label="Pool Heating"
-                  value={(results.poolHeaterMbh).toFixed(1)}
-                  unit="MBH"
-                  icon="🔥"
+                  label="Outdoor Air"
+                  value={results.outdoorAirCFM.toFixed(0)}
+                  unit="CFM"
+                  icon="🌬️"
+                />
+                <ResultCard
+                  label="Exhaust Air"
+                  value={results.exhaustAirCFM.toFixed(0)}
+                  unit="CFM"
+                  icon="💨"
+                />
+                <ResultCard
+                  label="Room Volume"
+                  value={(results.roomVolumeCF / 1000).toFixed(1)}
+                  unit="k CF"
+                  icon="📦"
+                />
+                <ResultCard
+                  label="Total Pool Area"
+                  value={results.totalPoolAreaSF.toFixed(0)}
+                  unit="SF"
+                  icon="🏊"
+                />
+                <ResultCard
+                  label="Actual ACH"
+                  value={results.actualACH.toFixed(1)}
+                  unit="ACH"
+                  icon="🔄"
+                />
+                <ResultCard
+                  label="Recommended ACH"
+                  value={`${results.recommendedACH.min}-${results.recommendedACH.max}`}
+                  unit="ACH"
+                  icon="📋"
                 />
               </div>
               
@@ -425,10 +442,10 @@ export default function PoolDehumidification() {
                   <h4 className="text-sm font-medium text-surface-300 mb-3">Per-Pool Evaporation</h4>
                   <div className="space-y-2">
                     {results.poolBreakdown.map(pb => (
-                      <div key={pb.poolId} className="flex items-center justify-between text-sm">
-                        <span className="text-surface-400">{pb.poolName}</span>
+                      <div key={pb.id} className="flex items-center justify-between text-sm">
+                        <span className="text-surface-400">{pb.name}</span>
                         <span className="text-white font-medium">
-                          {pb.evaporationLbHr.toFixed(2)} lb/hr ({(pb.latentLoadBtuh / 1000).toFixed(1)} MBH)
+                          {pb.lbHr.toFixed(2)} lb/hr ({pb.surfaceAreaSF.toLocaleString()} SF)
                         </span>
                       </div>
                     ))}
