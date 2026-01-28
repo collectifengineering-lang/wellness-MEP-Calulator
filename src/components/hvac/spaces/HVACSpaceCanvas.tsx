@@ -628,19 +628,19 @@ function ImportSpacesModal({ source, onClose, onImport }: ImportSpacesModalProps
         // First try Supabase
         if (isSupabaseConfigured()) {
           const { data: projectsData } = await supabase
-            .from('projects')
+            .from('projects' as any)
             .select('id, name')
-            .order('updated_at', { ascending: false })
+            .order('updated_at', { ascending: false }) as { data: Array<{ id: string; name: string }> | null }
           
           if (projectsData && projectsData.length > 0) {
             // Load zones for each project
-            const projectsWithZones = await Promise.all(
+            const projectsWithZones: ConceptProject[] = await Promise.all(
               projectsData.map(async (proj) => {
                 const { data: zonesData } = await supabase
-                  .from('zones')
+                  .from('zones' as any)
                   .select('id, name, zone_type, sf')
-                  .eq('project_id', proj.id)
-                return { ...proj, zones: zonesData || [] }
+                  .eq('project_id', proj.id) as { data: ConceptZone[] | null }
+                return { id: proj.id, name: proj.name, zones: zonesData || [] }
               })
             )
             setProjects(projectsWithZones)
@@ -675,18 +675,18 @@ function ImportSpacesModal({ source, onClose, onImport }: ImportSpacesModalProps
         // Scanner - First try Supabase
         if (isSupabaseConfigured()) {
           const { data: scansData } = await supabase
-            .from('scan_projects')
+            .from('scan_projects' as any)
             .select('id, name')
-            .order('updated_at', { ascending: false })
+            .order('updated_at', { ascending: false }) as { data: Array<{ id: string; name: string }> | null }
           
           if (scansData && scansData.length > 0) {
-            const scansWithSpaces = await Promise.all(
+            const scansWithSpaces: ScanProject[] = await Promise.all(
               scansData.map(async (scan) => {
                 const { data: spacesData } = await supabase
-                  .from('scan_spaces')
+                  .from('scan_spaces' as any)
                   .select('id, name, sf, zone_type')
-                  .eq('scan_id', scan.id)
-                return { ...scan, spaces: spacesData || [] }
+                  .eq('scan_id', scan.id) as { data: ScanSpace[] | null }
+                return { id: scan.id, name: scan.name, spaces: spacesData || [] }
               })
             )
             setProjects(scansWithSpaces)
