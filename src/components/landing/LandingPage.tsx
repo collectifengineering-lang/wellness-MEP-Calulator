@@ -101,12 +101,11 @@ export default function LandingPage() {
     },
     {
       title: 'HVAC Calcs',
-      subtitle: 'Heating & Cooling',
+      subtitle: 'Ventilation & Loads',
       icon: '🌡️',
-      description: 'Detailed HVAC load calculations, equipment sizing, duct design, and energy analysis.',
+      description: 'ASHRAE 62.1 ventilation calculations, space-zone-system hierarchy, ERV analysis, and ductulator.',
       path: '/hvac',
       color: '#f59e0b', // amber
-      comingSoon: true,
     },
     {
       title: 'Electrical',
