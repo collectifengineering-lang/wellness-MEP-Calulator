@@ -24,27 +24,35 @@ export default function ZoneSystemTree() {
   const getZonesInSystem = (systemId: string) => zones.filter(z => z.systemId === systemId)
   
   // Drag handlers for spaces
-  const handleDragStartSpace = (spaceId: string) => {
+  const handleDragStartSpace = (e: React.DragEvent, spaceId: string) => {
+    e.dataTransfer.setData('spaceId', spaceId)
+    e.dataTransfer.effectAllowed = 'move'
     setDraggedSpace(spaceId)
   }
   
-  const handleDropOnUnassigned = () => {
-    if (draggedSpace) {
-      assignSpaceToZone(draggedSpace, null)
-      setDraggedSpace(null)
+  const handleDropOnUnassigned = (e: React.DragEvent) => {
+    e.preventDefault()
+    const spaceId = e.dataTransfer.getData('spaceId')
+    if (spaceId) {
+      assignSpaceToZone(spaceId, undefined)
     }
+    setDraggedSpace(null)
   }
   
   // Drag handlers for zones
-  const handleDragStartZone = (zoneId: string) => {
+  const handleDragStartZone = (e: React.DragEvent, zoneId: string) => {
+    e.dataTransfer.setData('zoneId', zoneId)
+    e.dataTransfer.effectAllowed = 'move'
     setDraggedZone(zoneId)
   }
   
-  const handleDropZoneOnUnassigned = () => {
-    if (draggedZone) {
-      assignZoneToSystem(draggedZone, null)
-      setDraggedZone(null)
+  const handleDropZoneOnUnassigned = (e: React.DragEvent) => {
+    e.preventDefault()
+    const zoneId = e.dataTransfer.getData('zoneId')
+    if (zoneId) {
+      assignZoneToSystem(zoneId, undefined)
     }
+    setDraggedZone(null)
   }
   
   return (
@@ -85,19 +93,26 @@ export default function ZoneSystemTree() {
           <div
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleDropOnUnassigned}
-            className="min-h-[200px] bg-surface-800 rounded-lg border border-surface-700 p-3 space-y-2"
+            className={`min-h-[200px] bg-surface-800 rounded-lg border p-3 space-y-2 transition-colors ${
+              draggedSpace ? 'border-cyan-500 bg-cyan-900/10' : 'border-surface-700'
+            }`}
           >
             {unassignedSpaces.length === 0 ? (
               <div className="text-center py-8 text-surface-500 text-sm">
-                All spaces assigned
+                {draggedSpace ? '📥 Drop here to unassign' : 'All spaces assigned'}
               </div>
             ) : (
               unassignedSpaces.map(space => (
                 <div
                   key={space.id}
                   draggable
-                  onDragStart={() => handleDragStartSpace(space.id)}
-                  className="p-2 bg-surface-900 rounded border border-surface-600 cursor-move hover:border-cyan-600 transition-colors"
+                  onDragStart={(e) => handleDragStartSpace(e, space.id)}
+                  onDragEnd={() => setDraggedSpace(null)}
+                  className={`p-2 bg-surface-900 rounded border cursor-move transition-colors ${
+                    draggedSpace === space.id 
+                      ? 'border-cyan-400 opacity-50' 
+                      : 'border-surface-600 hover:border-cyan-600'
+                  }`}
                 >
                   <div className="text-white text-sm font-medium">{space.name}</div>
                   <div className="text-xs text-surface-400">{space.areaSf} SF</div>
@@ -117,12 +132,14 @@ export default function ZoneSystemTree() {
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDropZoneOnUnassigned}
-              className="min-h-[100px] bg-surface-800 rounded-lg border border-surface-700 p-3"
+              className={`min-h-[100px] bg-surface-800 rounded-lg border p-3 transition-colors ${
+                draggedZone ? 'border-emerald-500 bg-emerald-900/10' : 'border-surface-700'
+              }`}
             >
               <div className="text-xs text-surface-500 mb-2">Unassigned to System</div>
               {unassignedZones.length === 0 ? (
                 <div className="text-center py-4 text-surface-500 text-sm">
-                  No unassigned zones
+                  {draggedZone ? '📥 Drop here to unassign' : 'No unassigned zones'}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -134,7 +151,9 @@ export default function ZoneSystemTree() {
                       onEdit={() => setEditingZone(zone.id)}
                       onDelete={() => deleteZone(zone.id)}
                       onDropSpace={(spaceId) => assignSpaceToZone(spaceId, zone.id)}
-                      onDragStart={() => handleDragStartZone(zone.id)}
+                      onDragStart={(e) => handleDragStartZone(e, zone.id)}
+                      onDragEnd={() => setDraggedZone(null)}
+                      isDragging={draggedZone === zone.id}
                       draggable
                     />
                   ))}
@@ -169,6 +188,9 @@ export default function ZoneSystemTree() {
                   onDropZone={(zoneId) => assignZoneToSystem(zoneId, system.id)}
                   onEditZone={setEditingZone}
                   onDropSpaceOnZone={assignSpaceToZone}
+                  onDragStartZone={handleDragStartZone}
+                  onDragEndZone={() => setDraggedZone(null)}
+                  draggedZoneId={draggedZone}
                 />
               ))
             )}
@@ -209,31 +231,36 @@ interface ZoneCardProps {
   onEdit: () => void
   onDelete: () => void
   onDropSpace: (spaceId: string) => void
-  onDragStart?: () => void
+  onDragStart?: (e: React.DragEvent) => void
+  onDragEnd?: () => void
+  isDragging?: boolean
   draggable?: boolean
 }
 
-function ZoneCard({ zone, spaces, onEdit, onDelete, onDropSpace, onDragStart, draggable }: ZoneCardProps) {
+function ZoneCard({ zone, spaces, onEdit, onDelete, onDropSpace, onDragStart, onDragEnd, isDragging, draggable }: ZoneCardProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   
   return (
     <div
       draggable={draggable}
       onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onDragOver={(e) => {
         e.preventDefault()
+        e.stopPropagation()
         setIsDragOver(true)
       }}
       onDragLeave={() => setIsDragOver(false)}
       onDrop={(e) => {
         e.preventDefault()
+        e.stopPropagation()
         setIsDragOver(false)
         const spaceId = e.dataTransfer.getData('spaceId')
         if (spaceId) onDropSpace(spaceId)
       }}
       className={`p-3 bg-emerald-900/30 rounded-lg border transition-colors ${
-        isDragOver ? 'border-emerald-400' : 'border-emerald-700'
-      } ${draggable ? 'cursor-move' : ''}`}
+        isDragOver ? 'border-emerald-400 bg-emerald-900/50' : 'border-emerald-700'
+      } ${draggable ? 'cursor-move' : ''} ${isDragging ? 'opacity-50' : ''}`}
     >
       <div className="flex items-start justify-between mb-2">
         <div>
@@ -274,9 +301,15 @@ interface SystemCardProps {
   onDropZone: (zoneId: string) => void
   onEditZone: (zoneId: string) => void
   onDropSpaceOnZone: (spaceId: string, zoneId: string) => void
+  onDragStartZone: (e: React.DragEvent, zoneId: string) => void
+  onDragEndZone: () => void
+  draggedZoneId: string | null
 }
 
-function SystemCard({ system, zones, spaces, onEdit, onDelete, onDropZone, onEditZone, onDropSpaceOnZone }: SystemCardProps) {
+function SystemCard({ 
+  system, zones, spaces, onEdit, onDelete, onDropZone, onEditZone, onDropSpaceOnZone,
+  onDragStartZone, onDragEndZone, draggedZoneId
+}: SystemCardProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   
   const systemTypeLabel = {
@@ -291,7 +324,11 @@ function SystemCard({ system, zones, spaces, onEdit, onDelete, onDropZone, onEdi
     <div
       onDragOver={(e) => {
         e.preventDefault()
-        setIsDragOver(true)
+        // Only highlight for zone drops, not space drops
+        const types = e.dataTransfer.types
+        if (types.includes('zoneid')) {
+          setIsDragOver(true)
+        }
       }}
       onDragLeave={() => setIsDragOver(false)}
       onDrop={(e) => {
@@ -301,7 +338,7 @@ function SystemCard({ system, zones, spaces, onEdit, onDelete, onDropZone, onEdi
         if (zoneId) onDropZone(zoneId)
       }}
       className={`p-3 bg-purple-900/30 rounded-lg border transition-colors ${
-        isDragOver ? 'border-purple-400' : 'border-purple-700'
+        isDragOver ? 'border-purple-400 bg-purple-900/50' : 'border-purple-700'
       }`}
     >
       <div className="flex items-start justify-between mb-2">
@@ -328,12 +365,18 @@ function SystemCard({ system, zones, spaces, onEdit, onDelete, onDropZone, onEdi
               onEdit={() => onEditZone(zone.id)}
               onDelete={() => {}}
               onDropSpace={(spaceId) => onDropSpaceOnZone(spaceId, zone.id)}
+              onDragStart={(e) => onDragStartZone(e, zone.id)}
+              onDragEnd={onDragEndZone}
+              isDragging={draggedZoneId === zone.id}
+              draggable
             />
           ))}
         </div>
       ) : (
-        <div className="text-xs text-surface-500 italic p-2 border border-dashed border-surface-600 rounded">
-          Drop zones here
+        <div className={`text-xs text-surface-500 italic p-2 border border-dashed rounded transition-colors ${
+          isDragOver ? 'border-purple-400 text-purple-300' : 'border-surface-600'
+        }`}>
+          {isDragOver ? '📥 Drop zone here' : 'Drop zones here'}
         </div>
       )}
     </div>
