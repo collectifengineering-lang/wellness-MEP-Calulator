@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useHVACStore } from '../../../store/useHVACStore'
 import { useScannerStore } from '../../../store/useScannerStore'
-import { ASHRAE62_SPACE_TYPES, getCategories, getSpaceTypesByCategory, calculateDefaultOccupancy } from '../../../data/ashrae62'
+import { ASHRAE62_SPACE_TYPES, getCategories, getSpaceTypesByCategory, calculateDefaultOccupancy, matchSpaceNameToASHRAE, matchZoneTypeToASHRAE } from '../../../data/ashrae62'
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ASHRAE62SpaceType } from '../../../data/ashrae62'
 
@@ -747,34 +747,21 @@ function ImportSpacesModal({ source, onClose, onImport }: ImportSpacesModalProps
     setSelectedItems(new Set())
   }
   
-  // Map zone type to ASHRAE 62.1 space type
-  const mapToASHRAESpaceType = (zoneType: string): string => {
-    const mapping: Record<string, string> = {
-      'office': 'office',
-      'conference': 'conference_meeting',
-      'lobby': 'lobby_public',
-      'reception': 'reception',
-      'retail': 'retail_sales',
-      'restaurant': 'dining_room',
-      'kitchen': 'kitchen_cooking',
-      'gym': 'health_club_weights',
-      'fitness': 'health_club_aerobics',
-      'locker_room': 'spa_locker_room',
-      'spa': 'spa_treatment',
-      'pool': 'swimming_pool',
-      'classroom': 'classroom_9plus',
-      'hotel_room': 'bedroom_dorm',
-      'corridor': 'corridor',
-      'storage': 'storage_conditioned',
-      'mechanical': 'electrical_room',
-      'restroom': 'toilet_public',
-      'laundry_commercial': 'hotel_laundry',
-      'yoga_studio': 'yoga_studio',
-      'pilates_studio': 'pilates_studio',
-      'sauna': 'sauna',
-      'steam_room': 'steam_room',
+  // Intelligently match space name and zone type to ASHRAE 62.1 space type
+  // Uses AI-style keyword matching to find the best match
+  const matchToASHRAESpaceType = (name: string, zoneType?: string): string => {
+    // First try matching by name (AI-style keyword matching)
+    const nameMatch = matchSpaceNameToASHRAE(name)
+    if (nameMatch !== 'office') {
+      return nameMatch
     }
-    return mapping[zoneType] || 'office'
+    
+    // If name didn't give a specific match, try zone type
+    if (zoneType) {
+      return matchZoneTypeToASHRAE(zoneType)
+    }
+    
+    return 'office'
   }
   
   const handleImport = () => {
@@ -786,10 +773,13 @@ function ImportSpacesModal({ source, onClose, onImport }: ImportSpacesModalProps
         ? (item as ConceptZone).zone_type 
         : (item as ScanSpace).zone_type
       
+      // Use intelligent matching based on BOTH name AND zone type
+      const matchedSpaceType = matchToASHRAESpaceType(item.name, zoneType)
+      
       return {
         name: item.name,
         areaSf: item.sf || 500,
-        spaceType: mapToASHRAESpaceType(zoneType || 'office'),
+        spaceType: matchedSpaceType,
         ceilingHeightFt: 10,
       }
     })

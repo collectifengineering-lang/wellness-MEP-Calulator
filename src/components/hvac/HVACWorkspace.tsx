@@ -7,12 +7,13 @@ import HVACSpaceCanvas from './spaces/HVACSpaceCanvas'
 import ZoneSystemTree from './organization/ZoneSystemTree'
 import VentilationSummary from './results/VentilationSummary'
 import Ductulator from './calculators/Ductulator'
+import PoolDehumidification from './calculators/PoolDehumidification'
 import HVACResults from './results/HVACResults'
 import { useHVACStore, defaultHVACProjectSettings } from '../../store/useHVACStore'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import type { HVACProject, HVACSpace, HVACZone, HVACSystem, HVACProjectSettings } from '../../store/useHVACStore'
 
-type TabType = 'settings' | 'spaces' | 'organization' | 'ventilation' | 'calculators' | 'results'
+type TabType = 'settings' | 'spaces' | 'organization' | 'ventilation' | 'pool' | 'calculators' | 'results'
 
 export default function HVACWorkspace() {
   const { projectId } = useParams()
@@ -150,6 +151,7 @@ export default function HVACWorkspace() {
     { id: 'spaces', label: '🏠 Spaces', description: 'Add & edit spaces' },
     { id: 'organization', label: '🔗 Zones & Systems', description: 'Organize hierarchy' },
     { id: 'ventilation', label: '💨 Ventilation', description: 'ASHRAE 62.1' },
+    { id: 'pool', label: '🏊 Pool Dehum', description: 'Natatorium loads' },
     { id: 'calculators', label: '🧮 Calculators', description: 'Ductulator & more' },
     { id: 'results', label: '📊 Results', description: 'Reports & export' },
   ]
@@ -221,6 +223,7 @@ export default function HVACWorkspace() {
         {activeTab === 'spaces' && <HVACSpaceCanvas />}
         {activeTab === 'organization' && <ZoneSystemTree />}
         {activeTab === 'ventilation' && <VentilationSummary />}
+        {activeTab === 'pool' && <PoolDehumidification />}
         {activeTab === 'calculators' && <Ductulator />}
         {activeTab === 'results' && <HVACResults />}
       </main>

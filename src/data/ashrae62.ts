@@ -337,3 +337,336 @@ export function searchSpaceTypes(query: string): ASHRAE62SpaceType[] {
     st.category.toLowerCase().includes(lowerQuery)
   )
 }
+
+// ============================================
+// ASHRAE Space Type Name Matching
+// Maps common space names to ASHRAE 62.1 space type IDs
+// Similar to ZONE_TYPE_MAPPING in xai.ts but for ASHRAE ventilation
+// ============================================
+
+const ASHRAE_NAME_MAPPING: Record<string, string> = {
+  // Reception & Lobby
+  'reception': 'reception',
+  'lobby': 'lobby_public',
+  'entry': 'main_entry_lobby',
+  'entrance': 'main_entry_lobby',
+  'waiting': 'lobby_public',
+  'front desk': 'reception',
+  'concierge': 'reception',
+  
+  // Office
+  'office': 'office',
+  'workspace': 'office',
+  'workstation': 'office',
+  'cubicle': 'office',
+  'open office': 'office',
+  'private office': 'office',
+  'executive': 'office',
+  
+  // Conference
+  'conference': 'conference_meeting',
+  'conference room': 'conference_meeting',
+  'meeting': 'conference_meeting',
+  'meeting room': 'conference_meeting',
+  'boardroom': 'conference_meeting',
+  'huddle': 'conference_meeting',
+  'training': 'classroom_9plus',
+  'training room': 'classroom_9plus',
+  
+  // Break Room / Lounge
+  'break room': 'break_room',
+  'breakroom': 'break_room',
+  'break': 'break_room',
+  'lounge': 'break_room',
+  'employee lounge': 'break_room',
+  'staff lounge': 'break_room',
+  'lunch room': 'break_room',
+  'lunchroom': 'break_room',
+  'pantry': 'break_room',
+  'kitchenette': 'break_room',
+  
+  // Restroom / Toilet
+  'restroom': 'toilet_public',
+  'bathroom': 'toilet_public',
+  'toilet': 'toilet_public',
+  'wc': 'toilet_public',
+  'lavatory': 'toilet_public',
+  'mens': 'toilet_public',
+  "men's": 'toilet_public',
+  'womens': 'toilet_public',
+  "women's": 'toilet_public',
+  'unisex': 'toilet_public',
+  'ada': 'toilet_public',
+  
+  // Locker Room
+  'locker': 'spa_locker_room',
+  'locker room': 'spa_locker_room',
+  'changing': 'spa_locker_room',
+  'changing room': 'spa_locker_room',
+  'dressing': 'spa_locker_room',
+  'dressing room': 'spa_locker_room',
+  
+  // Fitness
+  'gym': 'health_club_weights',
+  'gymnasium': 'gym_arena_play',
+  'fitness': 'health_club_weights',
+  'fitness center': 'health_club_weights',
+  'weight room': 'health_club_weights',
+  'weights': 'health_club_weights',
+  'cardio': 'health_club_aerobics',
+  'aerobics': 'health_club_aerobics',
+  'aerobic': 'health_club_aerobics',
+  'spin': 'health_club_aerobics',
+  'spinning': 'health_club_aerobics',
+  'cycling': 'health_club_aerobics',
+  'group fitness': 'health_club_aerobics',
+  'group exercise': 'health_club_aerobics',
+  'class': 'health_club_aerobics',
+  'studio': 'health_club_aerobics',
+  
+  // Yoga / Pilates
+  'yoga': 'yoga_studio',
+  'yoga studio': 'yoga_studio',
+  'hot yoga': 'yoga_studio',
+  'pilates': 'pilates_studio',
+  'pilates studio': 'pilates_studio',
+  'reformer': 'pilates_studio',
+  'barre': 'health_club_aerobics',
+  'stretch': 'spa_relaxation',
+  'stretching': 'spa_relaxation',
+  
+  // Boxing / MMA
+  'boxing': 'health_club_aerobics',
+  'mma': 'health_club_aerobics',
+  'martial arts': 'health_club_aerobics',
+  'fight': 'health_club_aerobics',
+  
+  // Pool / Natatorium
+  'pool': 'swimming_pool',
+  'pool room': 'swimming_pool',
+  'pool area': 'swimming_pool',
+  'swimming': 'swimming_pool',
+  'swimming pool': 'swimming_pool',
+  'natatorium': 'natatorium',
+  'lap pool': 'swimming_pool',
+  'hot tub': 'swimming_pool',
+  'jacuzzi': 'swimming_pool',
+  'whirlpool': 'swimming_pool',
+  'spa pool': 'swimming_pool',
+  'cold plunge': 'swimming_pool',
+  'plunge': 'swimming_pool',
+  
+  // Spa / Treatment
+  'spa': 'spa_treatment',
+  'treatment': 'spa_treatment',
+  'treatment room': 'spa_treatment',
+  'massage': 'spa_massage',
+  'massage room': 'spa_massage',
+  'facial': 'spa_treatment',
+  'body treatment': 'spa_treatment',
+  'relaxation': 'spa_relaxation',
+  'quiet room': 'spa_relaxation',
+  'meditation': 'spa_relaxation',
+  
+  // Sauna / Steam
+  'sauna': 'sauna',
+  'dry sauna': 'sauna',
+  'finnish': 'sauna',
+  'banya': 'sauna',
+  'russian': 'sauna',
+  'steam': 'steam_room',
+  'steam room': 'steam_room',
+  'hammam': 'steam_room',
+  'turkish': 'steam_room',
+  
+  // Kitchen / Food
+  'kitchen': 'kitchen_cooking',
+  'commercial kitchen': 'kitchen_cooking',
+  'prep kitchen': 'kitchen_cooking',
+  'restaurant': 'dining_room',
+  'dining': 'dining_room',
+  'dining room': 'dining_room',
+  'cafe': 'cafe_fast_food',
+  'cafeteria': 'cafe_fast_food',
+  'food court': 'cafe_fast_food',
+  'juice bar': 'cafe_fast_food',
+  'snack bar': 'cafe_fast_food',
+  'bar': 'bar_cocktail',
+  'cocktail': 'bar_cocktail',
+  
+  // Storage / Back of House
+  'storage': 'storage_conditioned',
+  'storage room': 'storage_conditioned',
+  'janitor': 'storage_conditioned',
+  'janitorial': 'storage_conditioned',
+  'mechanical': 'electrical_room',
+  'mech': 'electrical_room',
+  'electrical': 'electrical_room',
+  'elec': 'electrical_room',
+  'utility': 'electrical_room',
+  'boiler': 'electrical_room',
+  'pump room': 'electrical_room',
+  
+  // Corridor
+  'corridor': 'corridor',
+  'hallway': 'corridor',
+  'hall': 'corridor',
+  'passage': 'corridor',
+  'walkway': 'corridor',
+  
+  // Laundry
+  'laundry': 'hotel_laundry',
+  'laundry room': 'hotel_laundry',
+  
+  // Hotel / Lodging
+  'hotel room': 'bedroom_dorm',
+  'guest room': 'bedroom_dorm',
+  'bedroom': 'bedroom_dorm',
+  'suite': 'bedroom_dorm',
+  'dormitory': 'bedroom_dorm',
+  'dorm': 'bedroom_dorm',
+  
+  // Retail
+  'retail': 'retail_sales',
+  'shop': 'retail_sales',
+  'store': 'retail_sales',
+  'salon': 'beauty_nail_salon',
+  'beauty': 'beauty_nail_salon',
+  'nail': 'beauty_nail_salon',
+  'barber': 'barbershop',
+  
+  // Education
+  'classroom': 'classroom_9plus',
+  'class room': 'classroom_9plus',
+  'lecture': 'lecture_classroom',
+  'lecture hall': 'lecture_hall',
+  'library': 'library',
+  'lab': 'science_lab',
+  'laboratory': 'science_lab',
+  
+  // Assembly
+  'auditorium': 'auditorium',
+  'theater': 'auditorium',
+  'theatre': 'auditorium',
+  'church': 'place_of_worship',
+  'chapel': 'place_of_worship',
+  'worship': 'place_of_worship',
+  'event space': 'hotel_multipurpose',
+  'multipurpose': 'hotel_multipurpose',
+  'ballroom': 'hotel_multipurpose',
+  
+  // Sports
+  'basketball': 'gym_arena_play',
+  'tennis': 'gym_arena_play',
+  'court': 'gym_arena_play',
+  'racquetball': 'gym_arena_play',
+  'squash': 'gym_arena_play',
+  'bowling': 'bowling_alley',
+  
+  // Recovery
+  'recovery': 'spa_relaxation',
+  'cryo': 'spa_treatment',
+  'cryotherapy': 'spa_treatment',
+  'iv': 'spa_treatment',
+  'longevity': 'spa_treatment',
+  
+  // Childcare
+  'daycare': 'daycare_5plus',
+  'childcare': 'daycare_5plus',
+  'kids': 'daycare_5plus',
+  'children': 'daycare_5plus',
+  'nursery': 'daycare_under2',
+}
+
+/**
+ * Match a space name to the best ASHRAE 62.1 space type
+ * Uses keyword matching similar to Concept MEP zone type matching
+ * 
+ * @param spaceName - The name of the space to match
+ * @returns The ASHRAE space type ID, or 'office' as default
+ */
+export function matchSpaceNameToASHRAE(spaceName: string): string {
+  const lowerName = spaceName.toLowerCase().trim()
+  
+  // Direct match
+  if (ASHRAE_NAME_MAPPING[lowerName]) {
+    return ASHRAE_NAME_MAPPING[lowerName]
+  }
+  
+  // Partial match - check if any mapping key is contained in the name
+  for (const [keyword, spaceTypeId] of Object.entries(ASHRAE_NAME_MAPPING)) {
+    if (lowerName.includes(keyword)) {
+      return spaceTypeId
+    }
+  }
+  
+  // Check against ASHRAE space type names and displayNames
+  for (const spaceType of ASHRAE62_SPACE_TYPES) {
+    if (
+      lowerName.includes(spaceType.name.toLowerCase()) ||
+      lowerName.includes(spaceType.displayName.toLowerCase())
+    ) {
+      return spaceType.id
+    }
+  }
+  
+  // Default to office
+  return 'office'
+}
+
+/**
+ * Match a Concept MEP zone type to an ASHRAE 62.1 space type
+ * 
+ * @param zoneType - The Concept MEP zone type (e.g., 'locker_room', 'pool_indoor')
+ * @returns The ASHRAE space type ID
+ */
+export function matchZoneTypeToASHRAE(zoneType: string): string {
+  const mapping: Record<string, string> = {
+    'office': 'office',
+    'conference_room': 'conference_meeting',
+    'reception': 'reception',
+    'lobby': 'lobby_public',
+    'break_room': 'break_room',
+    'restroom': 'toilet_public',
+    'locker_room': 'spa_locker_room',
+    'open_gym': 'health_club_weights',
+    'group_fitness': 'health_club_aerobics',
+    'yoga_studio': 'yoga_studio',
+    'pilates_studio': 'pilates_studio',
+    'mma_studio': 'health_club_aerobics',
+    'stretching_area': 'spa_relaxation',
+    'pool_indoor': 'swimming_pool',
+    'pool_outdoor': 'swimming_pool',
+    'hot_tub': 'swimming_pool',
+    'cold_plunge': 'swimming_pool',
+    'sauna_electric': 'sauna',
+    'sauna_gas': 'sauna',
+    'banya_gas': 'sauna',
+    'steam_room': 'steam_room',
+    'snow_room': 'spa_treatment',
+    'contrast_suite': 'spa_treatment',
+    'massage_room': 'spa_massage',
+    'treatment_room': 'spa_treatment',
+    'couples_treatment': 'spa_treatment',
+    'private_suite': 'spa_treatment',
+    'recovery_longevity': 'spa_treatment',
+    'kitchen_commercial': 'kitchen_cooking',
+    'kitchen_light_fb': 'break_room',
+    'cafe_light_fb': 'cafe_fast_food',
+    'laundry_commercial': 'hotel_laundry',
+    'cowork': 'office',
+    'event_space': 'hotel_multipurpose',
+    'screening_room': 'auditorium',
+    'child_care': 'daycare_5plus',
+    'basketball_court': 'gym_arena_play',
+    'padel_court': 'gym_arena_play',
+    'terrace': 'corridor',
+    'corridor': 'corridor',
+    'storage': 'storage_conditioned',
+    'mechanical': 'electrical_room',
+    'elevator': 'corridor',
+    'custom': 'office',
+  }
+  
+  return mapping[zoneType] || 'office'
+}
