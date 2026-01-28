@@ -108,7 +108,6 @@ export default function Ductulator() {
   // Generate rectangular equivalents based on the round duct AREA
   const rectangularDucts = useMemo((): RectDuctResult[] => {
     const targetArea = roundDuct.area // sq ft - match this area
-    const targetAreaSqIn = targetArea * 144 // convert to sq in for calculations
     
     const results: RectDuctResult[] = []
     
@@ -117,7 +116,6 @@ export default function Ductulator() {
       for (const height of STANDARD_RECT_SIZES) {
         if (height > width) continue // Skip duplicates (12x8 = 8x12)
         
-        const nominalArea = width * height
         const interiorWidth = width - (2 * insulationThickness)
         const interiorHeight = height - (2 * insulationThickness)
         

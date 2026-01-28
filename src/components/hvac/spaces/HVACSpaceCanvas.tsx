@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { useHVACStore } from '../../../store/useHVACStore'
 import { useScannerStore } from '../../../store/useScannerStore'
 import { ASHRAE62_SPACE_TYPES, getCategories, getSpaceTypesByCategory, calculateDefaultOccupancy } from '../../../data/ashrae62'
-import { ZONE_TYPE_MAPPING } from '../../../data/zoneDefaults'
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ASHRAE62SpaceType } from '../../../data/ashrae62'
 
@@ -569,26 +568,30 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
 // Import Spaces Modal
 // ============================================
 
+interface ConceptZone {
+  id: string
+  name: string
+  zone_type: string
+  sf: number
+}
+
+interface ScanSpace {
+  id: string
+  name: string
+  sf: number
+  zone_type?: string
+}
+
 interface ConceptProject {
   id: string
   name: string
-  zones?: Array<{
-    id: string
-    name: string
-    zone_type: string
-    sf: number
-  }>
+  zones: ConceptZone[]
 }
 
 interface ScanProject {
   id: string
   name: string
-  spaces?: Array<{
-    id: string
-    name: string
-    sf: number
-    zone_type?: string
-  }>
+  spaces: ScanSpace[]
 }
 
 interface ImportableSpace {
@@ -694,17 +697,15 @@ function ImportSpacesModal({ source, onClose, onImport }: ImportSpacesModalProps
         
         // Fallback: Use local scanner store
         if (scans && scans.length > 0) {
-          const localScans = scans.map(scan => ({
+          const localScans: ScanProject[] = scans.map(scan => ({
             id: scan.id,
             name: scan.name,
-            spaces: scan.drawings?.flatMap(d => 
-              d.extractedSpaces?.map(s => ({
-                id: s.id,
-                name: s.name,
-                sf: s.sf,
-                zone_type: s.zoneType
-              })) || []
-            ) || []
+            spaces: scan.extractedSpaces?.map(s => ({
+              id: s.id,
+              name: s.name,
+              sf: s.sf,
+              zone_type: s.zoneType
+            })) || []
           }))
           setProjects(localScans)
         }
@@ -782,8 +783,8 @@ function ImportSpacesModal({ source, onClose, onImport }: ImportSpacesModalProps
     
     const spacesToImport = selectedItemsList.map(item => {
       const zoneType = source === 'concept' 
-        ? (item as ConceptProject['zones'][0]).zone_type 
-        : (item as ScanProject['spaces'][0]).zone_type
+        ? (item as ConceptZone).zone_type 
+        : (item as ScanSpace).zone_type
       
       return {
         name: item.name,
@@ -897,11 +898,11 @@ function ImportSpacesModal({ source, onClose, onImport }: ImportSpacesModalProps
                             <div className="text-white font-medium">{item.name}</div>
                             <div className="text-xs text-surface-400">
                               {item.sf?.toLocaleString() || 0} SF
-                              {source === 'concept' && (item as ConceptProject['zones'][0]).zone_type && (
-                                <> • {(item as ConceptProject['zones'][0]).zone_type}</>
+                              {source === 'concept' && (item as ConceptZone).zone_type && (
+                                <> • {(item as ConceptZone).zone_type}</>
                               )}
-                              {source === 'scanner' && (item as ScanProject['spaces'][0]).zone_type && (
-                                <> • {(item as ScanProject['spaces'][0]).zone_type}</>
+                              {source === 'scanner' && (item as ScanSpace).zone_type && (
+                                <> • {(item as ScanSpace).zone_type}</>
                               )}
                             </div>
                           </div>
