@@ -1,11 +1,15 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useHVACStore } from '../../../store/useHVACStore'
+import { useScannerStore } from '../../../store/useScannerStore'
 import { ASHRAE62_SPACE_TYPES, getCategories, getSpaceTypesByCategory, calculateDefaultOccupancy } from '../../../data/ashrae62'
+import { ZONE_TYPE_MAPPING } from '../../../data/zoneDefaults'
+import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ASHRAE62SpaceType } from '../../../data/ashrae62'
 
 export default function HVACSpaceCanvas() {
-  const { spaces, deleteSpace, zones } = useHVACStore()
+  const { spaces, deleteSpace, zones, addSpace } = useHVACStore()
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState<'concept' | 'scanner' | null>(null)
   const [editingSpace, setEditingSpace] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   
@@ -32,12 +36,28 @@ export default function HVACSpaceCanvas() {
           <h2 className="text-2xl font-bold text-white">Spaces</h2>
           <p className="text-surface-400">Add and configure spaces for ventilation calculations</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
-        >
-          <span>+</span> Add Space
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowImportModal('concept')}
+            className="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white font-medium rounded-lg transition-colors flex items-center gap-2 text-sm"
+            title="Import from Concept MEP"
+          >
+            📥 From Concept MEP
+          </button>
+          <button
+            onClick={() => setShowImportModal('scanner')}
+            className="px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-lg transition-colors flex items-center gap-2 text-sm"
+            title="Import from Plan Scanner"
+          >
+            📐 From Scanner
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium rounded-lg transition-colors flex items-center gap-2"
+          >
+            <span>+</span> Add Space
+          </button>
+        </div>
       </div>
       
       {/* Search & Stats */}
@@ -124,6 +144,18 @@ export default function HVACSpaceCanvas() {
         <EditSpaceModal
           spaceId={editingSpace}
           onClose={() => setEditingSpace(null)}
+        />
+      )}
+      
+      {/* Import Modal */}
+      {showImportModal && (
+        <ImportSpacesModal
+          source={showImportModal}
+          onClose={() => setShowImportModal(null)}
+          onImport={(importedSpaces) => {
+            importedSpaces.forEach(space => addSpace(space))
+            setShowImportModal(null)
+          }}
         />
       )}
     </div>
@@ -527,6 +559,376 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
           >
             Save Changes
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================
+// Import Spaces Modal
+// ============================================
+
+interface ConceptProject {
+  id: string
+  name: string
+  zones?: Array<{
+    id: string
+    name: string
+    zone_type: string
+    sf: number
+  }>
+}
+
+interface ScanProject {
+  id: string
+  name: string
+  spaces?: Array<{
+    id: string
+    name: string
+    sf: number
+    zone_type?: string
+  }>
+}
+
+interface ImportSpacesModalProps {
+  source: 'concept' | 'scanner'
+  onClose: () => void
+  onImport: (spaces: Array<Partial<Parameters<typeof useHVACStore.getState>['addSpace']>[0]>>) => void
+}
+
+function ImportSpacesModal({ source, onClose, onImport }: ImportSpacesModalProps) {
+  const [loading, setLoading] = useState(true)
+  const [projects, setProjects] = useState<(ConceptProject | ScanProject)[]>([])
+  const [selectedProject, setSelectedProject] = useState<string | null>(null)
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+  
+  // Get scanner store for local data
+  const { scans } = useScannerStore()
+  
+  // Load projects from database or local storage
+  useEffect(() => {
+    loadProjects()
+  }, [source])
+  
+  const loadProjects = async () => {
+    setLoading(true)
+    try {
+      if (source === 'concept') {
+        // First try Supabase
+        if (isSupabaseConfigured()) {
+          const { data: projectsData } = await supabase
+            .from('projects')
+            .select('id, name')
+            .order('updated_at', { ascending: false })
+          
+          if (projectsData && projectsData.length > 0) {
+            // Load zones for each project
+            const projectsWithZones = await Promise.all(
+              projectsData.map(async (proj) => {
+                const { data: zonesData } = await supabase
+                  .from('zones')
+                  .select('id, name, zone_type, sf')
+                  .eq('project_id', proj.id)
+                return { ...proj, zones: zonesData || [] }
+              })
+            )
+            setProjects(projectsWithZones)
+            setLoading(false)
+            return
+          }
+        }
+        
+        // Fallback: Try localStorage (mep-storage from useProjectStore)
+        try {
+          const localData = localStorage.getItem('mep-storage')
+          if (localData) {
+            const parsed = JSON.parse(localData)
+            if (parsed.state?.projects) {
+              const localProjects = parsed.state.projects.map((p: any) => ({
+                id: p.id,
+                name: p.name,
+                zones: p.zones?.map((z: any) => ({
+                  id: z.id,
+                  name: z.name,
+                  zone_type: z.type,
+                  sf: z.sf
+                })) || []
+              }))
+              setProjects(localProjects)
+            }
+          }
+        } catch (e) {
+          console.log('No local concept projects found')
+        }
+      } else {
+        // Scanner - First try Supabase
+        if (isSupabaseConfigured()) {
+          const { data: scansData } = await supabase
+            .from('scan_projects')
+            .select('id, name')
+            .order('updated_at', { ascending: false })
+          
+          if (scansData && scansData.length > 0) {
+            const scansWithSpaces = await Promise.all(
+              scansData.map(async (scan) => {
+                const { data: spacesData } = await supabase
+                  .from('scan_spaces')
+                  .select('id, name, sf, zone_type')
+                  .eq('scan_id', scan.id)
+                return { ...scan, spaces: spacesData || [] }
+              })
+            )
+            setProjects(scansWithSpaces)
+            setLoading(false)
+            return
+          }
+        }
+        
+        // Fallback: Use local scanner store
+        if (scans && scans.length > 0) {
+          const localScans = scans.map(scan => ({
+            id: scan.id,
+            name: scan.name,
+            spaces: scan.drawings?.flatMap(d => 
+              d.extractedSpaces?.map(s => ({
+                id: s.id,
+                name: s.name,
+                sf: s.sf,
+                zone_type: s.zoneType
+              })) || []
+            ) || []
+          }))
+          setProjects(localScans)
+        }
+      }
+    } catch (error) {
+      console.error('Error loading projects:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+  
+  const getItems = () => {
+    const project = projects.find(p => p.id === selectedProject)
+    if (!project) return []
+    
+    if (source === 'concept') {
+      return (project as ConceptProject).zones || []
+    } else {
+      return (project as ScanProject).spaces || []
+    }
+  }
+  
+  const toggleItem = (id: string) => {
+    const newSelected = new Set(selectedItems)
+    if (newSelected.has(id)) {
+      newSelected.delete(id)
+    } else {
+      newSelected.add(id)
+    }
+    setSelectedItems(newSelected)
+  }
+  
+  const selectAll = () => {
+    const items = getItems()
+    setSelectedItems(new Set(items.map(i => i.id)))
+  }
+  
+  const deselectAll = () => {
+    setSelectedItems(new Set())
+  }
+  
+  // Map zone type to ASHRAE 62.1 space type
+  const mapToASHRAESpaceType = (zoneType: string): string => {
+    const mapping: Record<string, string> = {
+      'office': 'office',
+      'conference': 'conference_meeting',
+      'lobby': 'lobby_public',
+      'reception': 'reception',
+      'retail': 'retail_sales',
+      'restaurant': 'dining_room',
+      'kitchen': 'kitchen_cooking',
+      'gym': 'health_club_weights',
+      'fitness': 'health_club_aerobics',
+      'locker_room': 'spa_locker_room',
+      'spa': 'spa_treatment',
+      'pool': 'swimming_pool',
+      'classroom': 'classroom_9plus',
+      'hotel_room': 'bedroom_dorm',
+      'corridor': 'corridor',
+      'storage': 'storage_conditioned',
+      'mechanical': 'electrical_room',
+      'restroom': 'toilet_public',
+      'laundry_commercial': 'hotel_laundry',
+      'yoga_studio': 'yoga_studio',
+      'pilates_studio': 'pilates_studio',
+      'sauna': 'sauna',
+      'steam_room': 'steam_room',
+    }
+    return mapping[zoneType] || 'office'
+  }
+  
+  const handleImport = () => {
+    const items = getItems()
+    const selectedItemsList = items.filter(i => selectedItems.has(i.id))
+    
+    const spacesToImport = selectedItemsList.map(item => {
+      const zoneType = source === 'concept' 
+        ? (item as ConceptProject['zones'][0]).zone_type 
+        : (item as ScanProject['spaces'][0]).zone_type
+      
+      return {
+        name: item.name,
+        areaSf: item.sf || 500,
+        spaceType: mapToASHRAESpaceType(zoneType || 'office'),
+        ceilingHeightFt: 10,
+      }
+    })
+    
+    onImport(spacesToImport)
+  }
+  
+  const items = getItems()
+  
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-surface-800 rounded-xl border border-surface-700 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-4 border-b border-surface-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">{source === 'concept' ? '📥' : '📐'}</span>
+            <h3 className="text-lg font-semibold text-white">
+              Import from {source === 'concept' ? 'Concept MEP' : 'Plan Scanner'} 🐐💨
+            </h3>
+          </div>
+          <button onClick={onClose} className="text-surface-400 hover:text-white">✕</button>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4 animate-bounce">🐐💨</div>
+              <div className="text-surface-400">Loading projects...</div>
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-4">📁</div>
+              <div className="text-surface-400">
+                No {source === 'concept' ? 'Concept MEP' : 'Plan Scanner'} projects found
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Project Selection */}
+              <div className="mb-4">
+                <label className="block text-sm text-surface-400 mb-2">Select Project</label>
+                <select
+                  value={selectedProject || ''}
+                  onChange={(e) => {
+                    setSelectedProject(e.target.value || null)
+                    setSelectedItems(new Set())
+                  }}
+                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                >
+                  <option value="">-- Select a project --</option>
+                  {projects.map(proj => (
+                    <option key={proj.id} value={proj.id}>
+                      {proj.name} ({source === 'concept' 
+                        ? `${(proj as ConceptProject).zones?.length || 0} zones`
+                        : `${(proj as ScanProject).spaces?.length || 0} spaces`
+                      })
+                    </option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Items Selection */}
+              {selectedProject && (
+                <>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-surface-400">
+                      {source === 'concept' ? 'Zones' : 'Spaces'} to import ({selectedItems.size} selected)
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={selectAll}
+                        className="text-xs text-cyan-400 hover:text-cyan-300"
+                      >
+                        Select All
+                      </button>
+                      <button
+                        onClick={deselectAll}
+                        className="text-xs text-surface-400 hover:text-white"
+                      >
+                        Deselect All
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {items.length === 0 ? (
+                    <div className="text-center py-8 text-surface-500">
+                      No {source === 'concept' ? 'zones' : 'spaces'} in this project
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                      {items.map(item => (
+                        <label
+                          key={item.id}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                            selectedItems.has(item.id)
+                              ? 'bg-cyan-900/30 border-cyan-600'
+                              : 'bg-surface-900 border-surface-700 hover:border-surface-600'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedItems.has(item.id)}
+                            onChange={() => toggleItem(item.id)}
+                            className="w-4 h-4 rounded"
+                          />
+                          <div className="flex-1">
+                            <div className="text-white font-medium">{item.name}</div>
+                            <div className="text-xs text-surface-400">
+                              {item.sf?.toLocaleString() || 0} SF
+                              {source === 'concept' && (item as ConceptProject['zones'][0]).zone_type && (
+                                <> • {(item as ConceptProject['zones'][0]).zone_type}</>
+                              )}
+                              {source === 'scanner' && (item as ScanProject['spaces'][0]).zone_type && (
+                                <> • {(item as ScanProject['spaces'][0]).zone_type}</>
+                              )}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </div>
+        
+        <div className="p-4 border-t border-surface-700 flex justify-between">
+          <div className="text-sm text-surface-500">
+            {selectedItems.size > 0 && (
+              <>Will import {selectedItems.size} space{selectedItems.size !== 1 ? 's' : ''}</>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-surface-400 hover:text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleImport}
+              disabled={selectedItems.size === 0}
+              className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-surface-700 disabled:text-surface-500 text-white font-medium rounded-lg transition-colors"
+            >
+              Import {selectedItems.size > 0 ? `${selectedItems.size} Space${selectedItems.size !== 1 ? 's' : ''}` : ''} 🐐
+            </button>
+          </div>
         </div>
       </div>
     </div>
