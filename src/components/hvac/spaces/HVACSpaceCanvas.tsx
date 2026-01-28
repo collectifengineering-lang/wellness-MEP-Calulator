@@ -429,6 +429,7 @@ function AddSpaceModal({ onClose }: { onClose: () => void }) {
 function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => void }) {
   const { spaces, updateSpace, zones } = useHVACStore()
   const space = spaces.find(s => s.id === spaceId)
+  const [activeSection, setActiveSection] = useState<'basic' | 'ventilation' | 'fans'>('basic')
   
   const [form, setForm] = useState({
     name: space?.name || '',
@@ -437,12 +438,30 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
     occupancyOverride: space?.occupancyOverride,
     zoneId: space?.zoneId,
     notes: space?.notes || '',
+    // Ventilation overrides
+    rpOverride: space?.rpOverride,
+    raOverride: space?.raOverride,
+    // ACH-based ventilation
+    ventilationAch: space?.ventilationAch,
+    exhaustAch: space?.exhaustAch,
+    supplyAch: space?.supplyAch,
+    // Fan tagging
+    exhaustFanTag: space?.exhaustFanTag || '',
+    supplyFanTag: space?.supplyFanTag || '',
   })
   
   if (!space) return null
   
   const spaceType = ASHRAE62_SPACE_TYPES.find(st => st.id === space.spaceType)
   const defaultOccupancy = calculateDefaultOccupancy(space.spaceType, form.areaSf)
+  const defaultRp = spaceType?.Rp || 5
+  const defaultRa = spaceType?.Ra || 0.06
+  
+  // Calculate CFM from ACH
+  const volumeCF = form.areaSf * form.ceilingHeightFt
+  const ventilationCfmFromAch = form.ventilationAch ? (volumeCF * form.ventilationAch) / 60 : null
+  const exhaustCfmFromAch = form.exhaustAch ? (volumeCF * form.exhaustAch) / 60 : null
+  const supplyCfmFromAch = form.supplyAch ? (volumeCF * form.supplyAch) / 60 : null
   
   const handleSave = () => {
     updateSpace(spaceId, {
@@ -452,97 +471,310 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
       occupancyOverride: form.occupancyOverride,
       zoneId: form.zoneId,
       notes: form.notes,
+      rpOverride: form.rpOverride,
+      raOverride: form.raOverride,
+      ventilationAch: form.ventilationAch,
+      exhaustAch: form.exhaustAch,
+      supplyAch: form.supplyAch,
+      exhaustFanTag: form.exhaustFanTag || undefined,
+      supplyFanTag: form.supplyFanTag || undefined,
     })
     onClose()
   }
   
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface-800 rounded-xl border border-surface-700 w-full max-w-lg">
+      <div className="bg-surface-800 rounded-xl border border-surface-700 w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="p-4 border-b border-surface-700 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-white">Edit Space</h3>
           <button onClick={onClose} className="text-surface-400 hover:text-white">✕</button>
         </div>
         
-        <div className="p-4 space-y-4">
+        {/* Section Tabs */}
+        <div className="px-4 pt-3 flex gap-2 border-b border-surface-700">
+          <button
+            onClick={() => setActiveSection('basic')}
+            className={`px-3 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              activeSection === 'basic' ? 'bg-surface-700 text-white' : 'text-surface-400 hover:text-white'
+            }`}
+          >
+            📋 Basic Info
+          </button>
+          <button
+            onClick={() => setActiveSection('ventilation')}
+            className={`px-3 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              activeSection === 'ventilation' ? 'bg-surface-700 text-white' : 'text-surface-400 hover:text-white'
+            }`}
+          >
+            💨 Ventilation Overrides
+          </button>
+          <button
+            onClick={() => setActiveSection('fans')}
+            className={`px-3 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              activeSection === 'fans' ? 'bg-surface-700 text-white' : 'text-surface-400 hover:text-white'
+            }`}
+          >
+            🌀 Fan Tags
+          </button>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Space Type Header */}
           <div className="p-3 bg-surface-900 rounded-lg">
             <div className="text-cyan-400 font-medium">{spaceType?.displayName || space.spaceType}</div>
             <div className="text-xs text-surface-400 mt-1">
-              Rp: {spaceType?.Rp || 5} CFM/person | Ra: {spaceType?.Ra || 0.06} CFM/SF
+              Default: Rp: {defaultRp} CFM/person | Ra: {defaultRa} CFM/SF | {spaceType?.defaultOccupancy || 5}/1000SF
             </div>
           </div>
           
-          <div>
-            <label className="block text-sm text-surface-400 mb-1">Space Name</label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-              className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
-            />
-          </div>
+          {activeSection === 'basic' && (
+            <>
+              <div>
+                <label className="block text-sm text-surface-400 mb-1">Space Name</label>
+                <input
+                  type="text"
+                  value={form.name}
+                  onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-surface-400 mb-1">Area (SF)</label>
+                  <input
+                    type="number"
+                    value={form.areaSf}
+                    onChange={(e) => setForm(f => ({ ...f, areaSf: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-surface-400 mb-1">Ceiling Height (ft)</label>
+                  <input
+                    type="number"
+                    value={form.ceilingHeightFt}
+                    onChange={(e) => setForm(f => ({ ...f, ceilingHeightFt: Number(e.target.value) }))}
+                    className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm text-surface-400 mb-1">
+                  Occupancy Override 
+                  <span className="text-surface-500 ml-1">(default: {defaultOccupancy})</span>
+                </label>
+                <input
+                  type="number"
+                  value={form.occupancyOverride ?? ''}
+                  onChange={(e) => setForm(f => ({ 
+                    ...f, 
+                    occupancyOverride: e.target.value ? Number(e.target.value) : undefined 
+                  }))}
+                  placeholder={String(defaultOccupancy)}
+                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm text-surface-400 mb-1">Assign to Zone</label>
+                <select
+                  value={form.zoneId || ''}
+                  onChange={(e) => setForm(f => ({ ...f, zoneId: e.target.value || undefined }))}
+                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                >
+                  <option value="">-- Unassigned --</option>
+                  {zones.map(zone => (
+                    <option key={zone.id} value={zone.id}>{zone.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm text-surface-400 mb-1">Notes</label>
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
+                  rows={2}
+                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white resize-none"
+                />
+              </div>
+            </>
+          )}
           
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-surface-400 mb-1">Area (SF)</label>
-              <input
-                type="number"
-                value={form.areaSf}
-                onChange={(e) => setForm(f => ({ ...f, areaSf: Number(e.target.value) }))}
-                className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-surface-400 mb-1">Ceiling Height (ft)</label>
-              <input
-                type="number"
-                value={form.ceilingHeightFt}
-                onChange={(e) => setForm(f => ({ ...f, ceilingHeightFt: Number(e.target.value) }))}
-                className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
-              />
-            </div>
-          </div>
+          {activeSection === 'ventilation' && (
+            <>
+              <div className="p-3 bg-amber-900/20 border border-amber-600/30 rounded-lg text-sm text-amber-300">
+                💡 Override ASHRAE 62.1 defaults or use ACH-based ventilation. Leave blank to use defaults.
+              </div>
+              
+              {/* Rp/Ra Overrides */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-surface-300">Rate Overrides (ASHRAE 62.1)</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-surface-400 mb-1">
+                      Rp Override <span className="text-surface-500">(default: {defaultRp})</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={form.rpOverride ?? ''}
+                        onChange={(e) => setForm(f => ({ 
+                          ...f, 
+                          rpOverride: e.target.value ? Number(e.target.value) : undefined 
+                        }))}
+                        placeholder={String(defaultRp)}
+                        className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white pr-20"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-500 text-xs">CFM/person</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-surface-400 mb-1">
+                      Ra Override <span className="text-surface-500">(default: {defaultRa})</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={form.raOverride ?? ''}
+                        onChange={(e) => setForm(f => ({ 
+                          ...f, 
+                          raOverride: e.target.value ? Number(e.target.value) : undefined 
+                        }))}
+                        placeholder={String(defaultRa)}
+                        className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white pr-16"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-500 text-xs">CFM/SF</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* ACH-based Ventilation */}
+              <div className="space-y-3 pt-4 border-t border-surface-700">
+                <h4 className="text-sm font-medium text-surface-300">ACH-Based Ventilation</h4>
+                <p className="text-xs text-surface-500">
+                  Volume: {volumeCF.toLocaleString()} CF ({form.areaSf} SF × {form.ceilingHeightFt} ft)
+                </p>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs text-surface-400 mb-1">Ventilation ACH</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={form.ventilationAch ?? ''}
+                      onChange={(e) => setForm(f => ({ 
+                        ...f, 
+                        ventilationAch: e.target.value ? Number(e.target.value) : undefined 
+                      }))}
+                      placeholder="--"
+                      className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                    />
+                    {ventilationCfmFromAch && (
+                      <div className="text-xs text-cyan-400 mt-1">= {Math.round(ventilationCfmFromAch)} CFM</div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs text-surface-400 mb-1">Exhaust ACH</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={form.exhaustAch ?? ''}
+                      onChange={(e) => setForm(f => ({ 
+                        ...f, 
+                        exhaustAch: e.target.value ? Number(e.target.value) : undefined 
+                      }))}
+                      placeholder="--"
+                      className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                    />
+                    {exhaustCfmFromAch && (
+                      <div className="text-xs text-red-400 mt-1">= {Math.round(exhaustCfmFromAch)} CFM</div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs text-surface-400 mb-1">Supply ACH (forced)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={form.supplyAch ?? ''}
+                      onChange={(e) => setForm(f => ({ 
+                        ...f, 
+                        supplyAch: e.target.value ? Number(e.target.value) : undefined 
+                      }))}
+                      placeholder="--"
+                      className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                    />
+                    {supplyCfmFromAch && (
+                      <div className="text-xs text-emerald-400 mt-1">= {Math.round(supplyCfmFromAch)} CFM</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
           
-          <div>
-            <label className="block text-sm text-surface-400 mb-1">
-              Occupancy Override 
-              <span className="text-surface-500 ml-1">(default: {defaultOccupancy})</span>
-            </label>
-            <input
-              type="number"
-              value={form.occupancyOverride ?? ''}
-              onChange={(e) => setForm(f => ({ 
-                ...f, 
-                occupancyOverride: e.target.value ? Number(e.target.value) : undefined 
-              }))}
-              placeholder={String(defaultOccupancy)}
-              className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm text-surface-400 mb-1">Assign to Zone</label>
-            <select
-              value={form.zoneId || ''}
-              onChange={(e) => setForm(f => ({ ...f, zoneId: e.target.value || undefined }))}
-              className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
-            >
-              <option value="">-- Unassigned --</option>
-              {zones.map(zone => (
-                <option key={zone.id} value={zone.id}>{zone.name}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm text-surface-400 mb-1">Notes</label>
-            <textarea
-              value={form.notes}
-              onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
-              rows={2}
-              className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white resize-none"
-            />
-          </div>
+          {activeSection === 'fans' && (
+            <>
+              <div className="p-3 bg-purple-900/20 border border-purple-600/30 rounded-lg text-sm text-purple-300">
+                🌀 Tag this space's exhaust or supply to a standalone fan. Fans with the same tag will be grouped together in results.
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm text-surface-400 mb-1">Exhaust Fan Tag</label>
+                  <input
+                    type="text"
+                    value={form.exhaustFanTag}
+                    onChange={(e) => setForm(f => ({ ...f, exhaustFanTag: e.target.value }))}
+                    placeholder="e.g., EF-1, RR-EXH"
+                    className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                  />
+                  <p className="text-xs text-surface-500 mt-1">
+                    Spaces with same tag share an exhaust fan
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm text-surface-400 mb-1">Supply Fan Tag</label>
+                  <input
+                    type="text"
+                    value={form.supplyFanTag}
+                    onChange={(e) => setForm(f => ({ ...f, supplyFanTag: e.target.value }))}
+                    placeholder="e.g., SF-1, MAU-1"
+                    className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                  />
+                  <p className="text-xs text-surface-500 mt-1">
+                    Spaces with same tag share a supply fan
+                  </p>
+                </div>
+              </div>
+              
+              {(form.exhaustFanTag || form.supplyFanTag) && (
+                <div className="p-3 bg-surface-900 rounded-lg">
+                  <div className="text-sm text-surface-400 mb-2">Fan Summary</div>
+                  {form.exhaustFanTag && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-red-400">🔴</span>
+                      <span className="text-white font-medium">{form.exhaustFanTag}</span>
+                      <span className="text-surface-500">Exhaust</span>
+                      {exhaustCfmFromAch && <span className="text-red-400 ml-auto">{Math.round(exhaustCfmFromAch)} CFM</span>}
+                    </div>
+                  )}
+                  {form.supplyFanTag && (
+                    <div className="flex items-center gap-2 text-sm mt-1">
+                      <span className="text-emerald-400">🟢</span>
+                      <span className="text-white font-medium">{form.supplyFanTag}</span>
+                      <span className="text-surface-500">Supply</span>
+                      {supplyCfmFromAch && <span className="text-emerald-400 ml-auto">{Math.round(supplyCfmFromAch)} CFM</span>}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </div>
         
         <div className="p-4 border-t border-surface-700 flex justify-end gap-3">

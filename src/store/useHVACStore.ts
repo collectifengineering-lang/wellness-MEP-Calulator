@@ -17,6 +17,19 @@ export interface HVACSpace {
   zoneId?: string             // Which zone this space belongs to
   notes?: string
   sortOrder: number
+  
+  // Ventilation Rate Overrides (if set, override ASHRAE 62.1 defaults)
+  rpOverride?: number         // CFM/person override
+  raOverride?: number         // CFM/SF override
+  
+  // ACH-based ventilation (alternative to Rp/Ra)
+  ventilationAch?: number     // Ventilation air changes per hour
+  exhaustAch?: number         // Exhaust air changes per hour  
+  supplyAch?: number          // Forced supply ACH (overrides calculated)
+  
+  // Standalone Fan Tagging
+  exhaustFanTag?: string      // Tag for standalone exhaust fan (e.g., "EF-1")
+  supplyFanTag?: string       // Tag for standalone supply fan (e.g., "SF-1")
 }
 
 export interface HVACZone {
@@ -42,6 +55,17 @@ export interface HVACSystem {
   // Diversity
   occupancyDiversity: number     // 0-1 (default 1.0 for single zone, 0.8 for multi)
   sortOrder: number
+}
+
+// Standalone fans (exhaust or supply) not part of main HVAC systems
+export interface StandaloneFan {
+  id: string
+  projectId: string
+  tag: string                    // e.g., "EF-1", "SF-2"
+  name: string                   // e.g., "Restroom Exhaust", "Kitchen Supply"
+  fanType: 'exhaust' | 'supply'
+  cfm: number                    // Calculated from tagged spaces
+  notes?: string
 }
 
 export interface HVACProjectSettings {
