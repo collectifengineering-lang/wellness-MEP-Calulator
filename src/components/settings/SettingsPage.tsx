@@ -57,7 +57,14 @@ type SettingsTab = 'zones' | 'global'
 export default function SettingsPage() {
   const navigate = useNavigate()
   const settingsStore = useSettingsStore()
-  const { customZoneDefaults, customZoneTypes, resetAllDefaults, lastSyncedAt, syncError, isLoading } = settingsStore
+  
+  // Safely destructure with defaults to prevent crashes during hydration
+  const customZoneDefaults = settingsStore.customZoneDefaults || {}
+  const customZoneTypes = settingsStore.customZoneTypes || []
+  const resetAllDefaults = settingsStore.resetAllDefaults
+  const lastSyncedAt = settingsStore.lastSyncedAt
+  const syncError = settingsStore.syncError
+  const isLoading = settingsStore.isLoading
   const [selectedZoneType, setSelectedZoneType] = useState<string | null>(null)
   const [showNewTypeModal, setShowNewTypeModal] = useState(false)
   const [activeCategory, setActiveCategory] = useState<string>('all')
@@ -90,12 +97,14 @@ export default function SettingsPage() {
       isCustom: false,
       isModified: !!customZoneDefaults[id],
     })),
-    ...customZoneTypes.map(id => ({
-      id,
-      ...customZoneDefaults[id],
-      isCustom: true,
-      isModified: false,
-    })),
+    ...customZoneTypes
+      .filter(id => customZoneDefaults[id]) // Only include custom types that have defaults
+      .map(id => ({
+        id,
+        ...customZoneDefaults[id],
+        isCustom: true,
+        isModified: false,
+      })),
   ]
 
   const filteredZoneTypes = activeCategory === 'all' 
@@ -311,8 +320,8 @@ function ZoneTypeCard({ zoneType, onClick }: ZoneTypeCardProps) {
     >
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="font-medium text-white">{zoneType.displayName}</h3>
-          <p className="text-sm text-surface-400 mt-0.5">{zoneType.category}</p>
+          <h3 className="font-medium text-white">{zoneType.displayName || 'Unknown Zone'}</h3>
+          <p className="text-sm text-surface-400 mt-0.5">{zoneType.category || 'Custom'}</p>
         </div>
         <div className="flex items-center gap-2">
           {zoneType.isModified && (
@@ -328,7 +337,7 @@ function ZoneTypeCard({ zoneType, onClick }: ZoneTypeCardProps) {
         </div>
       </div>
       <div className="mt-3 text-sm text-surface-400">
-        Default: {zoneType.defaultSF.toLocaleString()} SF
+        Default: {(zoneType.defaultSF || 0).toLocaleString()} SF
       </div>
       <div className="mt-2 flex items-center text-xs text-primary-400">
         <span>Click to edit defaults</span>

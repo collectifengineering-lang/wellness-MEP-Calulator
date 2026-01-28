@@ -1,19 +1,63 @@
 import { useSettingsStore } from '../../store/useSettingsStore'
 
+// Default values to prevent crashes during hydration
+const defaultElectrical = {
+  voltage_primary: 208,
+  voltage_secondary: 480,
+  power_factor: 0.85,
+  spare_capacity: 0.20,
+  general_va_sf: 3.5,
+  demand_factor: 0.80,
+}
+
+const defaultGas = {
+  min_pressure_wc: 7,
+  high_pressure_threshold_cfh: 5000,
+  btu_per_cf: 1000,
+}
+
+const defaultDHW = {
+  tankless_unit_btu: 199000,
+  storage_factor: 0.70,
+  default_peak_duration: 2,
+}
+
+const defaultPlumbing = {
+  backwash_pit_threshold_gpm: 200,
+  hot_water_flow_ratio: 0.60,
+  cold_water_velocity_fps: 8,
+  hot_water_velocity_fps: 5,
+}
+
+const defaultClimate = {
+  hot_humid: { cooling: 1.15, heating: 0.85, ventilation: 1.10 },
+  cold_dry: { cooling: 0.90, heating: 1.25, ventilation: 1.05 },
+  temperate: { cooling: 1.00, heating: 1.00, ventilation: 1.00 },
+}
+
 export default function GlobalSettingsPanel() {
-  const { 
-    electrical, 
-    gas, 
-    dhw, 
-    plumbing,
-    climate,
-    updateElectricalSettings,
-    updateGasSettings,
-    updateDHWSettings,
-    updatePlumbingSettings,
-    updateClimateMultipliers,
-    resetGlobalSettings 
-  } = useSettingsStore()
+  const store = useSettingsStore()
+  
+  // Use defaults if store hasn't hydrated yet - with deep merging for nested objects
+  const electrical = { ...defaultElectrical, ...(store.electrical || {}) }
+  const gas = { ...defaultGas, ...(store.gas || {}) }
+  const dhw = { ...defaultDHW, ...(store.dhw || {}) }
+  const plumbing = { ...defaultPlumbing, ...(store.plumbing || {}) }
+  
+  // Deep merge climate with defaults to handle missing nested properties
+  const storeClimate = store.climate || {}
+  const climate = {
+    hot_humid: { ...defaultClimate.hot_humid, ...(storeClimate.hot_humid || {}) },
+    cold_dry: { ...defaultClimate.cold_dry, ...(storeClimate.cold_dry || {}) },
+    temperate: { ...defaultClimate.temperate, ...(storeClimate.temperate || {}) },
+  }
+  
+  const updateElectricalSettings = store.updateElectricalSettings
+  const updateGasSettings = store.updateGasSettings
+  const updateDHWSettings = store.updateDHWSettings
+  const updatePlumbingSettings = store.updatePlumbingSettings
+  const updateClimateMultipliers = store.updateClimateMultipliers
+  const resetGlobalSettings = store.resetGlobalSettings
 
   return (
     <div className="space-y-6">
