@@ -11,6 +11,7 @@ import ProjectWorkspace from './components/ProjectWorkspace'
 import ScannerHome from './components/plan-scanner/ScannerHome'
 import ScanWorkspace from './components/plan-scanner/ScanWorkspace'
 import HVACHome from './components/hvac/HVACHome'
+import HVACCalculators from './components/hvac/HVACCalculators'
 import ElectricalHome from './components/electrical/ElectricalHome'
 import PlumbingHome from './components/plumbing/PlumbingHome'
 import PlumbingWorkspace from './components/plumbing/PlumbingWorkspace'
@@ -110,6 +111,14 @@ function App() {
           element={
             <AuthGuard>
               <HVACHome />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/hvac/calculators"
+          element={
+            <AuthGuard>
+              <HVACCalculators />
             </AuthGuard>
           }
         />
