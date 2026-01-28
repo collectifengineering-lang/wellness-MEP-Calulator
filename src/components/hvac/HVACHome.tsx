@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Logo } from '../shared/Logo'
 import UserMenu from '../auth/UserMenu'
-import { useHVACStore, createHVACProject } from '../../store/useHVACStore'
+import { useHVACStore, createHVACProject, defaultHVACProjectSettings } from '../../store/useHVACStore'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import { useAuthStore } from '../../store/useAuthStore'
 import type { Project, Zone } from '../../types'
@@ -115,7 +115,8 @@ export default function HVACHome() {
     if (!user) return
     
     const newProject = createHVACProject(user.id, `${project.name} (Copy)`)
-    newProject.settings = { ...project.settings }
+    // Merge with defaults to ensure all required fields exist
+    newProject.settings = { ...defaultHVACProjectSettings, ...project.settings }
     
     if (isSupabaseConfigured()) {
       try {
