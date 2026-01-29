@@ -3,8 +3,13 @@ import { useState, useMemo } from 'react'
 /**
  * SMACNA Ductulator Calculator
  * 
- * Calculates duct sizes based on airflow and EITHER velocity OR friction rate
- * User selects which criteria to size by - the other value is calculated
+ * Calculates duct sizes based on BOTH velocity AND friction rate constraints
+ * Returns the WORST CASE (larger) duct size to satisfy both requirements
+ * 
+ * Presets:
+ * - Low Pressure: 0.08" WC/100ft, 800 FPM (typical branch/residential)
+ * - Medium Pressure: 0.15" WC/100ft, 1500 FPM (typical commercial mains)
+ * - Custom: User-defined values
  */
 
 // Standard round duct sizes (inches)
@@ -13,7 +18,13 @@ const STANDARD_ROUND_SIZES = [4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24, 
 // Standard rectangular duct sizes (inches)
 const STANDARD_RECT_SIZES = [4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 52, 56, 60]
 
-type SizingMode = 'friction' | 'velocity'
+type PressureMode = 'low' | 'medium' | 'custom'
+
+// Presets for low and medium pressure systems
+const PRESSURE_PRESETS = {
+  low: { friction: 0.08, velocity: 800 },
+  medium: { friction: 0.15, velocity: 1500 },
+}
 
 interface DuctResult {
   nominalSize: number
@@ -21,6 +32,13 @@ interface DuctResult {
   area: number // sq ft
   velocity: number // FPM
   frictionRate: number // in.wg/100ft
+}
+
+interface WorstCaseResult {
+  recommended: DuctResult
+  byFriction: DuctResult
+  byVelocity: DuctResult
+  governedBy: 'friction' | 'velocity' | 'equal'
 }
 
 interface RectDuctResult {
@@ -63,47 +81,52 @@ function calculateEquivalentDia(width: number, height: number): number {
 
 export default function Ductulator() {
   const [cfm, setCfm] = useState(1000)
-  const [sizingMode, setSizingMode] = useState<SizingMode>('friction')
+  const [pressureMode, setPressureMode] = useState<PressureMode>('low')
   const [frictionInput, setFrictionInput] = useState(0.08)
-  const [velocityInput, setVelocityInput] = useState(1500)
+  const [velocityInput, setVelocityInput] = useState(800)
   const [insulation, setInsulation] = useState<'none' | '0.75' | '1'>('none')
   
   const insulationThickness = insulation === '0.75' ? 0.75 : insulation === '1' ? 1 : 0
   
-  // Calculate round duct based on selected mode
-  const roundDuct = useMemo((): DuctResult => {
-    let calculatedDia: number
-    
-    if (sizingMode === 'friction') {
-      calculatedDia = calculateDiameterFromFriction(cfm, frictionInput)
-    } else {
-      calculatedDia = calculateDiameterFromVelocity(cfm, velocityInput)
-    }
-    
-    // Add insulation to get nominal size needed
-    const effectiveDiameter = calculatedDia + (2 * insulationThickness)
-    
-    // Round up to standard size
-    const nominalSize = STANDARD_ROUND_SIZES.find(s => s >= effectiveDiameter) || Math.ceil(effectiveDiameter)
-    
-    // Interior diameter after insulation
+  // Get active friction and velocity values based on mode
+  const activeFriction = pressureMode === 'custom' ? frictionInput : PRESSURE_PRESETS[pressureMode].friction
+  const activeVelocity = pressureMode === 'custom' ? velocityInput : PRESSURE_PRESETS[pressureMode].velocity
+  
+  // Helper to calculate duct result for a given diameter
+  const calculateDuctResult = (nominalSize: number): DuctResult => {
     const interiorDiameter = nominalSize - (2 * insulationThickness)
-    
-    // Calculate area and velocity
     const area = Math.PI * Math.pow(interiorDiameter / 24, 2)
     const velocity = cfm / area
-    
-    // Calculate actual friction rate for this size
     const frictionRate = calculateFriction(cfm, interiorDiameter)
+    return { nominalSize, interiorDiameter, area, velocity, frictionRate }
+  }
+  
+  // Calculate WORST CASE - larger of friction-based or velocity-based sizing
+  const worstCaseResult = useMemo((): WorstCaseResult => {
+    // Calculate diameter needed by friction constraint
+    const diaByFriction = calculateDiameterFromFriction(cfm, activeFriction) + (2 * insulationThickness)
+    const sizeByFriction = STANDARD_ROUND_SIZES.find(s => s >= diaByFriction) || Math.ceil(diaByFriction)
     
-    return {
-      nominalSize,
-      interiorDiameter,
-      area,
-      velocity,
-      frictionRate,
-    }
-  }, [cfm, sizingMode, frictionInput, velocityInput, insulationThickness])
+    // Calculate diameter needed by velocity constraint
+    const diaByVelocity = calculateDiameterFromVelocity(cfm, activeVelocity) + (2 * insulationThickness)
+    const sizeByVelocity = STANDARD_ROUND_SIZES.find(s => s >= diaByVelocity) || Math.ceil(diaByVelocity)
+    
+    // Worst case = larger size (satisfies both constraints)
+    const worstCaseSize = Math.max(sizeByFriction, sizeByVelocity)
+    
+    const byFriction = calculateDuctResult(sizeByFriction)
+    const byVelocity = calculateDuctResult(sizeByVelocity)
+    const recommended = calculateDuctResult(worstCaseSize)
+    
+    const governedBy: 'friction' | 'velocity' | 'equal' = 
+      sizeByFriction > sizeByVelocity ? 'friction' :
+      sizeByVelocity > sizeByFriction ? 'velocity' : 'equal'
+    
+    return { recommended, byFriction, byVelocity, governedBy }
+  }, [cfm, activeFriction, activeVelocity, insulationThickness])
+  
+  // Alias for easier access
+  const roundDuct = worstCaseResult.recommended
   
   // Generate rectangular equivalents - spread around the round duct area (smaller AND larger)
   const rectangularDucts = useMemo((): RectDuctResult[] => {
@@ -177,13 +200,56 @@ export default function Ductulator() {
         <h2 className="text-2xl font-bold text-white flex items-center gap-2">
           🌀 Ductulator <span className="text-surface-500 text-base font-normal">SMACNA-based sizing</span>
         </h2>
-        <p className="text-surface-400">Size ducts by velocity OR friction rate - the GOAT way! 🐐💨</p>
+        <p className="text-surface-400">Worst-case sizing using BOTH velocity AND friction limits 🐐💨</p>
+      </div>
+      
+      {/* Pressure Mode Selector */}
+      <div className="bg-surface-800 rounded-xl border border-surface-700 p-2 mb-6">
+        <div className="grid grid-cols-3 gap-2">
+          <button
+            onClick={() => setPressureMode('low')}
+            className={`px-4 py-3 rounded-lg font-medium transition-all ${
+              pressureMode === 'low'
+                ? 'bg-emerald-600 text-white shadow-lg'
+                : 'bg-surface-900 text-surface-400 hover:text-white hover:bg-surface-700'
+            }`}
+          >
+            <div className="text-sm font-semibold">Low Pressure</div>
+            <div className={`text-xs mt-0.5 ${pressureMode === 'low' ? 'text-emerald-200' : 'text-surface-500'}`}>
+              0.08" WC · 800 FPM
+            </div>
+          </button>
+          <button
+            onClick={() => setPressureMode('medium')}
+            className={`px-4 py-3 rounded-lg font-medium transition-all ${
+              pressureMode === 'medium'
+                ? 'bg-amber-600 text-white shadow-lg'
+                : 'bg-surface-900 text-surface-400 hover:text-white hover:bg-surface-700'
+            }`}
+          >
+            <div className="text-sm font-semibold">Medium Pressure</div>
+            <div className={`text-xs mt-0.5 ${pressureMode === 'medium' ? 'text-amber-200' : 'text-surface-500'}`}>
+              0.15" WC · 1500 FPM
+            </div>
+          </button>
+          <button
+            onClick={() => setPressureMode('custom')}
+            className={`px-4 py-3 rounded-lg font-medium transition-all ${
+              pressureMode === 'custom'
+                ? 'bg-purple-600 text-white shadow-lg'
+                : 'bg-surface-900 text-surface-400 hover:text-white hover:bg-surface-700'
+            }`}
+          >
+            <div className="text-sm font-semibold">Custom</div>
+            <div className={`text-xs mt-0.5 ${pressureMode === 'custom' ? 'text-purple-200' : 'text-surface-500'}`}>
+              Set your own values
+            </div>
+          </button>
+        </div>
       </div>
       
       {/* Inputs */}
       <div className="bg-surface-800 rounded-xl border border-surface-700 p-6 mb-6">
-        <h3 className="text-lg font-semibold text-white mb-4">Inputs</h3>
-        
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Left column - CFM and Insulation */}
           <div className="space-y-4">
@@ -214,95 +280,82 @@ export default function Ductulator() {
             </div>
           </div>
           
-          {/* Right column - Sizing Mode */}
-          <div>
-            <label className="block text-sm text-surface-400 mb-2">Size By</label>
-            
-            {/* Mode Toggle */}
-            <div className="flex rounded-lg overflow-hidden border border-surface-600 mb-4">
-              <button
-                onClick={() => setSizingMode('friction')}
-                className={`flex-1 px-4 py-2 font-medium transition-colors ${
-                  sizingMode === 'friction'
-                    ? 'bg-cyan-600 text-white'
-                    : 'bg-surface-900 text-surface-400 hover:text-white'
-                }`}
-              >
-                Friction Rate
-              </button>
-              <button
-                onClick={() => setSizingMode('velocity')}
-                className={`flex-1 px-4 py-2 font-medium transition-colors ${
-                  sizingMode === 'velocity'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-surface-900 text-surface-400 hover:text-white'
-                }`}
-              >
-                Velocity
-              </button>
-            </div>
-            
+          {/* Right column - Friction & Velocity constraints */}
+          <div className="space-y-4">
             {/* Friction Rate Input */}
-            <div className={sizingMode !== 'friction' ? 'opacity-40' : ''}>
+            <div className={pressureMode !== 'custom' ? 'opacity-50' : ''}>
               <label className="block text-sm text-surface-400 mb-1">
                 Friction Rate (in.wg/100ft)
-                {sizingMode !== 'friction' && ' - calculated'}
+                {pressureMode !== 'custom' && <span className="text-cyan-400 ml-2">preset: {activeFriction}</span>}
               </label>
               <input
                 type="number"
-                value={sizingMode === 'friction' ? frictionInput : roundDuct.frictionRate.toFixed(3)}
+                value={pressureMode === 'custom' ? frictionInput : activeFriction}
                 onChange={(e) => setFrictionInput(Number(e.target.value))}
-                disabled={sizingMode !== 'friction'}
+                disabled={pressureMode !== 'custom'}
                 min={0.01}
                 max={0.5}
                 step={0.01}
                 className={`w-full px-3 py-2 border rounded-lg ${
-                  sizingMode === 'friction'
-                    ? 'bg-surface-900 border-cyan-600 text-white'
+                  pressureMode === 'custom'
+                    ? 'bg-surface-900 border-purple-600 text-white'
                     : 'bg-surface-950 border-surface-700 text-surface-500 cursor-not-allowed'
                 }`}
               />
-              {sizingMode === 'friction' && (
-                <div className="text-xs text-surface-500 mt-1">Typical: 0.08 - 0.10</div>
-              )}
             </div>
             
             {/* Velocity Input */}
-            <div className={`mt-3 ${sizingMode !== 'velocity' ? 'opacity-40' : ''}`}>
+            <div className={pressureMode !== 'custom' ? 'opacity-50' : ''}>
               <label className="block text-sm text-surface-400 mb-1">
-                Velocity (FPM)
-                {sizingMode !== 'velocity' && ' - calculated'}
+                Max Velocity (FPM)
+                {pressureMode !== 'custom' && <span className="text-amber-400 ml-2">preset: {activeVelocity}</span>}
               </label>
               <input
                 type="number"
-                value={sizingMode === 'velocity' ? velocityInput : Math.round(roundDuct.velocity)}
+                value={pressureMode === 'custom' ? velocityInput : activeVelocity}
                 onChange={(e) => setVelocityInput(Number(e.target.value))}
-                disabled={sizingMode !== 'velocity'}
+                disabled={pressureMode !== 'custom'}
                 min={500}
                 max={5000}
                 step={100}
                 className={`w-full px-3 py-2 border rounded-lg ${
-                  sizingMode === 'velocity'
-                    ? 'bg-surface-900 border-amber-600 text-white'
+                  pressureMode === 'custom'
+                    ? 'bg-surface-900 border-purple-600 text-white'
                     : 'bg-surface-950 border-surface-700 text-surface-500 cursor-not-allowed'
                 }`}
               />
-              {sizingMode === 'velocity' && (
-                <div className="text-xs text-surface-500 mt-1">Main: 1200-1800, Branch: 800-1200</div>
-              )}
             </div>
+            
+            {pressureMode === 'custom' && (
+              <div className="p-3 bg-purple-900/30 rounded-lg border border-purple-700 text-xs text-purple-300">
+                ⚠️ Both constraints are applied - the larger duct size wins
+              </div>
+            )}
           </div>
         </div>
       </div>
       
-      {/* Round Duct Result */}
+      {/* Worst Case Result */}
       <div className="bg-gradient-to-r from-cyan-900/40 to-surface-800 rounded-xl border border-cyan-700 p-6 mb-6">
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          ⚫ Round Duct Result
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+            ⚫ Recommended Duct Size
+          </h3>
+          <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide ${
+            worstCaseResult.governedBy === 'friction' 
+              ? 'bg-cyan-600/30 text-cyan-300 border border-cyan-600' 
+              : worstCaseResult.governedBy === 'velocity'
+              ? 'bg-amber-600/30 text-amber-300 border border-amber-600'
+              : 'bg-emerald-600/30 text-emerald-300 border border-emerald-600'
+          }`}>
+            {worstCaseResult.governedBy === 'friction' && '⚡ Governed by Friction'}
+            {worstCaseResult.governedBy === 'velocity' && '💨 Governed by Velocity'}
+            {worstCaseResult.governedBy === 'equal' && '✓ Both Equal'}
+          </span>
+        </div>
         
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="text-center bg-surface-900/50 rounded-lg p-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+          <div className="text-center bg-surface-900/50 rounded-lg p-4 ring-2 ring-cyan-500">
             <div className="text-4xl font-bold text-cyan-400">{roundDuct.nominalSize}"</div>
             <div className="text-sm text-surface-400">Nominal Ø</div>
             {insulationThickness > 0 && (
@@ -318,21 +371,19 @@ export default function Ductulator() {
           </div>
           
           <div className="text-center bg-surface-900/50 rounded-lg p-4">
-            <div className={`text-2xl font-bold ${sizingMode === 'velocity' ? 'text-amber-400' : 'text-emerald-400'}`}>
+            <div className={`text-2xl font-bold ${roundDuct.velocity <= activeVelocity ? 'text-emerald-400' : 'text-red-400'}`}>
               {Math.round(roundDuct.velocity).toLocaleString()}
             </div>
-            <div className="text-sm text-surface-400">Velocity (FPM)</div>
-            {sizingMode === 'friction' && (
-              <div className="text-xs text-surface-500">calculated</div>
-            )}
+            <div className="text-sm text-surface-400">Actual Velocity</div>
+            <div className="text-xs text-surface-500">≤ {activeVelocity} limit</div>
           </div>
           
           <div className="text-center bg-surface-900/50 rounded-lg p-4">
-            <div className={`text-2xl font-bold ${sizingMode === 'friction' ? 'text-cyan-400' : 'text-emerald-400'}`}>
+            <div className={`text-2xl font-bold ${roundDuct.frictionRate <= activeFriction ? 'text-emerald-400' : 'text-amber-400'}`}>
               {roundDuct.frictionRate.toFixed(3)}
             </div>
-            <div className="text-sm text-surface-400">Friction</div>
-            <div className="text-xs text-surface-500">in.wg/100ft</div>
+            <div className="text-sm text-surface-400">Actual Friction</div>
+            <div className="text-xs text-surface-500">≤ {activeFriction} limit</div>
           </div>
           
           <div className="text-center bg-surface-900/50 rounded-lg p-4">
@@ -341,6 +392,49 @@ export default function Ductulator() {
             </div>
             <div className="text-sm text-surface-400">Area (sq.in)</div>
           </div>
+        </div>
+        
+        {/* Side-by-side comparison */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className={`p-4 rounded-lg border ${
+            worstCaseResult.governedBy === 'friction' 
+              ? 'bg-cyan-900/30 border-cyan-600' 
+              : 'bg-surface-900/50 border-surface-700'
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-cyan-400">By Friction Rate</span>
+              {worstCaseResult.governedBy === 'friction' && (
+                <span className="text-xs bg-cyan-600 px-2 py-0.5 rounded text-white">GOVERNS</span>
+              )}
+            </div>
+            <div className="text-2xl font-bold text-white">{worstCaseResult.byFriction.nominalSize}"</div>
+            <div className="text-xs text-surface-400 mt-1">
+              @ {activeFriction}" WC → {Math.round(worstCaseResult.byFriction.velocity).toLocaleString()} FPM
+            </div>
+          </div>
+          
+          <div className={`p-4 rounded-lg border ${
+            worstCaseResult.governedBy === 'velocity' 
+              ? 'bg-amber-900/30 border-amber-600' 
+              : 'bg-surface-900/50 border-surface-700'
+          }`}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-amber-400">By Velocity Limit</span>
+              {worstCaseResult.governedBy === 'velocity' && (
+                <span className="text-xs bg-amber-600 px-2 py-0.5 rounded text-white">GOVERNS</span>
+              )}
+            </div>
+            <div className="text-2xl font-bold text-white">{worstCaseResult.byVelocity.nominalSize}"</div>
+            <div className="text-xs text-surface-400 mt-1">
+              @ {activeVelocity} FPM → {worstCaseResult.byVelocity.frictionRate.toFixed(3)}" WC
+            </div>
+          </div>
+        </div>
+        
+        {/* Explanation note */}
+        <div className="mt-4 p-3 bg-surface-900/50 rounded-lg text-sm text-surface-400">
+          <strong className="text-white">Why worst case?</strong> Small ducts at low CFM can easily exceed velocity limits 
+          even when friction rate is fine. Using both constraints prevents undersizing.
         </div>
       </div>
       
@@ -458,26 +552,36 @@ export default function Ductulator() {
       
       {/* Quick Reference */}
       <div className="mt-6 bg-surface-800 rounded-xl border border-surface-700 p-6">
-        <h3 className="text-lg font-semibold text-white mb-4">📋 Quick Reference</h3>
+        <h3 className="text-lg font-semibold text-white mb-4">📋 Preset Reference</h3>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
           <div>
-            <h4 className="text-surface-400 font-medium mb-2">Typical Friction Rates</h4>
+            <h4 className="text-emerald-400 font-medium mb-2">🟢 Low Pressure (0.08" WC, 800 FPM)</h4>
             <ul className="space-y-1 text-surface-300">
-              <li>• Low velocity systems: <span className="text-cyan-400">0.05 - 0.08</span> in.wg/100ft</li>
-              <li>• Medium velocity: <span className="text-cyan-400">0.08 - 0.10</span> in.wg/100ft</li>
-              <li>• High velocity: <span className="text-cyan-400">0.10 - 0.15</span> in.wg/100ft</li>
+              <li>• Residential systems</li>
+              <li>• Branch ducts in commercial</li>
+              <li>• Flex duct runs</li>
+              <li>• Noise-sensitive areas</li>
             </ul>
           </div>
           <div>
-            <h4 className="text-surface-400 font-medium mb-2">Recommended Velocities</h4>
+            <h4 className="text-amber-400 font-medium mb-2">🟡 Medium Pressure (0.15" WC, 1500 FPM)</h4>
             <ul className="space-y-1 text-surface-300">
-              <li>• Main ducts: <span className="text-amber-400">1200 - 1800</span> FPM</li>
-              <li>• Branch ducts: <span className="text-amber-400">800 - 1200</span> FPM</li>
-              <li>• Flexible ducts: <span className="text-amber-400">800 max</span> FPM</li>
-              <li>• Above occupied (noise): <span className="text-amber-400">1000 max</span> FPM</li>
+              <li>• Commercial main ducts</li>
+              <li>• Supply/return mains</li>
+              <li>• Industrial applications</li>
+              <li>• Long duct runs</li>
             </ul>
           </div>
+        </div>
+        
+        <div className="mt-4 pt-4 border-t border-surface-700">
+          <h4 className="text-purple-400 font-medium mb-2">🟣 When to Use Custom</h4>
+          <p className="text-surface-400 text-sm">
+            Use custom mode when you have specific project requirements, 
+            unusual acoustical constraints, or high-pressure systems (VAV boxes, etc.).
+            Remember: the calculator always picks the larger duct to satisfy <strong className="text-white">both</strong> constraints.
+          </p>
         </div>
       </div>
     </div>
