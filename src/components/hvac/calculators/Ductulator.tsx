@@ -53,12 +53,45 @@ interface RectDuctResult {
   equivalentDia: number
 }
 
-// Calculate friction rate from diameter and CFM (reverse SMACNA formula)
+// Calculate friction rate from diameter and CFM using ASHRAE Fundamentals
+// Based on Darcy-Weisbach with standard air (0.075 lb/ft³) and galvanized roughness
 function calculateFriction(cfm: number, diameterIn: number): number {
-  // D = 0.109 * Q^0.5 * f^(-0.225)
-  // f = (0.109 * Q^0.5 / D)^(1/0.225)
-  const f = Math.pow((0.109 * Math.pow(cfm, 0.5)) / diameterIn, 1 / 0.225)
-  return f
+  // Area in sq ft
+  const areaSqFt = Math.PI * Math.pow(diameterIn / 24, 2)
+  // Velocity in fpm
+  const velocityFpm = cfm / areaSqFt
+  // Velocity in ft/s
+  const velocityFps = velocityFpm / 60
+  // Diameter in ft
+  const diameterFt = diameterIn / 12
+  
+  // Standard air properties
+  const rho = 0.075 // lb/ft³
+  const mu = 1.21e-5 // lb/(ft·s) dynamic viscosity
+  const roughness = 0.0003 // ft - galvanized steel
+  
+  // Reynolds number
+  const Re = (rho * velocityFps * diameterFt) / mu
+  
+  // Friction factor using Swamee-Jain (explicit approximation to Colebrook)
+  const relRough = roughness / diameterFt
+  let f: number
+  if (Re < 2300) {
+    f = 64 / Re
+  } else {
+    f = 0.25 / Math.pow(Math.log10(relRough / 3.7 + 5.74 / Math.pow(Re, 0.9)), 2)
+  }
+  
+  // Head loss per 100 ft using Darcy-Weisbach: h = f * (L/D) * (V²/2g)
+  // Convert to in. WC: multiply by (rho_water / rho_air) * 12
+  const g = 32.174 // ft/s²
+  const hLossPerFt = f * (1 / diameterFt) * (velocityFps * velocityFps) / (2 * g)
+  
+  // Convert ft of air to in. WC per 100 ft
+  // 1 in. WC = 5.2 lbf/ft² = 5.2 / 0.075 = 69.3 ft of air
+  const frictionPer100ft = (hLossPerFt * 100) / 69.3 * 12
+  
+  return frictionPer100ft
 }
 
 // Calculate diameter from friction rate and CFM (SMACNA formula)
@@ -156,7 +189,10 @@ export default function Ductulator() {
         const frictionRate = calculateFriction(cfm, equivalentDia)
         
         // Calculate aspect ratio
-        const aspectRatio = (width / height).toFixed(1) + ':1'
+        const aspectRatioNum = width / height
+        if (aspectRatioNum > 4) continue // Skip ducts with aspect ratio > 4:1 (SMACNA limit)
+        
+        const aspectRatio = aspectRatioNum.toFixed(1) + ':1'
         
         results.push({
           width,
@@ -216,7 +252,7 @@ export default function Ductulator() {
           >
             <div className="text-sm font-semibold">Low Pressure</div>
             <div className={`text-xs mt-0.5 ${pressureMode === 'low' ? 'text-emerald-200' : 'text-surface-500'}`}>
-              0.08" WC · 800 FPM
+              0.08"/100ft · 800 FPM
             </div>
           </button>
           <button
@@ -229,7 +265,7 @@ export default function Ductulator() {
           >
             <div className="text-sm font-semibold">Medium Pressure</div>
             <div className={`text-xs mt-0.5 ${pressureMode === 'medium' ? 'text-amber-200' : 'text-surface-500'}`}>
-              0.15" WC · 1500 FPM
+              0.15"/100ft · 1500 FPM
             </div>
           </button>
           <button
@@ -409,7 +445,7 @@ export default function Ductulator() {
             </div>
             <div className="text-2xl font-bold text-white">{worstCaseResult.byFriction.nominalSize}"</div>
             <div className="text-xs text-surface-400 mt-1">
-              @ {activeFriction}" WC → {Math.round(worstCaseResult.byFriction.velocity).toLocaleString()} FPM
+              @ {activeFriction}"/100ft → {Math.round(worstCaseResult.byFriction.velocity).toLocaleString()} FPM
             </div>
           </div>
           
@@ -426,7 +462,7 @@ export default function Ductulator() {
             </div>
             <div className="text-2xl font-bold text-white">{worstCaseResult.byVelocity.nominalSize}"</div>
             <div className="text-xs text-surface-400 mt-1">
-              @ {activeVelocity} FPM → {worstCaseResult.byVelocity.frictionRate.toFixed(3)}" WC
+              @ {activeVelocity} FPM → {worstCaseResult.byVelocity.frictionRate.toFixed(3)}"/100ft
             </div>
           </div>
         </div>
@@ -525,7 +561,7 @@ export default function Ductulator() {
                         <span className={duct.frictionRate <= 0.10 ? 'text-emerald-400' : 'text-amber-400'}>
                           {duct.frictionRate.toFixed(3)}
                         </span>
-                        <span className="text-surface-500 text-xs ml-1">in.wg</span>
+                        <span className="text-surface-500 text-xs ml-1">"/100ft</span>
                       </td>
                     </tr>
                   )
@@ -556,7 +592,7 @@ export default function Ductulator() {
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
           <div>
-            <h4 className="text-emerald-400 font-medium mb-2">🟢 Low Pressure (0.08" WC, 800 FPM)</h4>
+            <h4 className="text-emerald-400 font-medium mb-2">🟢 Low Pressure (0.08"/100ft, 800 FPM)</h4>
             <ul className="space-y-1 text-surface-300">
               <li>• Residential systems</li>
               <li>• Branch ducts in commercial</li>
@@ -565,7 +601,7 @@ export default function Ductulator() {
             </ul>
           </div>
           <div>
-            <h4 className="text-amber-400 font-medium mb-2">🟡 Medium Pressure (0.15" WC, 1500 FPM)</h4>
+            <h4 className="text-amber-400 font-medium mb-2">🟡 Medium Pressure (0.15"/100ft, 1500 FPM)</h4>
             <ul className="space-y-1 text-surface-300">
               <li>• Commercial main ducts</li>
               <li>• Supply/return mains</li>

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useProjectStore } from '../../store/useProjectStore'
 import { exportToExcelFile } from '../../export'
 import { exportConceptPDF, exportConceptWord, setReportLogo, getReportLogo } from '../../export/conceptReport'
-import { getZoneDefaults, calculateLaundryLoads } from '../../data/zoneDefaults'
+import { getZoneDefaults } from '../../data/zoneDefaults'
 import { getLegacyFixtureCounts } from '../../data/fixtureUtils'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import type { CalculationResults, ZoneFixtures, SavedReport } from '../../types'
@@ -19,7 +19,7 @@ interface ResultsTabProps {
 }
 
 export default function ResultsTab({ calculations }: ResultsTabProps) {
-  const { currentProject, zones } = useProjectStore()
+  const { currentProject, zones, updateProject } = useProjectStore()
   const { results, aggregatedFixtures, totalSF } = calculations
   const [includeDetailed, setIncludeDetailed] = useState(false)
   const [showDetailedReport, setShowDetailedReport] = useState(false)
@@ -35,21 +35,30 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
   const [newReportName, setNewReportName] = useState('')
   const [showNameModal, setShowNameModal] = useState(false)
   
-  // Edit mode state for inline report editing
-  const [editMode, setEditMode] = useState(false)
-  const [reportEdits, setReportEdits] = useState<{
-    executiveSummary?: string
-    hvacNotes?: string
-    electricalNotes?: string
-    plumbingNotes?: string
-    fireProtectionNotes?: string
-  }>({})
+  // Edit mode state for inline report editing - track which sections are being edited
+  const [editingSections, setEditingSections] = useState<Set<string>>(new Set())
   
   // SD Package Report state
   const [showSDPackage, setShowSDPackage] = useState(false)
   
-  // Logo state
-  const [logoPreview, setLogoPreview] = useState<string | null>(getReportLogo().dataUrl)
+  // Logo state - initialize from project or global storage
+  const GLOBAL_LOGO_HISTORY_KEY = 'mep_calculator_logo_history'
+  const [showLogoHistory, setShowLogoHistory] = useState(false)
+  const [logoHistory, setLogoHistory] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem(GLOBAL_LOGO_HISTORY_KEY)
+      return stored ? JSON.parse(stored) : []
+    } catch { return [] }
+  })
+  
+  // Get initial logo from project, then global history, then old storage
+  const getInitialLogo = () => {
+    if (currentProject?.reportLogo?.currentLogoUrl) return currentProject.reportLogo.currentLogoUrl
+    if (logoHistory.length > 0) return logoHistory[0]
+    return getReportLogo().dataUrl
+  }
+  
+  const [logoPreview, setLogoPreview] = useState<string | null>(getInitialLogo)
   const logoInputRef = useRef<HTMLInputElement>(null)
   
   // Track when calculations change to show "updated" indicator
@@ -262,6 +271,12 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
     const file = e.target.files?.[0]
     if (!file) return
     
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Logo must be under 2MB')
+      return
+    }
+    
     const reader = new FileReader()
     reader.onloadend = () => {
       const dataUrl = reader.result as string
@@ -269,14 +284,64 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
       const base64 = dataUrl.split(',')[1]
       setLogoPreview(dataUrl)
       setReportLogo(base64, dataUrl)
+      
+      // Save to project
+      if (currentProject) {
+        updateProject({
+          reportLogo: {
+            currentLogoUrl: dataUrl,
+            previousLogos: currentProject.reportLogo?.previousLogos || []
+          }
+        })
+      }
+      
+      // Add to global history (at front, limit to 10)
+      const newHistory = [dataUrl, ...logoHistory.filter(l => l !== dataUrl)].slice(0, 10)
+      setLogoHistory(newHistory)
+      localStorage.setItem(GLOBAL_LOGO_HISTORY_KEY, JSON.stringify(newHistory))
     }
     reader.readAsDataURL(file)
+    
+    // Clear input for re-upload of same file
+    if (logoInputRef.current) logoInputRef.current.value = ''
+  }
+  
+  const selectLogo = (logoUrl: string) => {
+    setLogoPreview(logoUrl)
+    const base64 = logoUrl.split(',')[1]
+    setReportLogo(base64, logoUrl)
+    
+    // Save to project
+    if (currentProject) {
+      updateProject({
+        reportLogo: {
+          currentLogoUrl: logoUrl,
+          previousLogos: currentProject.reportLogo?.previousLogos || []
+        }
+      })
+    }
+    
+    // Move to front of history
+    const newHistory = [logoUrl, ...logoHistory.filter(l => l !== logoUrl)].slice(0, 10)
+    setLogoHistory(newHistory)
+    localStorage.setItem(GLOBAL_LOGO_HISTORY_KEY, JSON.stringify(newHistory))
+    setShowLogoHistory(false)
   }
   
   const clearLogo = () => {
     setLogoPreview(null)
     setReportLogo(null, null)
     if (logoInputRef.current) logoInputRef.current.value = ''
+    
+    // Clear from project
+    if (currentProject) {
+      updateProject({
+        reportLogo: {
+          currentLogoUrl: undefined,
+          previousLogos: currentProject.reportLogo?.previousLogos || []
+        }
+      })
+    }
   }
 
   const climateLabels: Record<string, string> = {
@@ -301,8 +366,17 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
               id="logo-upload"
             />
             {logoPreview ? (
-              <div className="flex items-center gap-2 bg-surface-700 px-2 py-1 rounded-lg">
-                <img src={logoPreview} alt="Logo" className="h-6 w-auto max-w-[60px] object-contain" />
+              <div className="flex items-center gap-2 bg-surface-700 px-2 py-1 rounded-lg relative">
+                <button
+                  onClick={() => setShowLogoHistory(!showLogoHistory)}
+                  className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  title="Click to change logo"
+                >
+                  <img src={logoPreview} alt="Logo" className="h-6 w-auto max-w-[60px] object-contain" />
+                  <svg className="w-3 h-3 text-surface-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
                 <button
                   onClick={clearLogo}
                   className="text-surface-400 hover:text-red-400 transition-colors"
@@ -312,6 +386,32 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
+                
+                {/* Logo History Dropdown */}
+                {showLogoHistory && logoHistory.length > 0 && (
+                  <div className="absolute top-full left-0 mt-1 bg-surface-800 border border-surface-600 rounded-lg shadow-xl z-50 p-2 min-w-[200px]">
+                    <p className="text-xs text-surface-400 mb-2">Select from previous logos:</p>
+                    <div className="grid grid-cols-3 gap-2 mb-2">
+                      {logoHistory.map((logo, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => selectLogo(logo)}
+                          className={`p-1.5 bg-white rounded hover:ring-2 hover:ring-primary-500 transition-all ${
+                            logo === logoPreview ? 'ring-2 ring-primary-500' : ''
+                          }`}
+                        >
+                          <img src={logo} alt={`Logo ${idx + 1}`} className="h-6 w-full object-contain" />
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => { logoInputRef.current?.click(); setShowLogoHistory(false) }}
+                      className="w-full text-xs text-primary-400 hover:text-primary-300 py-1"
+                    >
+                      + Upload new logo
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <label 
@@ -654,28 +754,49 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-base font-bold text-gray-900">Executive Summary</h2>
               <button 
-                onClick={() => setEditMode(!editMode)}
-                className={`text-xs px-2 py-1 rounded ${editMode ? 'bg-primary-600 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
+                onClick={() => setEditingSections(prev => {
+                  const next = new Set(prev)
+                  if (next.has('executiveSummary')) next.delete('executiveSummary')
+                  else next.add('executiveSummary')
+                  return next
+                })}
+                className={`text-xs px-2 py-1 rounded ${editingSections.has('executiveSummary') ? 'bg-primary-600 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
               >
-                {editMode ? '✓ Done' : '✎ Edit'}
+                {editingSections.has('executiveSummary') ? '✓ Done' : '✎ Edit'}
               </button>
             </div>
-            {editMode ? (
+            {editingSections.has('executiveSummary') ? (
               <textarea
-                value={reportEdits.executiveSummary ?? `This report summarizes the MEP requirements for the ~${Math.round(totalSF / 1000)}k SF facility. The analysis identifies utility service requirements, equipment sizing, and system recommendations for mechanical, electrical, plumbing, and fire protection systems.`}
-                onChange={(e) => setReportEdits(prev => ({ ...prev, executiveSummary: e.target.value }))}
-                className="w-full text-sm text-gray-600 leading-relaxed p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 min-h-[60px]"
+                value={currentProject.resultAdjustments?.executiveSummary || ''}
+                onChange={(e) => updateProject({
+                  resultAdjustments: { ...currentProject.resultAdjustments, executiveSummary: e.target.value }
+                })}
+                placeholder={`This report summarizes the MEP requirements for the ~${Math.round(totalSF / 1000)}k SF facility. The analysis identifies utility service requirements, equipment sizing, and system recommendations for mechanical, electrical, plumbing, and fire protection systems.`}
+                className="w-full text-sm text-gray-600 leading-relaxed p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 min-h-[80px]"
               />
             ) : (
               <p className="text-sm text-gray-600 leading-relaxed">
-                {reportEdits.executiveSummary || `This report summarizes the MEP requirements for the ~${Math.round(totalSF / 1000)}k SF facility. The analysis identifies utility service requirements, equipment sizing, and system recommendations for mechanical, electrical, plumbing, and fire protection systems.`}
+                {currentProject.resultAdjustments?.executiveSummary || `This report summarizes the MEP requirements for the ~${Math.round(totalSF / 1000)}k SF facility. The analysis identifies utility service requirements, equipment sizing, and system recommendations for mechanical, electrical, plumbing, and fire protection systems.`}
               </p>
             )}
           </section>
 
           {/* HVAC Section */}
           <section className="px-8 py-4 border-b border-gray-200">
-            <h2 className="text-base font-bold text-gray-900 mb-2">1. Mechanical (HVAC)</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-base font-bold text-gray-900">1. Mechanical (HVAC)</h2>
+              <button 
+                onClick={() => setEditingSections(prev => {
+                  const next = new Set(prev)
+                  if (next.has('hvac')) next.delete('hvac')
+                  else next.add('hvac')
+                  return next
+                })}
+                className={`text-xs px-2 py-1 rounded ${editingSections.has('hvac') ? 'bg-primary-600 text-white' : 'text-primary-600 hover:bg-primary-50'}`}
+              >
+                {editingSections.has('hvac') ? '✓ Done' : '✎ Edit'}
+              </button>
+            </div>
             <div className="grid grid-cols-2 gap-4 text-sm text-gray-700">
               <div>
                 <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-1">Cooling / Heating</h3>
@@ -696,6 +817,28 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
                 </ul>
               </div>
             </div>
+            {/* MEP Narrative from Central Plant */}
+            {currentProject.mepNarratives?.hvac && (
+              <div className="mt-3 text-xs text-gray-600 bg-blue-50 p-3 rounded border-l-2 border-blue-400 whitespace-pre-line">
+                {currentProject.mepNarratives.hvac}
+              </div>
+            )}
+            {/* HVAC Notes - Editable */}
+            {editingSections.has('hvac') ? (
+              <textarea
+                value={currentProject.resultAdjustments?.hvacNotes || ''}
+                onChange={(e) => updateProject({
+                  resultAdjustments: { ...currentProject.resultAdjustments, hvacNotes: e.target.value }
+                })}
+                placeholder="Add notes about HVAC systems, special requirements, equipment recommendations..."
+                className="w-full mt-3 text-xs text-gray-600 leading-relaxed p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 min-h-[80px]"
+              />
+            ) : currentProject.resultAdjustments?.hvacNotes ? (
+              <div className="mt-3 text-xs text-gray-600 bg-gray-100 p-2 rounded border-l-2 border-gray-400">
+                <span className="font-semibold text-gray-700">Additional Notes: </span>
+                {currentProject.resultAdjustments.hvacNotes}
+              </div>
+            ) : null}
           </section>
 
           {/* Electrical Section */}
@@ -720,6 +863,12 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
                 </ul>
               </div>
             </div>
+            {/* MEP Narrative from Central Plant */}
+            {currentProject.mepNarratives?.electrical && (
+              <div className="mt-3 text-xs text-gray-600 bg-amber-50 p-3 rounded border-l-2 border-amber-400 whitespace-pre-line">
+                {currentProject.mepNarratives.electrical}
+              </div>
+            )}
           </section>
 
           {/* Plumbing Section */}
@@ -754,6 +903,12 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
                 </ul>
               </div>
             </div>
+            {/* MEP Narrative from Central Plant */}
+            {currentProject.mepNarratives?.plumbing && (
+              <div className="mt-3 text-xs text-gray-600 bg-emerald-50 p-3 rounded border-l-2 border-emerald-400 whitespace-pre-line">
+                {currentProject.mepNarratives.plumbing}
+              </div>
+            )}
           </section>
 
           {/* Fire Protection Section */}
@@ -764,6 +919,12 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
               <li>• Est. Sprinkler Count: ~{Math.ceil(totalSF / 130)} heads ({Math.round(130)} SF/head average)</li>
               <li>• High-temp heads required for sauna/steam areas (200°F+)</li>
             </ul>
+            {/* MEP Narrative from Central Plant */}
+            {currentProject.mepNarratives?.fireProtection && (
+              <div className="mt-3 text-xs text-gray-600 bg-red-50 p-3 rounded border-l-2 border-red-400 whitespace-pre-line">
+                {currentProject.mepNarratives.fireProtection}
+              </div>
+            )}
           </section>
 
           {/* Footer */}
@@ -802,27 +963,42 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
                   <tbody>
                     {zones.map((zone, idx) => {
                       const defaults = getZoneDefaults(zone.type)
+                      
+                      // RATE-BASED: Lighting + Receptacle (per SF)
                       const lightingKW = zone.sf * zone.rates.lighting_w_sf / 1000
                       const receptacleKW = zone.sf * zone.rates.receptacle_va_sf / 1000
-                      let fixedKW = defaults.fixed_kw || 0
                       
-                      // Add laundry equipment loads - use zone's custom specs
-                      if (zone.type === 'laundry_commercial' && defaults.laundry_equipment) {
-                        const laundryLoads = calculateLaundryLoads(
-                          zone.fixtures.washingMachines || 0,
-                          zone.fixtures.dryers || 0,
-                          zone.subType === 'gas' ? 'gas' : 'electric',
-                          zone.laundryEquipment
-                        )
-                        fixedKW += laundryLoads.total_kw
-                      }
+                      // EQUIPMENT: Line items ONLY - NO FALLBACKS
+                      const lineItemsKW = (zone.lineItems || []).reduce((sum, li) => {
+                        const unit = li.unit?.toLowerCase() || ''
+                        if (unit === 'kw') return sum + li.quantity * li.value
+                        if (unit === 'w') return sum + (li.quantity * li.value) / 1000
+                        if (unit === 'hp') return sum + li.quantity * li.value * 0.746
+                        return sum
+                      }, 0)
                       
-                      const totalKW = lightingKW + receptacleKW + fixedKW
+                      const totalKW = lightingKW + receptacleKW + lineItemsKW
                       const tons = zone.rates.cooling_sf_ton > 0 ? zone.sf / zone.rates.cooling_sf_ton : 0
-                      const ventCFM = zone.sf * zone.rates.ventilation_cfm_sf + (defaults.ventilation_cfm || 0)
-                      let exhaustCFM = zone.sf * zone.rates.exhaust_cfm_sf + (defaults.exhaust_cfm || 0)
-                      if (defaults.exhaust_cfm_toilet) exhaustCFM += zone.fixtures.wcs * defaults.exhaust_cfm_toilet
-                      if (defaults.exhaust_cfm_shower) exhaustCFM += zone.fixtures.showers * defaults.exhaust_cfm_shower
+                      
+                      // VENTILATION: Stored value + line items
+                      const baseVentCFM = zone.ventilationCfm ?? 0
+                      const lineItemVentCFM = (zone.lineItems || []).reduce((sum, li) => {
+                        if (li.category === 'ventilation' && li.unit?.toLowerCase() === 'cfm') {
+                          return sum + li.quantity * li.value
+                        }
+                        return sum
+                      }, 0)
+                      const ventCFM = baseVentCFM + lineItemVentCFM
+                      
+                      // EXHAUST: Stored value + line items
+                      const baseExhaustCFM = zone.exhaustCfm ?? 0
+                      const lineItemExhaustCFM = (zone.lineItems || []).reduce((sum, li) => {
+                        if (li.category === 'exhaust' && li.unit?.toLowerCase() === 'cfm') {
+                          return sum + li.quantity * li.value
+                        }
+                        return sum
+                      }, 0)
+                      const exhaustCFM = baseExhaustCFM + lineItemExhaustCFM
                       
                       return (
                         <tr key={zone.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>

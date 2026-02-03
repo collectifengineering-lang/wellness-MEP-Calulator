@@ -43,6 +43,9 @@ interface ReportSection {
 // Company logo as base64 for Word export (will be loaded from file input)
 let companyLogoBase64: string | null = null
 
+// Key for storing global logo history in localStorage
+const GLOBAL_LOGO_HISTORY_KEY = 'mep_calculator_logo_history'
+
 export default function SDPackageReport({ calculations, onClose }: SDPackageReportProps) {
   const { currentProject, zones } = useProjectStore()
   const { results, aggregatedFixtures, totalSF } = calculations
@@ -50,9 +53,24 @@ export default function SDPackageReport({ calculations, onClose }: SDPackageRepo
   const [isGenerating, setIsGenerating] = useState(false)
   const [sections, setSections] = useState<ReportSection[]>([])
   const [projectTitle, setProjectTitle] = useState(currentProject?.name || 'MEP Schematic Design Package')
-  const [projectAddress, setProjectAddress] = useState('')
+  const [projectAddress, setProjectAddress] = useState(currentProject?.clientInfo?.projectAddress || '')
   const [preparedBy, setPreparedBy] = useState('Rafael Figueroa, PE, PMP – Partner & Mechanical Engineer\nChristopher Ocampo, PE, WEDG – Partner & Electrical Engineer\nFrank Perrone – Sr. Plumbing/Fire Protection Engineer')
-  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  
+  // Initialize logo from project or global history
+  const [logoUrl, setLogoUrl] = useState<string | null>(() => {
+    // First try project-specific logo
+    if (currentProject?.reportLogo?.currentLogoUrl) {
+      return currentProject.reportLogo.currentLogoUrl
+    }
+    // Fall back to global history
+    try {
+      const stored = localStorage.getItem(GLOBAL_LOGO_HISTORY_KEY)
+      const history = stored ? JSON.parse(stored) : []
+      return history[0] || null
+    } catch {
+      return null
+    }
+  })
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Generate AI narrative for a section
@@ -64,6 +82,9 @@ export default function SDPackageReport({ calculations, onClose }: SDPackageRepo
       return `[AI generation unavailable - add VITE_ANTHROPIC_API_KEY]\n\nPlaceholder for ${sectionType} narrative based on:\n${equipmentData}`
     }
     
+    // Get concept-level narratives from the project to expand upon
+    const conceptNarratives = currentProject?.mepNarratives
+    
     const prompts: Record<string, string> = {
       executive: `Write a 2-3 paragraph executive summary for an MEP Schematic Design package for a wellness/fitness facility. 
 The purpose is to identify high-level requirements for utility services and MEP systems.
@@ -74,35 +95,55 @@ Write in professional engineering report style. Be concise and technical.`,
       
       mechanical: `Write professional engineering narrative for the MECHANICAL section of an MEP Schematic Design package.
 Cover Air Conditioning/Heating, Ventilation/Exhaust, Chimneys/Vents/Flues.
-Use this equipment data:
+
+${conceptNarratives?.hvac ? `CONCEPT DESIGN NARRATIVE (expand and detail this):
+${conceptNarratives.hvac}
+
+` : ''}Use this equipment data:
 ${equipmentData}
 
 Format with numbered lists and subsections. Include specific equipment model references where appropriate.
-Use professional MEP engineering language. Reference industry standards like ASHRAE.`,
+Use professional MEP engineering language. Reference industry standards like ASHRAE.
+Expand the concept narrative into SD-level detail with specific equipment selections, duct routing concepts, and control sequences.`,
       
       electrical: `Write professional engineering narrative for the ELECTRICAL/FIRE ALARM section of an MEP Schematic Design package.
 Cover: service sizing, distribution, emergency power, fire alarm.
-Use this equipment data:
+
+${conceptNarratives?.electrical ? `CONCEPT DESIGN NARRATIVE (expand and detail this):
+${conceptNarratives.electrical}
+
+` : ''}Use this equipment data:
 ${equipmentData}
 
 Format with numbered lists. Include voltage, phase, amperage details.
-Use professional MEP engineering language.`,
+Use professional MEP engineering language.
+Expand the concept narrative into SD-level detail with specific panel schedules, circuit sizing, and fire alarm zoning concepts.`,
       
       plumbing: `Write professional engineering narrative for the PLUMBING section of an MEP Schematic Design package.
 Cover: Fixtures, Domestic Cold Water, Domestic Hot Water (include water heater specs), Sanitary/Vent, Gas service.
-Use this equipment data:
+
+${conceptNarratives?.plumbing ? `CONCEPT DESIGN NARRATIVE (expand and detail this):
+${conceptNarratives.plumbing}
+
+` : ''}Use this equipment data:
 ${equipmentData}
 
 Format with clear subsections. Include pipe sizes and equipment specifications.
-Use professional MEP engineering language.`,
+Use professional MEP engineering language.
+Expand the concept narrative into SD-level detail with specific pipe materials, riser locations, and equipment model selections.`,
       
       fireProtection: `Write professional engineering narrative for the FIRE PROTECTION section of an MEP Schematic Design package.
 Cover: Sprinkler system, sprinkler types, special considerations for high-temp areas (saunas).
-Use this equipment data:
+
+${conceptNarratives?.fireProtection ? `CONCEPT DESIGN NARRATIVE (expand and detail this):
+${conceptNarratives.fireProtection}
+
+` : ''}Use this equipment data:
 ${equipmentData}
 
 Reference NFPA-13 standards. Include sprinkler count estimates.
-Use professional MEP engineering language.`,
+Use professional MEP engineering language.
+Expand the concept narrative into SD-level detail with specific hazard classifications, coverage areas, and head types.`,
     }
     
     try {

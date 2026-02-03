@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { Logo } from '../shared/Logo'
 import UserMenu from '../auth/UserMenu'
 import Ductulator from './calculators/Ductulator'
+import { HydronicCalculatorStandalone } from './calculators/HydronicCalculatorStandalone'
+import { DuctCalculatorStandalone } from '../duct/DuctCalculatorStandalone'
+import { PsychrometricCalculatorStandalone } from '../psychrometric'
 
-type CalculatorTab = 'ductulator' | 'pipe_pressure' | 'duct_pressure' | 'psychrometric'
+type CalculatorTab = 'ductulator' | 'hydronic' | 'duct_pressure' | 'psychrometric'
 
 export default function HVACCalculators() {
   const navigate = useNavigate()
@@ -12,9 +15,9 @@ export default function HVACCalculators() {
   
   const tabs: { id: CalculatorTab; name: string; icon: string; available: boolean }[] = [
     { id: 'ductulator', name: 'Ductulator', icon: '🌀', available: true },
-    { id: 'pipe_pressure', name: 'Pipe Pressure Drop', icon: '🔧', available: false },
-    { id: 'duct_pressure', name: 'Duct Pressure Drop', icon: '📏', available: false },
-    { id: 'psychrometric', name: 'Psychrometric', icon: '💧', available: false },
+    { id: 'hydronic', name: 'Hydronic Pump', icon: '💧', available: true },
+    { id: 'duct_pressure', name: 'Duct Pressure Drop', icon: '📏', available: true },
+    { id: 'psychrometric', name: 'Psychrometric', icon: '🌡️', available: true },
   ]
   
   return (
@@ -76,29 +79,11 @@ export default function HVACCalculators() {
         </div>
         
         {/* Calculator Content */}
-        <div className="bg-surface-800/50 rounded-xl border border-surface-700">
+        <div className={`rounded-xl border border-surface-700 ${(activeTab === 'hydronic' || activeTab === 'duct_pressure' || activeTab === 'psychrometric') ? 'bg-gray-900' : 'bg-surface-800/50'}`} style={{ height: (activeTab === 'hydronic' || activeTab === 'duct_pressure' || activeTab === 'psychrometric') ? '700px' : 'auto' }}>
           {activeTab === 'ductulator' && <Ductulator />}
-          {activeTab === 'pipe_pressure' && (
-            <div className="p-12 text-center">
-              <div className="text-6xl mb-4">🔧</div>
-              <h3 className="text-xl font-semibold text-white mb-2">Pipe Pressure Drop Calculator</h3>
-              <p className="text-surface-400">Coming Soon - The GOAT is learning fluid dynamics! 🐐💨</p>
-            </div>
-          )}
-          {activeTab === 'duct_pressure' && (
-            <div className="p-12 text-center">
-              <div className="text-6xl mb-4">📏</div>
-              <h3 className="text-xl font-semibold text-white mb-2">Duct Pressure Drop Calculator</h3>
-              <p className="text-surface-400">Coming Soon - Stay tuned! 🐐</p>
-            </div>
-          )}
-          {activeTab === 'psychrometric' && (
-            <div className="p-12 text-center">
-              <div className="text-6xl mb-4">💧</div>
-              <h3 className="text-xl font-semibold text-white mb-2">Psychrometric Calculator</h3>
-              <p className="text-surface-400">Coming Soon - The GOAT doesn't sweat the humidity! 🐐💦</p>
-            </div>
-          )}
+          {activeTab === 'hydronic' && <HydronicCalculatorStandalone />}
+          {activeTab === 'duct_pressure' && <DuctCalculatorStandalone />}
+          {activeTab === 'psychrometric' && <PsychrometricCalculatorStandalone />}
         </div>
         
         {/* Export Options */}

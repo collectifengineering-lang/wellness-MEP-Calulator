@@ -6,7 +6,7 @@
  */
 
 import type { HVACSpace, HVACZone, HVACSystem, HVACProjectSettings } from '../store/useHVACStore'
-import { getSpaceType, calculateDefaultOccupancy, getExhaustRequirement } from '../data/ashrae62'
+import { getSpaceType, calculateDefaultOccupancy } from '../data/ashrae62'
 import { getLocationById, getAltitudeCorrectionFactor } from '../data/ashraeClimate'
 
 // ============================================
@@ -27,6 +27,12 @@ export interface SpaceVentilationResult {
   // Exhaust
   exhaustRequired: boolean
   exhaustCfm: number
+  // Supply air
+  supplyCfm?: number   // Supply air CFM (may be forced by supplyAch)
+  // ACH tracking (for results display)
+  ventilationAchUsed?: number
+  exhaustAchUsed?: number
+  supplyAchUsed?: number
   // Load contributions
   coolingLoadBtuh: number
   heatingLoadBtuh: number
@@ -150,48 +156,94 @@ function calculateEnthalpy(db: number, humidityRatio: number): number {
 
 /**
  * Calculate ventilation for a single space
+ * 
+ * Supports:
+ * - ASHRAE 62.1 Rp/Ra rates (default)
+ * - Manual Rp/Ra overrides
+ * - ACH-based ventilation (ventilationAch, exhaustAch, supplyAch)
+ * - Uses MAX of calculated CFM vs ACH-derived CFM
  */
 export function calculateSpaceVentilation(
   space: HVACSpace,
   ez: number = 1.0,
   _settings: HVACProjectSettings
 ): SpaceVentilationResult {
-  const spaceType = getSpaceType(space.spaceType)
+  // Get space type - check both field names for compatibility
+  const spaceTypeId = space.ashraeSpaceType || space.spaceType || 'office_space'
+  const spaceType = getSpaceType(spaceTypeId)
   
-  // Get ventilation rates (default to office if type not found)
-  const Rp = spaceType?.Rp ?? 5
-  const Ra = spaceType?.Ra ?? 0.06
+  // Get ventilation rates - use overrides if set, otherwise ASHRAE defaults
+  const Rp = space.rpOverride ?? spaceType?.Rp ?? 5
+  const Ra = space.raOverride ?? spaceType?.Ra ?? 0.06
   
   // Occupancy - use override or calculate default
   const occupancy = space.occupancyOverride ?? 
-    calculateDefaultOccupancy(space.spaceType, space.areaSf)
+    calculateDefaultOccupancy(spaceTypeId, space.areaSf)
+  
+  // Calculate room volume for ACH conversions
+  const volumeCf = space.areaSf * space.ceilingHeightFt
+  
+  // ============================================
+  // ASHRAE 62.1 Ventilation Calculation
+  // ============================================
   
   // Breathing zone outdoor airflow: Vbz = Rp × Pz + Ra × Az
-  const Vbz = (Rp * occupancy) + (Ra * space.areaSf)
+  const Vbz_ashrae = (Rp * occupancy) + (Ra * space.areaSf)
+  
+  // ACH-based ventilation (if set)
+  const Vbz_ach = space.ventilationAch 
+    ? (space.ventilationAch * volumeCf) / 60 
+    : 0
+  
+  // Use MAX of ASHRAE calculated vs ACH-derived
+  const Vbz = Math.max(Vbz_ashrae, Vbz_ach)
   
   // Zone outdoor airflow: Voz = Vbz / Ez
   const Voz = Vbz / ez
   
-  // Exhaust requirements
-  const exhaust = getExhaustRequirement(space.spaceType)
-  let exhaustCfm = 0
-  if (exhaust) {
-    if (exhaust.unit === 'cfm_sf') {
-      exhaustCfm = exhaust.exhaustRate * space.areaSf
-    } else if (exhaust.unit === 'cfm_unit') {
+  // ============================================
+  // Exhaust Calculation
+  // ============================================
+  
+  // ASHRAE exhaust requirements (from space type)
+  let exhaustCfm_ashrae = 0
+  if (spaceType) {
+    if (spaceType.exhaustCfmSf) {
+      exhaustCfm_ashrae = spaceType.exhaustCfmSf * space.areaSf
+    } else if (spaceType.exhaustCfmUnit) {
       // Would need fixture count - estimate based on occupancy
-      exhaustCfm = exhaust.exhaustRate * Math.ceil(occupancy / 10)
-    } else if (exhaust.unit === 'ach') {
-      const volume = space.areaSf * space.ceilingHeightFt
-      exhaustCfm = (exhaust.exhaustRate * volume) / 60
+      exhaustCfm_ashrae = spaceType.exhaustCfmUnit * Math.ceil(occupancy / 10)
     }
   }
+  
+  // ACH-based exhaust (if set)
+  const exhaustCfm_ach = space.exhaustAch 
+    ? (space.exhaustAch * volumeCf) / 60 
+    : 0
+  
+  // Use MAX of ASHRAE calculated vs ACH-derived
+  const exhaustCfm = Math.max(exhaustCfm_ashrae, exhaustCfm_ach)
+  
+  // ============================================
+  // Supply Air Calculation
+  // ============================================
+  
+  // If supplyAch is set, it forces the supply air to that value
+  const supplyCfm_ach = space.supplyAch 
+    ? (space.supplyAch * volumeCf) / 60 
+    : 0
+  
+  // Supply air is typically the greater of ventilation or exhaust makeup
+  // Unless supplyAch is explicitly set, in which case use that
+  const supplyCfm = supplyCfm_ach > 0 
+    ? supplyCfm_ach 
+    : Math.max(Voz, exhaustCfm)
   
   // Load calculations will be done at system level with ERV
   return {
     spaceId: space.id,
     spaceName: space.name,
-    spaceType: space.spaceType,
+    spaceType: spaceTypeId,
     areaSf: space.areaSf,
     occupancy,
     Rp,
@@ -202,7 +254,12 @@ export function calculateSpaceVentilation(
     exhaustCfm: Math.round(exhaustCfm),
     coolingLoadBtuh: 0, // Calculated at system level
     heatingLoadBtuh: 0,
-  }
+    // Extended results for ACH tracking
+    supplyCfm: Math.round(supplyCfm),
+    ventilationAchUsed: space.ventilationAch,
+    exhaustAchUsed: space.exhaustAch,
+    supplyAchUsed: space.supplyAch,
+  } as SpaceVentilationResult
 }
 
 // ============================================

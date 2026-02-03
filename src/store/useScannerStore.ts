@@ -28,6 +28,16 @@ export interface ExtractedSpace {
   }
   // For polygon shapes - array of vertices as percentages
   polygonPoints?: Array<{ xPercent: number; yPercent: number }>
+  // Which page/drawing this space is on
+  pageNumber?: number
+  drawingId?: string
+  // Whether user created manually vs AI detected
+  userCreated?: boolean
+  // Occupancy tracking
+  seatCountAI?: number        // AI-detected seat count
+  seatCountManual?: number    // User override
+  ashraeOccupancy?: number    // Calculated from ASHRAE density
+  finalOccupancy?: number     // MAX(seatCount, ashraeOccupancy)
 }
 
 export interface SymbolDefinition {
@@ -83,6 +93,10 @@ export interface ScanDrawing {
   width?: number
   height?: number
   analyzedAt?: string
+  // Floor/level detected for this drawing
+  floor?: string
+  // Whether this page's spaces have been confirmed by user
+  confirmed?: boolean
 }
 
 interface ScannerState {
@@ -111,6 +125,8 @@ interface ScannerState {
   
   addDrawing: (scanId: string, drawing: ScanDrawing) => void
   removeDrawing: (scanId: string, drawingId: string) => void
+  updateDrawing: (scanId: string, drawingId: string, updates: Partial<ScanDrawing>) => void
+  confirmDrawingSpaces: (scanId: string, drawingId: string) => void
   
   setExtractedSpaces: (scanId: string, spaces: ExtractedSpace[]) => void
   updateExtractedSpace: (scanId: string, spaceId: string, updates: Partial<ExtractedSpace>) => void
@@ -206,6 +222,37 @@ export const useScannerStore = create<ScannerState>()(
               ? { ...state.currentScan, drawings: state.currentScan.drawings.filter((d) => d.id !== drawingId), updatedAt: new Date().toISOString() }
               : state.currentScan,
         }))
+      },
+      
+      updateDrawing: (scanId, drawingId, updates) => {
+        set((state) => ({
+          scans: state.scans.map((s) =>
+            s.id === scanId
+              ? {
+                  ...s,
+                  drawings: s.drawings.map((d) =>
+                    d.id === drawingId ? { ...d, ...updates } : d
+                  ),
+                  updatedAt: new Date().toISOString(),
+                }
+              : s
+          ),
+          currentScan:
+            state.currentScan?.id === scanId
+              ? {
+                  ...state.currentScan,
+                  drawings: state.currentScan.drawings.map((d) =>
+                    d.id === drawingId ? { ...d, ...updates } : d
+                  ),
+                  updatedAt: new Date().toISOString(),
+                }
+              : state.currentScan,
+        }))
+      },
+      
+      confirmDrawingSpaces: (scanId, drawingId) => {
+        // Mark drawing as confirmed
+        get().updateDrawing(scanId, drawingId, { confirmed: true })
       },
       
       setExtractedSpaces: (scanId, spaces) => {

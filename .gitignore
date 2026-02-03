@@ -31,3 +31,5 @@ REferences/
 
 # Vercel
 .vercel/
+.vercel
+.env*.local

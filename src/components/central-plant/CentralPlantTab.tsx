@@ -4,19 +4,21 @@ import PlumbingCalcs from './PlumbingCalcs'
 import SystemSizing from './SystemSizing'
 import ElectricalServiceSettings from './ElectricalServiceSettings'
 import MechanicalLoads from './MechanicalLoads'
+import MEPNarrativesEditor from './MEPNarrativesEditor'
 import type { CalculationResults, ZoneFixtures } from '../../types'
 
 interface CentralPlantTabProps {
   calculations: {
     results: CalculationResults | null
     aggregatedFixtures: ZoneFixtures
+    mechanicalKVA: { total: number; breakdown: { name: string; kva: number }[] }
     totalSF: number
   }
 }
 
 export default function CentralPlantTab({ calculations }: CentralPlantTabProps) {
   const { currentProject } = useProjectStore()
-  const { results, aggregatedFixtures } = calculations
+  const { results, aggregatedFixtures, mechanicalKVA } = calculations
 
   if (!currentProject || !results) {
     return (
@@ -36,7 +38,7 @@ export default function CentralPlantTab({ calculations }: CentralPlantTabProps) 
         </div>
 
         {/* Electrical Service Settings */}
-        <ElectricalServiceSettings results={results} />
+        <ElectricalServiceSettings results={results} mechanicalKVA={mechanicalKVA} />
 
         {/* Mechanical Equipment Loads */}
         <MechanicalLoads results={results} />
@@ -51,6 +53,9 @@ export default function CentralPlantTab({ calculations }: CentralPlantTabProps) 
 
         {/* System Sizing */}
         <SystemSizing results={results} />
+
+        {/* MEP Report Narratives */}
+        <MEPNarrativesEditor results={results} />
 
         {/* Gas Equipment Breakdown */}
         <div className="bg-surface-800 rounded-xl border border-surface-700 overflow-hidden">

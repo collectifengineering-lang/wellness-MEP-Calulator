@@ -1,14 +1,15 @@
 import { useProjectStore } from '../../store/useProjectStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
-import { getStandardServiceSize, standardServiceSizes, getDefaultMechanicalSettings } from '../../data/defaults'
+import { standardServiceSizes, getDefaultMechanicalSettings } from '../../data/defaults'
 import { calculateMechanicalKVA } from './MechanicalLoads'
 import type { CalculationResults } from '../../types'
 
 interface ElectricalServiceSettingsProps {
   results: CalculationResults
+  mechanicalKVA: { total: number; breakdown: { name: string; kva: number }[] }
 }
 
-export default function ElectricalServiceSettings({ results }: ElectricalServiceSettingsProps) {
+export default function ElectricalServiceSettings({ results, mechanicalKVA: mechKVAFromCalc }: ElectricalServiceSettingsProps) {
   const { currentProject, updateProject } = useProjectStore()
   const { electrical: globalDefaults } = useSettingsStore()
   
@@ -26,7 +27,7 @@ export default function ElectricalServiceSettings({ results }: ElectricalService
     })
   }
 
-  // Calculate mechanical equipment kVA
+  // Get mechanical breakdown for display (same calculation as useCalculations)
   const mechanical = calculateMechanicalKVA(
     results.hvac,
     results.dhw,
@@ -35,26 +36,27 @@ export default function ElectricalServiceSettings({ results }: ElectricalService
     settings.powerFactor,
     currentProject.electricPrimary
   )
-
-  // Calculate demand load (connected + mechanical)
-  const connectedKW = results.electrical.totalKW
-  const mechanicalKVA = mechanical.total
-  const totalConnectedKVA = (connectedKW / settings.powerFactor) + mechanicalKVA
   
-  const demandKW = connectedKW * settings.demandFactor
-  const demandKVA = demandKW / settings.powerFactor
-  const mechanicalDemandKVA = mechanicalKVA * settings.demandFactor // Apply demand factor to mechanical too
-  const totalDemandKVA = demandKVA + mechanicalDemandKVA
-  const withSpare = totalDemandKVA * (1 + settings.spareCapacity)
+  // USE THE UNIFIED CALCULATION RESULTS - don't recalculate!
+  // These values come from useCalculations → recalculateServiceWithMechanical
+  const { electrical } = results
   
-  // Calculate amps based on project voltage/phase
-  const sqrtFactor = settings.phase === 3 ? Math.sqrt(3) : 1
-  const calculatedAmps = (withSpare * 1000) / (settings.voltage * sqrtFactor)
+  // For display purposes, show the breakdown:
+  const connectedKW = electrical.totalKW  // Raw building kW (before factors)
+  const mechanicalKVA = mechKVAFromCalc.total  // Raw mechanical kVA (before factors)
+  // NOTE: Contingency is NOT used for electrical - only spare capacity
   
-  // Get standard service size (upsize to next standard)
-  const standardAmps = getStandardServiceSize(calculatedAmps, settings.voltage)
+  // Show how factors are applied (for transparency)
+  const buildingKVABeforeFactors = connectedKW / settings.powerFactor
+  const totalConnectedKVA = buildingKVABeforeFactors + mechanicalKVA
+  
+  // The final values come from the unified calculation
+  const finalKVA = electrical.totalKVA  // This includes all factors applied consistently
+  const calculatedAmps = electrical.calculatedAmps || 0
+  const standardAmps = electrical.standardServiceAmps || 0
+  const exceedsMax = electrical.exceedsMaxService || false
+  
   const availableSizes = standardServiceSizes[settings.voltage] || standardServiceSizes[208]
-  const exceedsMax = calculatedAmps > availableSizes[availableSizes.length - 1]
 
   return (
     <div className="bg-surface-800 rounded-xl border border-surface-700 overflow-hidden">
@@ -192,7 +194,7 @@ export default function ElectricalServiceSettings({ results }: ElectricalService
             </div>
             <div className="flex justify-between pl-4 text-surface-500">
               <span>÷ Power Factor ({settings.powerFactor}):</span>
-              <span className="font-mono">{Math.round(connectedKW / settings.powerFactor).toLocaleString()} kVA</span>
+              <span className="font-mono">{Math.round(buildingKVABeforeFactors).toLocaleString()} kVA</span>
             </div>
             
             {/* Mechanical Equipment Loads */}
@@ -213,20 +215,19 @@ export default function ElectricalServiceSettings({ results }: ElectricalService
             
             {/* Total Connected */}
             <div className="flex justify-between border-t border-surface-700 pt-2 mt-2">
-              <span className="text-surface-300 font-medium">Total Connected:</span>
+              <span className="text-surface-300 font-medium">Total Connected (raw):</span>
               <span className="text-white font-mono font-medium">{Math.round(totalConnectedKVA).toLocaleString()} kVA</span>
             </div>
             
-            {/* Apply Demand Factor */}
+            {/* Factors Applied */}
             <div className="flex justify-between text-amber-400">
-              <span>× Demand Factor ({(settings.demandFactor * 100).toFixed(0)}%):</span>
-              <span className="font-mono">{Math.round(totalDemandKVA).toLocaleString()} kVA</span>
+              <span>× Demand ({(settings.demandFactor * 100).toFixed(0)}%) × Spare ({(settings.spareCapacity * 100).toFixed(0)}%):</span>
             </div>
             
-            {/* Add Spare Capacity */}
-            <div className="flex justify-between">
-              <span className="text-surface-400">+ Spare ({(settings.spareCapacity * 100).toFixed(0)}%):</span>
-              <span className="text-white font-mono">{Math.round(withSpare).toLocaleString()} kVA</span>
+            {/* Final kVA from unified calculation */}
+            <div className="flex justify-between border-t border-surface-700 pt-2 mt-2">
+              <span className="text-emerald-400 font-medium">Final Total kVA:</span>
+              <span className="text-emerald-400 font-mono font-bold">{finalKVA.toLocaleString()} kVA</span>
             </div>
             
             {/* Calculated vs Standard Service Size */}
@@ -247,11 +248,8 @@ export default function ElectricalServiceSettings({ results }: ElectricalService
                 <span className="text-surface-300 font-medium">Recommended Service:</span>
                 <div className="text-right">
                   <span className={`text-lg font-bold font-mono ${exceedsMax ? 'text-red-400' : 'text-amber-400'}`}>
-                    {standardAmps.toLocaleString()}A @ {settings.voltage}V/{settings.phase}PH
+                    {electrical.recommendedService}
                   </span>
-                  <div className="text-xs text-surface-500 mt-0.5">
-                    {settings.phase === 3 ? '4-Wire' : '3-Wire'}
-                  </div>
                 </div>
               </div>
               {exceedsMax && (

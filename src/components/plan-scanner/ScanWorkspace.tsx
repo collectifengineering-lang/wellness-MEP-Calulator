@@ -4,7 +4,8 @@ import { Logo } from '../shared/Logo'
 import UserMenu from '../auth/UserMenu'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useScannerStore, ExtractedSpace, ScanDrawing } from '../../store/useScannerStore'
-import { analyzeDrawing, calculateScale, detectSpaceBoundaries, type DetectedRegion } from '../../lib/planAnalyzer'
+import { analyzeDrawing, calculateScale, detectSpaceBoundaries, formatFloorPrefix, type DetectedRegion } from '../../lib/planAnalyzer'
+import { extractZonesFromPDF, type ExtractedZone } from '../../lib/xai'
 import { v4 as uuidv4 } from 'uuid'
 import ExportModal from './ExportModal'
 import { NYC_FIXTURE_DATABASE, getFixtureById } from '../../data/nycFixtures'
@@ -16,11 +17,11 @@ export default function ScanWorkspace() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
   const { 
-    currentScan, scans, setCurrentScan, updateScan, addDrawing, removeDrawing,
+    currentScan, scans, setCurrentScan, updateScan, addDrawing, removeDrawing, updateDrawing,
     setExtractedSpaces, updateExtractedSpace, deleteExtractedSpace,
     calibrationMode, setCalibrationMode, calibrationPoints, addCalibrationPoint, 
     clearCalibrationPoints, setScale, selectedSpaceId, setSelectedSpaceId,
-    legends
+    legends, confirmDrawingSpaces
   } = useScannerStore()
   
   const [activeTab, setActiveTab] = useState<TabType>('drawings')
@@ -36,6 +37,13 @@ export default function ScanWorkspace() {
   const [showScaleModal, setShowScaleModal] = useState(false)
   const [selectedScale, setSelectedScale] = useState<string>('')
   const [customScale, setCustomScale] = useState<string>('')
+  
+  // For MEP-style full PDF extraction
+  const [extractingAllPages, setExtractingAllPages] = useState(false)
+  const [extractionProgress, setExtractionProgress] = useState({ current: 0, total: 0 })
+  const [pendingPdfData, setPendingPdfData] = useState<ArrayBuffer | null>(null)
+  const [showExtractionPrompt, setShowExtractionPrompt] = useState(false)
+  const [uploadedPdfPageCount, setUploadedPdfPageCount] = useState(0)
   
   // Drawing mode for space boundaries
   const [drawingMode, setDrawingMode] = useState<'none' | 'rectangle' | 'polygon'>('none')
@@ -54,6 +62,11 @@ export default function ScanWorkspace() {
     points?: Array<{ xPercent: number; yPercent: number }>
     name: string
     analyzed: boolean
+    // New fields
+    userCreated: boolean  // true = manual, false = AI detected
+    areaSF?: number       // Calculated area in square feet
+    floor?: string        // Floor level prefix
+    seatCount?: number    // AI-detected seat count
   }>>([])
   
   // Rectangle drawing state
@@ -200,10 +213,12 @@ export default function ScanWorkspace() {
         return
       }
       
-      // Render PDF to image
+      // Render PDF to image - CRITICAL: pass the pageNumber!
       setRenderingPdf(true)
       try {
-        const { base64, mime } = await renderPdfPageToImage(selectedDrawing.fileUrl)
+        const pageNum = selectedDrawing.pageNumber || 1
+        console.log(`📄 Rendering PDF page ${pageNum}...`)
+        const { base64, mime } = await renderPdfPageToImage(selectedDrawing.fileUrl, pageNum)
         setRenderedImageUrl(`data:${mime};base64,${base64}`)
       } catch (err) {
         console.error('Failed to render PDF:', err)
@@ -213,7 +228,7 @@ export default function ScanWorkspace() {
     }
     
     renderPdfToImage()
-  }, [selectedDrawing?.id, selectedDrawing?.fileUrl, selectedDrawing?.fileType])
+  }, [selectedDrawing?.id, selectedDrawing?.fileUrl, selectedDrawing?.fileType, selectedDrawing?.pageNumber])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -232,10 +247,17 @@ export default function ScanWorkspace() {
           if (base64Match) {
             const pdfBase64 = base64Match[2]
             const pdfBytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0))
+            
+            // Store PDF data for "Extract All" feature (same as MEP Concept Design)
+            setPendingPdfData(pdfBytes.buffer.slice(0))
+            
             const pdf = await pdfjs.getDocument({ data: pdfBytes }).promise
             const pageCount = pdf.numPages
             
-            console.log(`📄 PDF has ${pageCount} pages`)
+            console.log(`📄 PDF has ${pageCount} pages - stored for full extraction`)
+            
+            // Store page count for extraction prompt
+            setUploadedPdfPageCount(pageCount)
             
             if (pageCount > 1) {
               // Multi-page PDF: create a separate drawing for each page
@@ -252,7 +274,13 @@ export default function ScanWorkspace() {
                   setSelectedDrawingId(drawing.id)
                 }
               }
+              
+              // Show extraction prompt after multi-page PDF upload
+              setShowExtractionPrompt(true)
               continue // Skip single-page handling below
+            } else {
+              // Single page PDF - still show extraction prompt
+              setShowExtractionPrompt(true)
             }
           }
         } catch (err) {
@@ -298,11 +326,12 @@ export default function ScanWorkspace() {
       
       // Check if this is a PDF - need to render to image first
       if (selectedDrawing.fileType === 'application/pdf') {
-        setAnalysisProgress('Converting PDF page to image...')
-        const { base64, mime } = await renderPdfPageToImage(selectedDrawing.fileUrl)
+        const pageNum = selectedDrawing.pageNumber || 1
+        setAnalysisProgress(`Converting PDF page ${pageNum} to image...`)
+        const { base64, mime } = await renderPdfPageToImage(selectedDrawing.fileUrl, pageNum)
         imageData = base64
         mimeType = mime
-        console.log(`PDF converted to image: ${Math.round(imageData.length / 1024)}KB`)
+        console.log(`PDF page ${pageNum} converted to image: ${Math.round(imageData.length / 1024)}KB`)
       } else {
         // Regular image - extract base64
         const base64Match = selectedDrawing.fileUrl.match(/^data:([^;]+);base64,(.+)$/)
@@ -350,6 +379,83 @@ export default function ScanWorkspace() {
     }
   }
 
+  // ============================================
+  // Extract All Pages - Uses MEP Concept Design Logic
+  // This is the same robust extraction as PDFImportModal
+  // ============================================
+  const handleExtractAllPages = async () => {
+    if (!currentScan) return
+    
+    // Get PDF data from first drawing or pending upload
+    let pdfData: ArrayBuffer | null = pendingPdfData
+    
+    // If no pending data, try to get from first PDF drawing
+    if (!pdfData && currentScan.drawings.length > 0) {
+      const firstPdfDrawing = currentScan.drawings.find(d => d.fileType === 'application/pdf')
+      if (firstPdfDrawing) {
+        const base64Match = firstPdfDrawing.fileUrl.match(/^data:([^;]+);base64,(.+)$/)
+        if (base64Match) {
+          const pdfBase64 = base64Match[2]
+          const pdfBytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0))
+          pdfData = pdfBytes.buffer.slice(0)
+        }
+      }
+    }
+    
+    if (!pdfData) {
+      alert('No PDF found. Please upload a PDF first.')
+      return
+    }
+    
+    setExtractingAllPages(true)
+    setExtractionProgress({ current: 0, total: 0 })
+    
+    try {
+      console.log('🚀 Starting full PDF extraction (MEP Concept Design logic)...')
+      
+      const result = await extractZonesFromPDF(pdfData, (current, total) => {
+        setExtractionProgress({ current, total })
+      })
+      
+      console.log(`✅ Extraction complete: ${result.zones.length} zones from ${result.pageCount} pages`)
+      
+      // Convert ExtractedZone[] to ExtractedSpace[]
+      const newSpaces: ExtractedSpace[] = result.zones.map((zone: ExtractedZone) => ({
+        id: uuidv4(),
+        name: zone.name,
+        floor: zone.floor || 'Unknown',
+        sf: zone.sf,
+        zoneType: zone.suggestedZoneType,
+        fixtures: {},
+        equipment: [],
+        confidence: zone.confidence === 'high' ? 90 : zone.confidence === 'medium' ? 70 : 50,
+      }))
+      
+      // Merge with existing spaces (don't overwrite user edits)
+      const existingNames = new Set(currentScan.extractedSpaces.map(s => s.name.toLowerCase()))
+      const uniqueNewSpaces = newSpaces.filter(s => !existingNames.has(s.name.toLowerCase()))
+      
+      const allSpaces = [...currentScan.extractedSpaces, ...uniqueNewSpaces]
+      setExtractedSpaces(currentScan.id, allSpaces)
+      
+      // Update scan status
+      updateScan(currentScan.id, { 
+        status: 'reviewed',
+      })
+      
+      // Switch to spaces tab
+      setActiveTab('spaces')
+      
+      alert(`✅ Extracted ${uniqueNewSpaces.length} spaces from ${result.pageCount} pages!`)
+    } catch (error) {
+      console.error('Full extraction failed:', error)
+      alert(`Extraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setExtractingAllPages(false)
+      setExtractionProgress({ current: 0, total: 0 })
+    }
+  }
+
   const handleImageClick = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
     if (!calibrationMode || !imageRef.current) return
     
@@ -359,6 +465,58 @@ export default function ScanWorkspace() {
     
     addCalibrationPoint({ x, y })
   }, [calibrationMode, addCalibrationPoint])
+  
+  // ============================================
+  // Area Calculation Helpers (must be before callbacks that use them)
+  // ============================================
+  
+  // Calculate area in square feet from region dimensions using scale
+  const calculateAreaSF = useCallback((
+    widthPercent: number, 
+    heightPercent: number,
+    imageWidthPx?: number,
+    imageHeightPx?: number
+  ): number | undefined => {
+    if (!currentScan?.scale?.pixelsPerFoot || !imageWidthPx || !imageHeightPx) return undefined
+    
+    const pxPerFoot = currentScan.scale.pixelsPerFoot
+    const widthPx = (widthPercent / 100) * imageWidthPx
+    const heightPx = (heightPercent / 100) * imageHeightPx
+    const widthFt = widthPx / pxPerFoot
+    const heightFt = heightPx / pxPerFoot
+    return Math.round(widthFt * heightFt)
+  }, [currentScan?.scale?.pixelsPerFoot])
+  
+  // Calculate polygon area using Shoelace formula
+  const calculatePolygonAreaSF = useCallback((
+    points: Array<{ xPercent: number; yPercent: number }>,
+    imageWidthPx?: number,
+    imageHeightPx?: number
+  ): number | undefined => {
+    if (!currentScan?.scale?.pixelsPerFoot || !imageWidthPx || !imageHeightPx || points.length < 3) return undefined
+    
+    const pxPerFoot = currentScan.scale.pixelsPerFoot
+    
+    // Convert to feet
+    const pointsFt = points.map(p => ({
+      x: ((p.xPercent / 100) * imageWidthPx) / pxPerFoot,
+      y: ((p.yPercent / 100) * imageHeightPx) / pxPerFoot,
+    }))
+    
+    // Shoelace formula
+    let area = 0
+    for (let i = 0; i < pointsFt.length; i++) {
+      const j = (i + 1) % pointsFt.length
+      area += pointsFt[i].x * pointsFt[j].y
+      area -= pointsFt[j].x * pointsFt[i].y
+    }
+    return Math.round(Math.abs(area) / 2)
+  }, [currentScan?.scale?.pixelsPerFoot])
+  
+  // Get current drawing's floor level
+  const currentFloor = useMemo(() => {
+    return selectedDrawing?.floor || 'Unknown'
+  }, [selectedDrawing?.floor])
 
   // Drawing mode handlers
   // Rectangle drawing handlers
@@ -409,15 +567,29 @@ export default function ScanWorkspace() {
       const xPx = Math.min(currentDrawing.startX, currentDrawing.endX)
       const yPx = Math.min(currentDrawing.startY, currentDrawing.endY)
       
+      const widthPercent = (width / imageBounds.width) * 100
+      const heightPercent = (height / imageBounds.height) * 100
+      
+      // Calculate area if scale is set
+      const imageWidthPx = imageRef.current?.naturalWidth || imageBounds.width
+      const imageHeightPx = imageRef.current?.naturalHeight || imageBounds.height
+      const areaSF = calculateAreaSF(widthPercent, heightPercent, imageWidthPx, imageHeightPx)
+      
+      // Get floor prefix
+      const floorPrefix = formatFloorPrefix(currentFloor)
+      
       const newRegion = {
         id: uuidv4(),
         type: 'rectangle' as const,
         xPercent: (xPx / imageBounds.width) * 100,
         yPercent: (yPx / imageBounds.height) * 100,
-        widthPercent: (width / imageBounds.width) * 100,
-        heightPercent: (height / imageBounds.height) * 100,
-        name: `Space ${drawnRegions.length + 1}`,
+        widthPercent,
+        heightPercent,
+        name: `${floorPrefix} - Space ${drawnRegions.length + 1}`,
         analyzed: false,
+        userCreated: true,
+        areaSF,
+        floor: currentFloor,
       }
       setDrawnRegions(prev => [...prev, newRegion])
       setSelectedRegionId(newRegion.id)
@@ -426,7 +598,7 @@ export default function ScanWorkspace() {
     }
     
     setCurrentDrawing(null)
-  }, [currentDrawing, drawnRegions.length, imageBounds])
+  }, [currentDrawing, drawnRegions.length, imageBounds, calculateAreaSF, currentFloor])
   
   // Polygon drawing handlers
   const handlePolygonClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -471,12 +643,23 @@ export default function ScanWorkspace() {
       yPercent: (p.y / imageBounds.height) * 100,
     }))
     
+    // Calculate area if scale is set
+    const imageWidthPx = imageRef.current?.naturalWidth || imageBounds.width
+    const imageHeightPx = imageRef.current?.naturalHeight || imageBounds.height
+    const areaSF = calculatePolygonAreaSF(percentPoints, imageWidthPx, imageHeightPx)
+    
+    // Get floor prefix
+    const floorPrefix = formatFloorPrefix(currentFloor)
+    
     const newRegion = {
       id: uuidv4(),
       type: 'polygon' as const,
       points: percentPoints,
-      name: `Space ${drawnRegions.length + 1}`,
+      name: `${floorPrefix} - Space ${drawnRegions.length + 1}`,
       analyzed: false,
+      userCreated: true,
+      areaSF,
+      floor: currentFloor,
     }
     
     setDrawnRegions(prev => [...prev, newRegion])
@@ -487,7 +670,7 @@ export default function ScanWorkspace() {
     // Reset polygon state
     setCurrentPolygon([])
     setPolygonPreviewPoint(null)
-  }, [imageBounds, currentPolygon, drawnRegions.length])
+  }, [imageBounds, currentPolygon, drawnRegions.length, calculatePolygonAreaSF, currentFloor])
   
   // Cancel current polygon with Escape key
   useEffect(() => {
@@ -513,7 +696,6 @@ export default function ScanWorkspace() {
       heightPercent: Math.max(...yValues) - Math.min(...yValues),
     }
   }
-
 
   const handleDeleteRegion = (regionId: string) => {
     setDrawnRegions(prev => prev.filter(r => r.id !== regionId))
@@ -551,14 +733,21 @@ export default function ScanWorkspace() {
     const newSpace: ExtractedSpace = {
       id: uuidv4(),
       name: region.name,
-      sf: 0,
+      sf: region.areaSF || 0,
+      floor: region.floor,
       fixtures: {},
       equipment: [],
-      confidence: 100, // Manual entry
+      confidence: region.userCreated ? 100 : 75, // Manual entry vs AI
       // Store bounding box (for polygons, this is the enclosing rectangle)
       boundingBox,
       // Store polygon points if this is a polygon region
       polygonPoints: region.type === 'polygon' ? region.points : undefined,
+      // Page/drawing tracking
+      pageNumber: selectedDrawing?.pageNumber,
+      drawingId: selectedDrawing?.id,
+      userCreated: region.userCreated,
+      // Occupancy will be set later via seat detection
+      seatCountAI: region.seatCount,
     }
     
     setExtractedSpaces(currentScan.id, [...currentScan.extractedSpaces, newSpace])
@@ -595,8 +784,9 @@ export default function ScanWorkspace() {
       let mimeType = 'image/png'
       
       if (selectedDrawing.fileType === 'application/pdf') {
-        // Use the rendered image URL
-        const { base64, mime } = await renderPdfPageToImage(selectedDrawing.fileUrl)
+        // Use the rendered image URL - pass correct page number
+        const pageNum = selectedDrawing.pageNumber || 1
+        const { base64, mime } = await renderPdfPageToImage(selectedDrawing.fileUrl, pageNum)
         imageData = base64
         mimeType = mime
       } else {
@@ -616,18 +806,37 @@ export default function ScanWorkspace() {
       
       setAnalysisProgress(`Found ${result.regions.length} spaces! Adding to canvas...`)
       
+      // Get floor prefix from detected floor
+      const floorPrefix = formatFloorPrefix(result.floor)
+      
+      // Update drawing with detected floor
+      if (selectedDrawing && result.floor !== 'Unknown') {
+        updateDrawing(currentScan.id, selectedDrawing.id, { floor: result.floor })
+      }
+      
       // Add detected regions to the drawn regions (keep as percentages)
-      const newRegions = result.regions.map((region: DetectedRegion) => ({
-        id: region.id,
-        type: 'rectangle' as const,
-        // Store as percentages - the region already has pixel values, convert back to %
-        xPercent: (region.x / imageWidth) * 100,
-        yPercent: (region.y / imageHeight) * 100,
-        widthPercent: (region.width / imageWidth) * 100,
-        heightPercent: (region.height / imageHeight) * 100,
-        name: region.name,
-        analyzed: false,
-      }))
+      const newRegions = result.regions.map((region: DetectedRegion) => {
+        const widthPercent = (region.width / imageWidth) * 100
+        const heightPercent = (region.height / imageHeight) * 100
+        
+        // Calculate area if scale is set
+        const areaSF = calculateAreaSF(widthPercent, heightPercent, imageWidth, imageHeight)
+        
+        return {
+          id: region.id,
+          type: 'rectangle' as const,
+          // Store as percentages - the region already has pixel values, convert back to %
+          xPercent: (region.x / imageWidth) * 100,
+          yPercent: (region.y / imageHeight) * 100,
+          widthPercent,
+          heightPercent,
+          name: `${floorPrefix} - ${region.name}`,
+          analyzed: false,
+          userCreated: false, // AI-detected
+          areaSF,
+          floor: result.floor,
+        }
+      })
       
       setDrawnRegions(prev => [...prev, ...newRegions])
       
@@ -890,104 +1099,264 @@ export default function ScanWorkspace() {
 
             {/* Drawing Viewer */}
             <div className="flex-1 flex flex-col">
-              {/* Toolbar */}
-              <div className="px-6 py-3 border-b border-surface-700 bg-surface-800/30 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  {/* AI Auto-Detect Button */}
-                  <button
-                    onClick={handleAIAutoDetect}
-                    disabled={detectingBoundaries || !renderedImageUrl}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
-                      detectingBoundaries
-                        ? 'bg-amber-600 text-white animate-pulse'
-                        : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    {detectingBoundaries ? (
-                      <>🤖 Detecting...</>
-                    ) : (
-                      <>🤖 AI Auto-Detect</>
-                    )}
-                  </button>
-                  
-                  {/* Rectangle Drawing Mode */}
-                  <button
-                    onClick={() => {
-                      setDrawingMode(drawingMode === 'rectangle' ? 'none' : 'rectangle')
-                      setCalibrationMode(false)
-                      setCurrentPolygon([])
-                    }}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                      drawingMode === 'rectangle'
-                        ? 'bg-violet-600 text-white'
-                        : 'bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600'
-                    }`}
-                    title="Draw rectangle boundaries"
-                  >
-                    ▢ Rect
-                  </button>
-                  
-                  {/* Polygon Drawing Mode */}
-                  <button
-                    onClick={() => {
-                      setDrawingMode(drawingMode === 'polygon' ? 'none' : 'polygon')
-                      setCalibrationMode(false)
-                      setCurrentDrawing(null)
-                    }}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
-                      drawingMode === 'polygon'
-                        ? 'bg-cyan-600 text-white'
-                        : 'bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600'
-                    }`}
-                    title="Draw polygon boundaries (click to add points, double-click or click first point to close)"
-                  >
-                    ⬡ Polygon
-                  </button>
-                  
-                  <button
-                    onClick={() => setShowScaleModal(true)}
-                    className="px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600"
-                  >
-                    📏 Scale
-                  </button>
-                  
-                  {drawnRegions.length > 0 && (
-                    <span className="text-sm text-violet-400 font-medium ml-2">
-                      {drawnRegions.length} region{drawnRegions.length !== 1 ? 's' : ''} drawn
-                    </span>
-                  )}
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  {drawnRegions.length > 0 && (
+              {/* Page Navigation Bar */}
+              {currentScan.drawings.length > 1 && (
+                <div className="px-6 py-2 border-b border-surface-700 bg-surface-800/50 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
                     <button
                       onClick={() => {
-                        drawnRegions.forEach(region => {
-                          if (!region.analyzed) handleAddRegionAsSpace(region)
-                        })
+                        const currentIndex = currentScan.drawings.findIndex(d => d.id === selectedDrawingId)
+                        if (currentIndex > 0) {
+                          setSelectedDrawingId(currentScan.drawings[currentIndex - 1].id)
+                        }
                       }}
-                      className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                      disabled={currentScan.drawings.findIndex(d => d.id === selectedDrawingId) === 0}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
-                      ➕ Add All as Spaces
+                      ← Previous
                     </button>
-                  )}
+                    
+                    <span className="text-sm font-medium text-surface-300">
+                      Page {(currentScan.drawings.findIndex(d => d.id === selectedDrawingId) + 1)} of {currentScan.drawings.length}
+                    </span>
+                    
+                    <button
+                      onClick={() => {
+                        const currentIndex = currentScan.drawings.findIndex(d => d.id === selectedDrawingId)
+                        if (currentIndex < currentScan.drawings.length - 1) {
+                          setSelectedDrawingId(currentScan.drawings[currentIndex + 1].id)
+                        }
+                      }}
+                      disabled={currentScan.drawings.findIndex(d => d.id === selectedDrawingId) === currentScan.drawings.length - 1}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Next →
+                    </button>
+                  </div>
                   
-                  <button
-                    onClick={handleAnalyzeAllDrawings}
-                    disabled={analyzing || !selectedDrawing}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {analyzing ? (
-                      <>
-                        <span className="animate-spin">🔄</span>
-                        {analysisProgress || 'Analyzing...'}
-                      </>
+                  <div className="flex items-center gap-3">
+                    {/* Floor indicator */}
+                    <span className="text-sm text-surface-400">
+                      Floor: <span className="text-violet-400 font-medium">{selectedDrawing?.floor || 'Not detected'}</span>
+                    </span>
+                    
+                    {/* Page confirmation status */}
+                    {selectedDrawing?.confirmed ? (
+                      <span className="px-2 py-1 rounded bg-emerald-600/20 text-emerald-400 text-xs font-medium">
+                        ✓ Confirmed
+                      </span>
                     ) : (
-                      <>🤖 Auto-Detect All</>
+                      <button
+                        onClick={() => {
+                          if (selectedDrawing) {
+                            confirmDrawingSpaces(currentScan.id, selectedDrawing.id)
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors bg-emerald-600 hover:bg-emerald-500 text-white"
+                      >
+                        ✓ Confirm Page
+                      </button>
                     )}
-                  </button>
+                    
+                    {/* Confirmed pages count */}
+                    <span className="text-xs text-surface-500">
+                      {currentScan.drawings.filter(d => d.confirmed).length}/{currentScan.drawings.length} confirmed
+                    </span>
+                  </div>
+                </div>
+              )}
+              
+              {/* Toolbar */}
+              <div className="px-6 py-3 border-b border-surface-700 bg-surface-800/30">
+                {/* Primary Action Row - Extract All (same as MEP Concept Design) */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-white">📊 Quick Extract:</span>
+                    {/* MEP-Style Full PDF Extraction - PRIMARY ACTION */}
+                    <button
+                      onClick={handleExtractAllPages}
+                      disabled={extractingAllPages || currentScan?.drawings.length === 0}
+                      className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-emerald-500/20"
+                      title="Extracts ALL rooms with sqft from ALL pages - same AI as MEP Concept Design"
+                    >
+                      {extractingAllPages ? (
+                        <>
+                          <span className="animate-spin">🔄</span>
+                          {extractionProgress.total > 0 
+                            ? `Page ${extractionProgress.current}/${extractionProgress.total}...`
+                            : 'Extracting...'
+                          }
+                        </>
+                      ) : (
+                        <>⚡ Extract All Spaces from PDF</>
+                      )}
+                    </button>
+                    
+                    {extractingAllPages && extractionProgress.total > 0 && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-32 h-2 bg-surface-700 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-300"
+                            style={{ width: `${(extractionProgress.current / extractionProgress.total) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-surface-400">
+                          {Math.round((extractionProgress.current / extractionProgress.total) * 100)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="text-xs text-surface-500 flex items-center gap-1">
+                    <span>💡</span>
+                    <span>Same AI extraction as MEP Concept Design - reads sqft from plans</span>
+                  </div>
+                </div>
+                
+                {/* Secondary Actions Row - Manual Tools */}
+                <div className="flex items-center justify-between pt-2 border-t border-surface-700/50">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-surface-500 mr-1">Manual tools:</span>
+                    
+                    {/* AI Auto-Detect Boundaries (for this page) */}
+                    <button
+                      onClick={handleAIAutoDetect}
+                      disabled={detectingBoundaries || !renderedImageUrl}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                        detectingBoundaries
+                          ? 'bg-amber-600 text-white animate-pulse'
+                          : 'bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      title="Detect boundaries on this page (requires scale calibration for sqft)"
+                    >
+                      {detectingBoundaries ? '🤖 Detecting...' : '🔲 Detect Boundaries'}
+                    </button>
+                    
+                    {/* Rectangle Drawing Mode */}
+                    <button
+                      onClick={() => {
+                        setDrawingMode(drawingMode === 'rectangle' ? 'none' : 'rectangle')
+                        setCalibrationMode(false)
+                        setCurrentPolygon([])
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
+                        drawingMode === 'rectangle'
+                          ? 'bg-violet-600 text-white'
+                          : 'bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600'
+                      }`}
+                      title="Draw rectangle boundaries manually"
+                    >
+                      ▢ Draw Rect
+                    </button>
+                    
+                    {/* Polygon Drawing Mode */}
+                    <button
+                      onClick={() => {
+                        setDrawingMode(drawingMode === 'polygon' ? 'none' : 'polygon')
+                        setCalibrationMode(false)
+                        setCurrentDrawing(null)
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
+                        drawingMode === 'polygon'
+                          ? 'bg-cyan-600 text-white'
+                          : 'bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600'
+                      }`}
+                      title="Draw polygon boundaries (click to add points, double-click to close)"
+                    >
+                      ⬡ Draw Poly
+                    </button>
+                    
+                    <button
+                      onClick={() => setShowScaleModal(true)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600"
+                      title="Set drawing scale for area calculations"
+                    >
+                      📏 Scale
+                    </button>
+                    
+                    {drawnRegions.length > 0 && (
+                      <span className="text-xs text-violet-400 font-medium ml-1">
+                        {drawnRegions.length} region{drawnRegions.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    {drawnRegions.length > 0 && (
+                      <button
+                        onClick={() => {
+                          drawnRegions.forEach(region => {
+                            if (!region.analyzed) handleAddRegionAsSpace(region)
+                          })
+                        }}
+                        className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-medium transition-colors"
+                      >
+                        ➕ Add Regions as Spaces
+                      </button>
+                    )}
+                    
+                    <button
+                      onClick={handleAnalyzeAllDrawings}
+                      disabled={analyzing || !selectedDrawing}
+                      className="px-3 py-1.5 bg-surface-700 hover:bg-surface-600 text-white rounded-lg text-xs font-medium transition-colors disabled:opacity-50 flex items-center gap-1"
+                      title="Analyze just this page"
+                    >
+                      {analyzing ? (
+                        <>
+                          <span className="animate-spin">🔄</span>
+                          <span className="max-w-[100px] truncate">{analysisProgress || 'Analyzing...'}</span>
+                        </>
+                      ) : (
+                        <>🤖 Analyze Page</>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {/* PDF Extraction Prompt Modal */}
+              {showExtractionPrompt && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-surface-800 border border-emerald-500/30 rounded-2xl p-8 shadow-2xl max-w-md w-full">
+                    <div className="text-center mb-6">
+                      <div className="text-5xl mb-4">📄✨</div>
+                      <h3 className="text-xl font-bold text-white mb-2">PDF Uploaded!</h3>
+                      <p className="text-surface-400">
+                        {uploadedPdfPageCount > 1 
+                          ? `Your PDF has ${uploadedPdfPageCount} pages.`
+                          : 'Your PDF is ready for processing.'}
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <button
+                        onClick={() => {
+                          setShowExtractionPrompt(false)
+                          handleExtractAllPages()
+                        }}
+                        className="w-full px-6 py-4 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-3"
+                      >
+                        <span className="text-xl">⚡</span>
+                        <div className="text-left">
+                          <div>Extract All Spaces Now</div>
+                          <div className="text-xs opacity-80">AI reads room names & sqft from all pages</div>
+                        </div>
+                      </button>
+                      
+                      <button
+                        onClick={() => setShowExtractionPrompt(false)}
+                        className="w-full px-6 py-3 bg-surface-700 hover:bg-surface-600 text-surface-300 rounded-xl font-medium transition-colors"
+                      >
+                        Skip - I'll do it manually
+                      </button>
+                    </div>
+                    
+                    <p className="text-xs text-surface-500 text-center mt-4">
+                      💡 Uses the same AI as MEP Concept Design for accurate space extraction
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Scale Settings Modal */}
               {showScaleModal && (
@@ -1241,7 +1610,8 @@ export default function ScanWorkspace() {
                       </div>
                     ))}
                     
-                    {/* Drawn Rectangle Regions (user-drawn) - positioned using percentages */}
+                    {/* Drawn Rectangle Regions - positioned using percentages */}
+                    {/* User-created regions are cyan, AI-detected are orange/amber */}
                     {imageBounds && drawnRegions.filter(r => r.type === 'rectangle').map(region => (
                       <div
                         key={region.id}
@@ -1250,7 +1620,9 @@ export default function ScanWorkspace() {
                             ? 'border-violet-500 bg-violet-500/20' 
                             : region.analyzed 
                               ? 'border-emerald-500 bg-emerald-500/10' 
-                              : 'border-cyan-500 bg-cyan-500/10'
+                              : region.userCreated
+                                ? 'border-cyan-500 bg-cyan-500/10'
+                                : 'border-amber-500 bg-amber-500/10' // AI-detected
                         } cursor-pointer transition-colors`}
                         style={{
                           left: ((region.xPercent || 0) / 100) * imageBounds.width,
@@ -1263,11 +1635,16 @@ export default function ScanWorkspace() {
                           setSelectedRegionId(region.id)
                         }}
                       >
-                        {/* Region Label */}
+                        {/* Region Label with Area */}
                         <div className={`absolute -top-7 left-0 px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${
-                          region.analyzed ? 'bg-emerald-600 text-white' : 'bg-cyan-600 text-white'
+                          region.analyzed 
+                            ? 'bg-emerald-600 text-white' 
+                            : region.userCreated
+                              ? 'bg-cyan-600 text-white'
+                              : 'bg-amber-600 text-white' // AI-detected
                         }`}>
-                          ▢ {region.name}
+                          {region.userCreated ? '▢' : '🤖'} {region.name}
+                          {region.areaSF && ` • ${region.areaSF.toLocaleString()} SF`}
                           {region.analyzed && ' ✓'}
                         </div>
                         
@@ -1410,9 +1787,14 @@ export default function ScanWorkspace() {
                           style={{ left: labelX, top: labelY - 28 }}
                         >
                           <div className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap inline-flex items-center gap-1 ${
-                            region.analyzed ? 'bg-emerald-600 text-white' : 'bg-cyan-600 text-white'
+                            region.analyzed 
+                              ? 'bg-emerald-600 text-white' 
+                              : region.userCreated
+                                ? 'bg-cyan-600 text-white'
+                                : 'bg-amber-600 text-white' // AI-detected
                           }`}>
-                            ⬡ {region.name}
+                            {region.userCreated ? '⬡' : '🤖'} {region.name}
+                            {region.areaSF && ` • ${region.areaSF.toLocaleString()} SF`}
                             {region.analyzed && ' ✓'}
                             <button
                               onClick={(e) => {

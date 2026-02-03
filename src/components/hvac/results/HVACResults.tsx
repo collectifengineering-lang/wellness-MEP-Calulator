@@ -80,7 +80,7 @@ export default function HVACResults() {
     const spaceType = ASHRAE62_SPACE_TYPES.find(st => st.id === space.spaceType)
     const zone = zones.find(z => z.id === space.zoneId)
     const system = zone ? systems.find(s => s.id === zone.systemId) : null
-    const occupancy = space.occupancyOverride ?? calculateDefaultOccupancy(space.spaceType, space.areaSf)
+    const occupancy = space.occupancyOverride ?? calculateDefaultOccupancy(space.spaceType || 'office_space', space.areaSf)
     
     // Code minimum (ASHRAE 62.1 defaults)
     const codeRp = spaceType?.Rp ?? 5
@@ -108,7 +108,7 @@ export default function HVACResults() {
     
     return {
       ...space,
-      spaceTypeName: spaceType?.displayName || space.spaceType,
+      spaceTypeName: spaceType?.displayName || space.spaceType || 'Unknown',
       zoneName: zone?.name || '-',
       systemName: system?.name || '-',
       occupancy,

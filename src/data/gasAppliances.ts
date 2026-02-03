@@ -238,6 +238,175 @@ export const GAS_APPLIANCES_DATABASE: GasApplianceDefinition[] = [
     mbh: 50,
     icon: '🍖',
   },
+  
+  // ============================================
+  // RESIDENTIAL HIGH-END (Wolf/Thermador)
+  // Values from manufacturer spec sheets
+  // ============================================
+  
+  // Standard Tier - GE Profile / Similar
+  {
+    id: 'range_ge_profile_30',
+    name: 'GE Profile 30" Gas Range',
+    category: 'Residential',
+    btuPerHour: 65000,
+    mbh: 65,
+    notes: 'Standard 30" freestanding range',
+    icon: '🍳',
+  },
+  {
+    id: 'cooktop_standard_4burner',
+    name: 'Gas Cooktop (4-Burner)',
+    category: 'Residential',
+    btuPerHour: 48000,
+    mbh: 48,
+    notes: 'Standard 30" cooktop',
+    icon: '🔥',
+  },
+  {
+    id: 'wall_oven_gas_standard',
+    name: 'Gas Wall Oven (Standard)',
+    category: 'Residential',
+    btuPerHour: 25000,
+    mbh: 25,
+    icon: '🍞',
+  },
+  {
+    id: 'fireplace_insert_standard',
+    name: 'Gas Fireplace Insert',
+    category: 'Residential',
+    btuPerHour: 35000,
+    mbh: 35,
+    notes: 'Standard insert, 75-85% efficiency',
+    icon: '🔥',
+  },
+  {
+    id: 'fireplace_direct_vent',
+    name: 'Gas Fireplace (Direct Vent)',
+    category: 'Residential',
+    btuPerHour: 40000,
+    mbh: 40,
+    notes: 'Direct vent decorative/supplemental',
+    icon: '🔥',
+  },
+  
+  // Wolf Pro Ranges
+  {
+    id: 'wolf_range_30',
+    name: 'Wolf 30" Pro Range',
+    category: 'Residential',
+    btuPerHour: 55000,
+    mbh: 55,
+    notes: 'GR304 - 4 burners + convection oven',
+    icon: '🍳',
+  },
+  {
+    id: 'wolf_range_36',
+    name: 'Wolf 36" Pro Range',
+    category: 'Residential',
+    btuPerHour: 72000,
+    mbh: 72,
+    notes: 'GR366 - 6 burners + convection oven',
+    icon: '🍳',
+  },
+  {
+    id: 'wolf_range_48',
+    name: 'Wolf 48" Pro Range',
+    category: 'Residential',
+    btuPerHour: 90000,
+    mbh: 90,
+    notes: 'GR486G - 6 burners + griddle + double oven',
+    icon: '🍳',
+  },
+  {
+    id: 'wolf_range_60',
+    name: 'Wolf 60" Pro Range',
+    category: 'Residential',
+    btuPerHour: 108000,
+    mbh: 108,
+    notes: 'GR606DG - 6 burners + griddle + grill + double oven',
+    icon: '🍳',
+  },
+  
+  // Wolf Rangetops (cooktops only)
+  {
+    id: 'wolf_rangetop_36',
+    name: 'Wolf 36" Rangetop (6-Burner)',
+    category: 'Residential',
+    btuPerHour: 91000,
+    mbh: 91,
+    notes: 'SRT366 - 6 dual-stacked burners',
+    icon: '🔥',
+  },
+  {
+    id: 'wolf_rangetop_48',
+    name: 'Wolf 48" Rangetop (6-Burner + Griddle)',
+    category: 'Residential',
+    btuPerHour: 105000,
+    mbh: 105,
+    notes: 'SRT486G - 6 burners + griddle',
+    icon: '🔥',
+  },
+  
+  // Wolf Ovens
+  {
+    id: 'wolf_double_oven_gas',
+    name: 'Wolf Double Oven (Gas)',
+    category: 'Residential',
+    btuPerHour: 50000,
+    mbh: 50,
+    notes: 'DO30GM/S - Dual convection',
+    icon: '🍞',
+  },
+  
+  // Thermador Pro Ranges
+  {
+    id: 'thermador_harmony_36',
+    name: 'Thermador Pro Harmony 36"',
+    category: 'Residential',
+    btuPerHour: 72000,
+    mbh: 72,
+    notes: 'PRG366WH - 6 Star burners + convection',
+    icon: '🍳',
+  },
+  {
+    id: 'thermador_grand_48',
+    name: 'Thermador Pro Grand 48"',
+    category: 'Residential',
+    btuPerHour: 87000,
+    mbh: 87,
+    notes: 'PRG486WDG - 6 burners + griddle + double oven',
+    icon: '🍳',
+  },
+  {
+    id: 'thermador_grand_60',
+    name: 'Thermador Pro Grand 60"',
+    category: 'Residential',
+    btuPerHour: 108000,
+    mbh: 108,
+    notes: 'PRG606WEG - 6 burners + griddle + grill',
+    icon: '🍳',
+  },
+  
+  // Thermador Rangetops
+  {
+    id: 'thermador_rangetop_36',
+    name: 'Thermador 36" Rangetop',
+    category: 'Residential',
+    btuPerHour: 82000,
+    mbh: 82,
+    notes: 'PCG366W - 6 Star burners',
+    icon: '🔥',
+  },
+  {
+    id: 'thermador_rangetop_48',
+    name: 'Thermador 48" Rangetop',
+    category: 'Residential',
+    btuPerHour: 98000,
+    mbh: 98,
+    notes: 'PCG486WD - 6 burners + griddle',
+    icon: '🔥',
+  },
 
   // ============================================
   // WATER HEATING

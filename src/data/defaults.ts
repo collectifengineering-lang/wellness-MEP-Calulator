@@ -299,22 +299,130 @@ export function getDefaultElectricalSettings(): ProjectElectricalSettings {
   }
 }
 
+// HVAC System Type Configurations
+// Defines characteristics of each HVAC system type
+import type { HVACSystemType, HVACSystemConfig } from '../types'
+
+export const HVAC_SYSTEM_CONFIGS: Record<HVACSystemType, HVACSystemConfig> = {
+  chiller_ahu: {
+    type: 'chiller_ahu',
+    name: 'Chiller + AHUs',
+    description: 'Central chiller plant (air or water-cooled) with Air Handling Units. Best for large facilities with diverse zone requirements.',
+    coolingKvaPerTon: 1.5,        // Air-cooled chiller typical
+    heatingKvaPerMbh: 0.293,
+    hasEnergyRecovery: true,
+    typicalSfPerTon: 400,
+    supportsGasHeat: true,
+    supportsElectricHeat: true,
+    ventilationType: 'integrated',
+    unitSizeRange: { min: 20, max: 500 },
+  },
+  heat_pump_ahu: {
+    type: 'heat_pump_ahu',
+    name: 'Heat Pump Plant + AHUs',
+    description: 'Central air-source or water-source heat pump plant with AHUs. High efficiency, good for heating-dominant climates.',
+    coolingKvaPerTon: 1.2,        // Heat pumps more efficient
+    heatingKvaPerMbh: 0.1,        // COP ~3.0 for heating
+    hasEnergyRecovery: true,
+    typicalSfPerTon: 400,
+    supportsGasHeat: false,       // Electric only
+    supportsElectricHeat: true,
+    ventilationType: 'integrated',
+    unitSizeRange: { min: 10, max: 200 },
+  },
+  vrf_erv: {
+    type: 'vrf_erv',
+    name: 'VRF + ERV/DOAS',
+    description: 'Variable Refrigerant Flow system with Energy Recovery Ventilators. Excellent zone control, high efficiency, quiet operation.',
+    coolingKvaPerTon: 1.1,        // VRF very efficient
+    heatingKvaPerMbh: 0.1,        // Heat pump mode
+    hasEnergyRecovery: true,
+    typicalSfPerTon: 350,
+    supportsGasHeat: false,       // Electric only
+    supportsElectricHeat: true,
+    ventilationType: 'doas',
+    unitSizeRange: { min: 6, max: 48 },  // Per outdoor unit
+  },
+  rtu: {
+    type: 'rtu',
+    name: 'Rooftop Units (RTU)',
+    description: 'Packaged rooftop units with gas or electric heat. Cost-effective, easy maintenance, good for single-story buildings.',
+    coolingKvaPerTon: 1.4,
+    heatingKvaPerMbh: 0.293,
+    hasEnergyRecovery: false,
+    typicalSfPerTon: 400,
+    supportsGasHeat: true,
+    supportsElectricHeat: true,
+    ventilationType: 'integrated',
+    unitSizeRange: { min: 3, max: 50 },
+  },
+  wshp: {
+    type: 'wshp',
+    name: 'Water Source Heat Pumps',
+    description: 'Distributed water source heat pumps with central loop. Excellent zone control, simultaneous heating/cooling.',
+    coolingKvaPerTon: 1.0,        // Very efficient
+    heatingKvaPerMbh: 0.1,
+    hasEnergyRecovery: true,      // Heat recovery between zones
+    typicalSfPerTon: 350,
+    supportsGasHeat: true,        // Backup boiler
+    supportsElectricHeat: true,
+    ventilationType: 'separate',
+    unitSizeRange: { min: 0.5, max: 6 }, // Per unit
+  },
+  split_system: {
+    type: 'split_system',
+    name: 'Split Systems',
+    description: 'Ductless or ducted split systems. Good for smaller facilities or retrofit applications.',
+    coolingKvaPerTon: 1.3,
+    heatingKvaPerMbh: 0.15,       // Heat pump mode
+    hasEnergyRecovery: false,
+    typicalSfPerTon: 400,
+    supportsGasHeat: false,
+    supportsElectricHeat: true,
+    ventilationType: 'separate',
+    unitSizeRange: { min: 1, max: 5 },
+  },
+  custom: {
+    type: 'custom',
+    name: 'Custom/Hybrid',
+    description: 'Custom or hybrid system - manually specify all parameters.',
+    coolingKvaPerTon: 1.5,
+    heatingKvaPerMbh: 0.293,
+    hasEnergyRecovery: false,
+    typicalSfPerTon: 400,
+    supportsGasHeat: true,
+    supportsElectricHeat: true,
+    ventilationType: 'integrated',
+    unitSizeRange: { min: 1, max: 100 },
+  },
+}
+
+// Get HVAC system config by type
+export function getHVACSystemConfig(type: HVACSystemType): HVACSystemConfig {
+  return HVAC_SYSTEM_CONFIGS[type]
+}
+
 // Default mechanical equipment electrical load conversion factors
 // These convert HVAC loads to kVA for electrical service sizing
-export function getDefaultMechanicalSettings(): MechanicalElectricalSettings {
+export function getDefaultMechanicalSettings(systemType: HVACSystemType = 'vrf_erv'): MechanicalElectricalSettings {
+  const systemConfig = HVAC_SYSTEM_CONFIGS[systemType]
+  
   return {
-    // Conversion factors
-    coolingKvaPerTon: 1.5,       // Air-cooled chiller: ~1.5 kVA/ton
-    heatingKvaPerMbh: 0.293,     // 1 MBH = 1000 BTU/hr = 293W = 0.293 kW
+    // HVAC System Type
+    hvacSystemType: systemType,
+    
+    // Conversion factors based on system type
+    coolingKvaPerTon: systemConfig.coolingKvaPerTon,
+    heatingKvaPerMbh: systemConfig.heatingKvaPerMbh,
     poolChillerKvaPerTon: 1.5,   // Pool water chiller: ~1.5 kVA/ton
     dehumidKvaPerLbHr: 0.4,      // Dehumidification: ~0.4 kVA per lb/hr
-    fanHpPer1000Cfm: 0.6,        // Fan power: ~0.6 HP per 1000 CFM (typical)
+    fanHpPer1000Cfm: systemConfig.ventilationType === 'doas' ? 0.4 : 0.6, // DOAS fans are smaller
     
     // Heating percentage - most heating via heat pumps/energy recovery
-    heatingElectricPercent: 0.15, // 15% of heating is supplemental electric (default)
+    heatingElectricPercent: systemConfig.hasEnergyRecovery ? 0.10 : 0.25,
     
-    // Heating fuel type - electric by default, can switch to gas for RTUs/boilers
-    heatingFuelType: 'electric',
+    // Heating fuel type - based on system support
+    heatingFuelType: systemConfig.supportsGasHeat ? 'gas' : 'electric',
     gasHeatingEfficiency: 0.90,  // 90% efficiency for condensing boilers/RTUs
     
     // Include/exclude flags - all included by default
@@ -337,11 +445,15 @@ export const gasHeatingEfficiencyPresets = {
 
 export function getDefaultResultAdjustments(): ResultAdjustments {
   return {
+    executiveSummary: '', // User will customize this
     hvacNotes: `• Pool/spa area requires dedicated dehumidification unit
 • Steam room creates high latent load requiring cooling adder
 • Recommend VRF system with dedicated pool dehumidifier`,
     electricalNotes: `• Service based on mechanical/plumbing loads, pool equipment, elevator, and general lighting/receptacle at 3 VA/SF
 • Single electrical service into space preferred`,
+    plumbingNotes: `• Hot water plant recommended in mechanical room on ground floor
+• Grease interceptor required for commercial kitchen (if applicable)
+• Coordinate with base building domestic water service`,
     gasNotes: `• High pressure gas service recommended for commercial loads
 • All gas equipment to be installed per manufacturer requirements`,
     waterSanitaryNotes: `• Hot water plant recommended in mechanical room on ground floor

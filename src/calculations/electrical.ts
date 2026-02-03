@@ -1,8 +1,6 @@
 import type { Zone, ElectricalCalcResult } from '../types'
-import { getZoneDefaults, calculateLaundryLoads } from '../data/zoneDefaults'
 import { electricalDefaults, getStandardServiceSize, exceedsMaxServiceSize } from '../data/defaults'
 import type { ElectricalSettings } from '../store/useSettingsStore'
-import { getLegacyFixtureCounts } from '../data/fixtureUtils'
 
 export interface ElectricalCalcOptions {
   settings?: Partial<ElectricalSettings>
@@ -10,7 +8,7 @@ export interface ElectricalCalcOptions {
 
 export function calculateElectrical(
   zones: Zone[], 
-  contingency: number,
+  _contingency: number, // Unused - electrical uses spare capacity instead of contingency
   options?: ElectricalCalcOptions
 ): ElectricalCalcResult {
   // Merge provided settings with defaults
@@ -23,46 +21,32 @@ export function calculateElectrical(
   let totalKW = 0
 
   zones.forEach(zone => {
-    const defaults = getZoneDefaults(zone.type)
-    
-    // 1. Rate-based loads (per SF)
+    // Rate-based loads (per SF)
     const lightingKW = zone.sf * zone.rates.lighting_w_sf / 1000
     const receptacleKW = zone.sf * zone.rates.receptacle_va_sf / 1000
     
-    // 2. Line items - ALL equipment with kW/W units count as electrical
-    const lineItemsKW = zone.lineItems
-      .reduce((sum, li) => {
-        const unit = li.unit?.toLowerCase() || ''
-        if (unit === 'kw') return sum + li.quantity * li.value
-        if (unit === 'w') return sum + (li.quantity * li.value) / 1000
-        // Also count HP (horsepower) - 1 HP ≈ 0.746 kW
-        if (unit === 'hp') return sum + li.quantity * li.value * 0.746
-        return sum
-      }, 0)
+    // Equipment kW from LINE ITEMS ONLY - NO FALLBACKS
+    const lineItemsKW = (zone.lineItems || []).reduce((sum, li) => {
+      const unit = li.unit?.toLowerCase() || ''
+      if (unit === 'kw') return sum + li.quantity * li.value
+      if (unit === 'w') return sum + (li.quantity * li.value) / 1000
+      if (unit === 'hp') return sum + li.quantity * li.value * 0.746
+      return sum
+    }, 0)
     
-    // 3. Laundry equipment (calculated from fixture counts)
-    let laundryKW = 0
-    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment) {
-      const legacyFixtures = getLegacyFixtureCounts(zone.fixtures)
-      const washers = legacyFixtures.washingMachines || 0
-      const dryers = legacyFixtures.dryers || 0
-      const dryerType = zone.subType === 'gas' ? 'gas' : 'electric'
-      const laundryLoads = calculateLaundryLoads(washers, dryers, dryerType, zone.laundryEquipment)
-      laundryKW = laundryLoads.washer_kw + (dryerType === 'electric' ? laundryLoads.dryer_kw : 0)
-    }
-    
-    // Total = Rate-based + Line Items + Laundry
-    totalKW += lightingKW + receptacleKW + lineItemsKW + laundryKW
+    // Total = Rate-based + Line Items ONLY
+    totalKW += lightingKW + receptacleKW + lineItemsKW
   })
 
   // Apply demand factor
   const totalWithDemand = totalKW * demandFactor
 
-  // Apply contingency
-  const totalWithContingency = totalWithDemand * (1 + contingency)
+  // NOTE: Contingency is NOT applied to electrical - use spare capacity only
+  // Contingency was previously: totalWithDemand * (1 + contingency)
+  // This is intentional per user request - electrical sizing uses spare capacity for growth
   
-  // Add spare capacity
-  const totalWithSpare = totalWithContingency * (1 + spareCapacity)
+  // Add spare capacity (design factor for future growth)
+  const totalWithSpare = totalWithDemand * (1 + spareCapacity)
   
   // Convert to kVA (using power factor)
   const totalKVA = totalWithSpare / powerFactor
@@ -117,37 +101,23 @@ export function calculateElectrical(
 // Get electrical breakdown by zone - must match calculateElectrical logic!
 export function getElectricalBreakdown(zones: Zone[]): { zoneName: string; kW: number; description: string }[] {
   return zones.map(zone => {
-    const defaults = getZoneDefaults(zone.type)
     const lightingKW = zone.sf * zone.rates.lighting_w_sf / 1000
     const receptacleKW = zone.sf * zone.rates.receptacle_va_sf / 1000
-    let fixedKW = zone.processLoads?.fixed_kw ?? defaults.fixed_kw ?? 0
     
-    // Include laundry equipment loads - same logic as main calculation
-    let laundryKW = 0
-    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment) {
-      const zoneLegacyFixtures = getLegacyFixtureCounts(zone.fixtures)
-      const washers = zoneLegacyFixtures.washingMachines || 0
-      const dryers = zoneLegacyFixtures.dryers || 0
-      const dryerType = zone.subType === 'gas' ? 'gas' : 'electric'
-      const laundryLoads = calculateLaundryLoads(washers, dryers, dryerType, zone.laundryEquipment)
-      laundryKW = laundryLoads.washer_kw + (dryerType === 'electric' ? laundryLoads.dryer_kw : 0)
-    }
+    // Equipment kW from LINE ITEMS ONLY - NO FALLBACKS
+    const lineItemsKW = (zone.lineItems || []).reduce((sum, li) => {
+      const unit = li.unit?.toLowerCase() || ''
+      if (unit === 'kw') return sum + li.quantity * li.value
+      if (unit === 'w') return sum + (li.quantity * li.value) / 1000
+      if (unit === 'hp') return sum + li.quantity * li.value * 0.746
+      return sum
+    }, 0)
     
-    const lineItemsKW = zone.lineItems
-      .reduce((sum, li) => {
-        const unit = li.unit?.toLowerCase() || ''
-        if (unit === 'kw') return sum + li.quantity * li.value
-        if (unit === 'w') return sum + (li.quantity * li.value) / 1000
-        if (unit === 'hp') return sum + li.quantity * li.value * 0.746
-        return sum
-      }, 0)
-    
-    const totalKW = lightingKW + receptacleKW + fixedKW + laundryKW + lineItemsKW
+    const totalKW = lightingKW + receptacleKW + lineItemsKW
     
     // Build description
     let desc = `${zone.sf.toLocaleString()} SF @ ${zone.rates.lighting_w_sf} W/SF + ${zone.rates.receptacle_va_sf} VA/SF`
-    if (fixedKW > 0) desc += ` + ${fixedKW} kW equip`
-    if (laundryKW > 0) desc += ` + ${laundryKW.toFixed(1)} kW laundry`
+    if (lineItemsKW > 0) desc += ` + ${lineItemsKW.toFixed(1)} kW equipment`
     
     return {
       zoneName: zone.name,
@@ -161,9 +131,18 @@ export function getElectricalBreakdown(zones: Zone[]): { zoneName: string; kW: n
 export function recalculateServiceWithMechanical(
   baseElectrical: ElectricalCalcResult,
   additionalKVA: number,
-  voltagePrimary: number = 208
+  voltagePrimary: number = 208,
+  demandFactor: number = 1.0,
+  spareCapacity: number = 0.15
 ): ElectricalCalcResult {
-  const totalKVA = baseElectrical.totalKVA + additionalKVA
+  // IMPORTANT: baseElectrical.totalKVA already has demand factor, contingency, and spare applied
+  // We need to apply the SAME factors to the mechanical kVA for consistency
+  
+  // Apply demand factor and spare capacity to mechanical load (same as building load)
+  const mechanicalWithDemand = additionalKVA * demandFactor
+  const mechanicalWithSpare = mechanicalWithDemand * (1 + spareCapacity)
+  
+  const totalKVA = baseElectrical.totalKVA + mechanicalWithSpare
   
   // Calculate amps at primary voltage (3-phase)
   const isPrimaryThreePhase = [208, 480].includes(voltagePrimary)
@@ -204,5 +183,7 @@ export function recalculateServiceWithMechanical(
     calculatedAmps,
     standardServiceAmps,
     exceedsMaxService: exceedsMax,
+    // Track the mechanical component for transparency
+    mechanicalKVA: Math.round(mechanicalWithSpare),
   }
 }

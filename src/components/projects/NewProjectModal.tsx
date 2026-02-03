@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import type { ClimateType } from '../../types'
+import { ALL_LOCATIONS, getLocationById, formatLocationDisplay } from '../../data/ashraeClimate'
 
 interface NewProjectModalProps {
   onClose: () => void
-  onCreate: (name: string, targetSF: number, climate: ClimateType, electricPrimary: boolean) => void
+  onCreate: (name: string, targetSF: number, climate: ClimateType, electricPrimary: boolean, ashraeLocationId?: string) => void
 }
 
 const climateOptions: { value: ClimateType; label: string; description: string }[] = [
@@ -17,12 +18,25 @@ export default function NewProjectModal({ onClose, onCreate }: NewProjectModalPr
   const [targetSF, setTargetSF] = useState(20000)
   const [climate, setClimate] = useState<ClimateType>('temperate')
   const [electricPrimary, setElectricPrimary] = useState(true)
+  const [ashraeLocationId, setAshraeLocationId] = useState<string | undefined>(undefined)
+  const [locationSearch, setLocationSearch] = useState('')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    onCreate(name.trim(), targetSF, climate, electricPrimary)
+    onCreate(name.trim(), targetSF, climate, electricPrimary, ashraeLocationId)
   }
+
+  // Filter locations based on search
+  const filteredLocations = locationSearch 
+    ? ALL_LOCATIONS.filter(loc => 
+        loc.name.toLowerCase().includes(locationSearch.toLowerCase()) ||
+        loc.state?.toLowerCase().includes(locationSearch.toLowerCase()) ||
+        loc.country.toLowerCase().includes(locationSearch.toLowerCase())
+      ).slice(0, 20)
+    : []
+  
+  const selectedLocation = ashraeLocationId ? getLocationById(ashraeLocationId) : null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
@@ -108,6 +122,64 @@ export default function NewProjectModal({ onClose, onCreate }: NewProjectModalPr
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* ASHRAE Location (Optional) */}
+          <div>
+            <label className="block text-sm font-medium text-surface-300 mb-2">
+              ASHRAE Design Location <span className="text-surface-500 font-normal">(optional)</span>
+            </label>
+            <p className="text-xs text-surface-500 mb-2">
+              Used for pool room ventilation moisture calculations
+            </p>
+            {selectedLocation ? (
+              <div className="flex items-center gap-3 p-3 bg-surface-900 border border-surface-600 rounded-lg">
+                <div className="flex-1">
+                  <div className="text-white font-medium">{formatLocationDisplay(selectedLocation)}</div>
+                  <div className="text-xs text-surface-400">
+                    Summer: {selectedLocation.cooling_04_db}°F / {selectedLocation.summer_hr} gr/lb
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAshraeLocationId(undefined)
+                    setLocationSearch('')
+                  }}
+                  className="text-xs px-2 py-1 bg-surface-700 hover:bg-surface-600 text-surface-300 rounded"
+                >
+                  Change
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <input
+                  type="text"
+                  value={locationSearch}
+                  onChange={(e) => setLocationSearch(e.target.value)}
+                  placeholder="Search city name..."
+                  className="w-full px-4 py-3 bg-surface-900 border border-surface-600 rounded-lg text-white placeholder-surface-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                />
+                {locationSearch && filteredLocations.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-surface-900 border border-surface-600 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                    {filteredLocations.map(loc => (
+                      <button
+                        key={loc.id}
+                        type="button"
+                        onClick={() => {
+                          setAshraeLocationId(loc.id)
+                          setLocationSearch('')
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm hover:bg-surface-700 text-white"
+                      >
+                        <span className="font-medium">{formatLocationDisplay(loc)}</span>
+                        <span className="text-surface-400 ml-2">{loc.summer_hr} gr/lb</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Primary Mode */}

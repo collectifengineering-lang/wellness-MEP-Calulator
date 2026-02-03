@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { useProjectStore } from '../../store/useProjectStore'
 import PoolEditor from './PoolEditor'
@@ -12,9 +12,13 @@ import {
   type PoolRoomResults,
   type PoolType 
 } from '../../calculations/pool'
+import { getLocationById, formatLocationDisplay } from '../../data/ashraeClimate'
 
 export default function PoolRoomTab() {
   const { currentProject, zones, updateZone, addLineItem, updatePoolRoomDesign } = useProjectStore()
+  
+  // DEBUG: Log ashraeLocationId to trace persistence issue
+  console.log('🌍 PoolRoomTab - currentProject.ashraeLocationId:', currentProject?.ashraeLocationId)
   
   // State for target zone selection
   const [targetZoneId, setTargetZoneId] = useState<string | null>(null)
@@ -23,10 +27,20 @@ export default function PoolRoomTab() {
   const [pools, setPools] = useState<PoolConfig[]>([])
   
   // State for room parameters - loaded per zone
-  const [params, setParams] = useState<PoolRoomParams>(getDefaultPoolRoomParams(2000))
+  // Note: ashraeLocationId is now always taken from project, not params
+  const [params, setParams] = useState<PoolRoomParams>(getDefaultPoolRoomParams(2000, currentProject?.ashraeLocationId))
+  
+  // Always use project location for calculations
+  const effectiveParams = {
+    ...params,
+    ashraeLocationId: currentProject?.ashraeLocationId
+  }
   
   // State for editing pool
   const [editingPoolId, setEditingPoolId] = useState<string | null>(null)
+  
+  // Track which zone we last loaded to prevent reloading when saving
+  const lastLoadedZoneIdRef = useRef<string | null>(null)
   
   // Debug: Log what's in poolRoomDesign
   useEffect(() => {
@@ -47,13 +61,13 @@ export default function PoolRoomTab() {
         zoneConfigs: {
           [oldFormat.targetZoneId]: {
             pools: oldFormat.pools,
-            params: oldFormat.params || getDefaultPoolRoomParams(2000)
+            params: oldFormat.params || getDefaultPoolRoomParams(2000, currentProject?.ashraeLocationId)
           }
         },
         activeZoneId: oldFormat.targetZoneId
       })
     }
-  }, [currentProject?.poolRoomDesign, updatePoolRoomDesign])
+  }, [currentProject?.poolRoomDesign, currentProject?.ashraeLocationId, updatePoolRoomDesign])
   
   // Load active zone from saved design on mount
   useEffect(() => {
@@ -63,11 +77,19 @@ export default function PoolRoomTab() {
   }, [currentProject?.poolRoomDesign?.activeZoneId, targetZoneId])
   
   // When target zone changes, load that zone's pool configuration
+  // IMPORTANT: Only reload when zone ID ACTUALLY changes, not when zoneConfigs changes from our own save
   useEffect(() => {
     if (!targetZoneId) {
       // No zone selected - clear pools
       setPools([])
-      setParams(getDefaultPoolRoomParams(2000))
+      setParams(getDefaultPoolRoomParams(2000, currentProject?.ashraeLocationId))
+      lastLoadedZoneIdRef.current = null
+      return
+    }
+    
+    // Only reload if we're switching to a DIFFERENT zone
+    if (lastLoadedZoneIdRef.current === targetZoneId) {
+      console.log(`🏊 Skipping reload - already loaded zone ${targetZoneId}`)
       return
     }
     
@@ -80,13 +102,20 @@ export default function PoolRoomTab() {
     if (zoneConfig) {
       console.log(`📥 Loading pool config for zone "${zone?.name}": ${zoneConfig.pools.length} pools`)
       setPools(zoneConfig.pools)
-      setParams(zoneConfig.params)
+      // Ensure ASHRAE location from project is applied
+      setParams({
+        ...zoneConfig.params,
+        ashraeLocationId: zoneConfig.params.ashraeLocationId || currentProject?.ashraeLocationId,
+      })
     } else {
       console.log(`📥 No pool config for zone "${zone?.name}" - starting fresh`)
       setPools([])
-      setParams(getDefaultPoolRoomParams(zoneSF))
+      setParams(getDefaultPoolRoomParams(zoneSF, currentProject?.ashraeLocationId))
     }
-  }, [targetZoneId, currentProject?.poolRoomDesign?.zoneConfigs, zones])
+    
+    // Mark this zone as loaded
+    lastLoadedZoneIdRef.current = targetZoneId
+  }, [targetZoneId, currentProject?.poolRoomDesign?.zoneConfigs, currentProject?.ashraeLocationId, zones])
   
   // Save current zone's config when pools or params change
   const saveZoneConfig = useCallback(() => {
@@ -95,10 +124,13 @@ export default function PoolRoomTab() {
     // Get existing configs
     const existingConfigs = currentProject?.poolRoomDesign?.zoneConfigs || {}
     
+    // Don't save ashraeLocationId in params - it comes from project now
+    const { ashraeLocationId: _unused, ...paramsToSave } = params
+    
     // Update or remove this zone's config
     const newConfigs = { ...existingConfigs }
     if (pools.length > 0) {
-      newConfigs[targetZoneId] = { pools, params }
+      newConfigs[targetZoneId] = { pools, params: paramsToSave as PoolRoomParams }
     } else {
       // Remove config if no pools (clean up)
       delete newConfigs[targetZoneId]
@@ -146,8 +178,9 @@ export default function PoolRoomTab() {
   // Calculate results whenever pools or params change
   const results: PoolRoomResults | null = useMemo(() => {
     if (pools.length === 0 || params.roomSF === 0) return null
-    return calculatePoolRoomLoads(pools, params)
-  }, [pools, params])
+    // Use effectiveParams which always has the project's ashraeLocationId
+    return calculatePoolRoomLoads(pools, effectiveParams)
+  }, [pools, effectiveParams])
   
   // Add a new pool
   const handleAddPool = (poolType: PoolType = 'recreational') => {
@@ -174,40 +207,90 @@ export default function PoolRoomTab() {
     const zone = zones.find(z => z.id === targetZoneId)
     if (!zone) return
     
-    // Calculate rates from results
-    const ventilationCfmSf = results.supplyAirCFM / zone.sf
-    const exhaustCfmSf = results.exhaustAirCFM / zone.sf
+    // IMPORTANT: Pool room ventilation comes ONLY from line items
+    // We clear the ASHRAE space type and set rates to 0 to prevent double-counting
+    // The pool room calculator provides the correct values via line items
     
-    // Update zone rates
+    // Remove ALL existing pool-related line items to avoid stacking on re-apply
+    const existingLineItems = zone.lineItems?.filter(li => 
+      !li.name.toLowerCase().includes('pool') &&
+      !li.name.includes('AHU')
+    ) || []
+    
+    // Update zone: SET ventilation values from pool calc
+    // Pool rooms use their own calculations - override ASHRAE with pool calc values
     updateZone(targetZoneId, {
+      // Clear ASHRAE ventilation - pool rooms use their own calculations
+      ventilationSpaceType: undefined,
+      ventilationStandard: 'custom',
+      ventilationOverride: true, // Mark as using custom/override values
+      exhaustOverride: true,
+      // SET the CFM values from pool calc so Ventilation Section shows correct values
+      ventilationCfm: results.outdoorAirCFM, // Pool OA = zone ventilation
+      exhaustCfm: results.exhaustAirCFM, // Pool exhaust = zone exhaust
+      occupants: params.spectatorCount + params.swimmerCount,
+      ceilingHeightFt: params.ceilingHeightFt,
+      // Set ALL rates to 0 - pool dehumidification unit handles everything
       rates: {
         ...zone.rates,
-        ventilation_cfm_sf: Math.round(ventilationCfmSf * 100) / 100,
-        exhaust_cfm_sf: Math.round(exhaustCfmSf * 100) / 100,
-      }
+        ventilation_cfm_sf: 0,
+        exhaust_cfm_sf: 0,
+        cooling_sf_ton: 0, // Dehumid unit provides cooling (SF per ton → 0 means no cooling load)
+        heating_btuh_sf: 0, // Dehumid unit provides heating
+      },
+      // Clear processLoads dehumid - pool calc provides via line items only
+      processLoads: {
+        ...zone.processLoads,
+        dehumid_lb_hr: 0, // Dehumid comes from line items, not processLoads
+      },
+      // Keep existing non-pool line items
+      lineItems: existingLineItems,
     })
     
-    // Add dehumidification line item
+    // Add dehumidification line item (using TOTAL load from all sources)
     addLineItem(targetZoneId, {
       category: 'dehumidification',
-      name: 'Pool Dehumidification Load',
+      name: 'Pool Room Dehumidification Load',
       quantity: 1,
       unit: 'lb/hr',
-      value: results.totalEvaporationLbHr,
-      notes: `${pools.length} pool(s): ${pools.map(p => p.name).join(', ')}`,
+      value: results.totalDehumidLbHr,
+      notes: `Pools: ${results.poolEvaporationLbHr.toFixed(1)} + People: ${(results.spectatorMoistureLbHr + results.swimmerMoistureLbHr).toFixed(1)} + Ventilation: ${results.ventilationMoistureLbHr.toFixed(1)} lb/hr`,
     })
     
-    // Add outdoor air ventilation line item
-    addLineItem(targetZoneId, {
-      category: 'ventilation',
-      name: 'Pool Outdoor Air (ASHRAE 62)',
-      quantity: 1,
-      unit: 'CFM',
-      value: results.outdoorAirCFM,
-      notes: `0.48 CFM/ft² × ${results.totalPoolAreaSF + params.wetDeckAreaSF} SF + ${params.spectatorCount} spectators`,
-    })
+    // NOTE: For pool rooms, airflow is:
+    // - Supply Air: Total CFM moved by equipment (for equipment sizing)
+    // - Outdoor Air: Fresh air component of supply (for code compliance - THIS is the "ventilation")
+    // - Exhaust Air: Air removed from space (for negative pressure)
+    //
+    // Supply Air is NOT added to Outdoor Air - OA is a subset of Supply!
     
-    alert(`Applied to ${zone.name}:\n• Dehumidification: ${results.totalEvaporationLbHr} lb/hr\n• Ventilation: ${ventilationCfmSf.toFixed(2)} CFM/SF\n• Exhaust: ${exhaustCfmSf.toFixed(2)} CFM/SF\n• Outdoor Air: ${results.outdoorAirCFM} CFM`)
+    // NOTE: Ventilation and Exhaust values are stored DIRECTLY in zone properties
+    // (ventilationCfm and exhaustCfm) - NOT as line items
+    // This prevents double-counting and keeps the Zone Totals accurate
+    // 
+    // For reference:
+    // - Ventilation (OA): ${results.outdoorAirCFM} CFM
+    // - Exhaust: ${results.exhaustAirCFM} CFM
+    // - Supply Air: ${results.supplyAirCFM} CFM (for equipment sizing, shown in pool calc only)
+    
+    alert(`Applied to ${zone.name}:
+
+📊 DEHUMIDIFICATION: ${results.totalDehumidLbHr.toFixed(1)} lb/hr
+  • Pool evaporation: ${results.poolEvaporationLbHr.toFixed(1)} lb/hr
+  • Spectators/Swimmers: ${(results.spectatorMoistureLbHr + results.swimmerMoistureLbHr).toFixed(1)} lb/hr
+  • Outdoor air contribution: ${results.ventilationMoistureLbHr.toFixed(1)} lb/hr
+
+💨 ZONE VENTILATION SET TO:
+  • Ventilation: ${results.outdoorAirCFM.toLocaleString()} CFM (OA requirement)
+  • Exhaust: ${results.exhaustAirCFM.toLocaleString()} CFM (110% of OA)
+
+🌡️ HEATING/COOLING SET TO: 0
+  • Dehumidification unit handles all conditioning
+
+📋 FOR EQUIPMENT SIZING (shown in pool calc only):
+  • Supply Air: ${results.supplyAirCFM.toLocaleString()} CFM (${params.airChangesPerHour} ACH)
+
+✅ Zone rates overridden (vent, exh, cooling, heating → 0)`)
   }
   
   return (
@@ -287,7 +370,47 @@ export default function PoolRoomTab() {
         {/* Room Parameters */}
         <div className="bg-surface-800 rounded-xl border border-surface-700 p-6">
           <h3 className="text-lg font-semibold text-white mb-4">2. Room Parameters</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          
+          {/* ASHRAE Location for Outdoor Air Moisture - Uses Project Location */}
+          <div className="mb-4 p-4 bg-surface-900/50 rounded-lg border border-surface-700">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-surface-300">
+                📍 Project Design Location
+                <span className="text-xs text-surface-500 ml-2">(for outdoor air moisture calculation)</span>
+              </label>
+            </div>
+            {currentProject?.ashraeLocationId ? (
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <div className="text-white font-medium">
+                    {(() => {
+                      const loc = getLocationById(currentProject.ashraeLocationId!)
+                      return loc ? formatLocationDisplay(loc) : currentProject.ashraeLocationId
+                    })()}
+                  </div>
+                  <div className="text-xs text-surface-400">
+                    {(() => {
+                      const loc = getLocationById(currentProject.ashraeLocationId!)
+                      return loc ? `Summer: ${loc.cooling_04_db}°F DB, ${loc.summer_hr} gr/lb humidity` : ''
+                    })()}
+                  </div>
+                </div>
+                <span className="text-xs text-surface-500">
+                  Change in Project Info tab
+                </span>
+              </div>
+            ) : (
+              <div className="bg-amber-900/30 border border-amber-500/50 rounded-lg p-3">
+                <p className="text-amber-300 text-sm font-medium">⚠️ No Project Location Set</p>
+                <p className="text-amber-400/80 text-xs mt-1">
+                  Go to <strong>Project Info</strong> tab to set the project location.
+                  This is required for accurate ventilation moisture calculations.
+                </p>
+              </div>
+            )}
+          </div>
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
             <div>
               <label className="block text-xs text-surface-400 mb-1">Ceiling Height</label>
               <div className="relative">
@@ -352,9 +475,21 @@ export default function PoolRoomTab() {
                 min={0}
                 className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
               />
+              <p className="text-xs text-surface-500 mt-1">0.12 lb/hr each</p>
             </div>
             <div>
-              <label className="block text-xs text-surface-400 mb-1">Air Changes/Hour</label>
+              <label className="block text-xs text-surface-400 mb-1">Swimmers</label>
+              <input
+                type="number"
+                value={params.swimmerCount}
+                onChange={(e) => setParams({ ...params, swimmerCount: Number(e.target.value) })}
+                min={0}
+                className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+              />
+              <p className="text-xs text-surface-500 mt-1">0.7 lb/hr each</p>
+            </div>
+            <div>
+              <label className="block text-xs text-surface-400 mb-1">Air Changes/Hr</label>
               <input
                 type="number"
                 value={params.airChangesPerHour}
@@ -475,14 +610,15 @@ export default function PoolRoomTab() {
           <div className="bg-gradient-to-br from-cyan-900/30 to-surface-900 rounded-xl border border-cyan-500/30 p-6">
             <h3 className="text-lg font-semibold text-cyan-400 mb-4">4. Calculated Results</h3>
             
+            {/* Main Results */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              {/* Dehumidification */}
-              <div className="bg-surface-900/50 rounded-lg p-4">
-                <div className="text-xs text-surface-400 uppercase tracking-wider mb-1">Dehumidification</div>
+              {/* Total Dehumidification */}
+              <div className="bg-surface-900/50 rounded-lg p-4 border-2 border-cyan-500/30">
+                <div className="text-xs text-surface-400 uppercase tracking-wider mb-1">Total Dehumidification</div>
                 <div className="text-2xl font-bold text-cyan-400 font-mono">
-                  {results.totalEvaporationLbHr.toFixed(1)}
+                  {results.totalDehumidLbHr.toFixed(1)}
                 </div>
-                <div className="text-sm text-surface-400">lb/hr evaporation</div>
+                <div className="text-sm text-surface-400">lb/hr moisture load</div>
               </div>
               
               {/* Supply Air */}
@@ -513,9 +649,71 @@ export default function PoolRoomTab() {
               </div>
             </div>
             
+            {/* MOISTURE SOURCE BREAKDOWN - NEW! */}
+            <div className="mb-6 p-4 bg-surface-900/50 rounded-lg border border-surface-700">
+              <h4 className="text-sm font-semibold text-surface-300 mb-3 flex items-center gap-2">
+                💧 Moisture Source Breakdown
+                <span className="text-xs font-normal text-surface-500">(All sources contributing to dehumidification load)</span>
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {/* Pool Evaporation */}
+                <div className="p-3 bg-surface-800 rounded-lg">
+                  <div className="text-xs text-cyan-400 mb-1">🏊 Pool Evaporation</div>
+                  <div className={`text-lg font-bold font-mono ${results.poolEvaporationLbHr < 0 ? 'text-blue-400' : 'text-white'}`}>
+                    {results.poolEvaporationLbHr > 0 ? '+' : ''}{results.poolEvaporationLbHr.toFixed(1)}
+                  </div>
+                  <div className="text-xs text-surface-500">lb/hr</div>
+                </div>
+                
+                {/* Spectators */}
+                <div className="p-3 bg-surface-800 rounded-lg">
+                  <div className="text-xs text-amber-400 mb-1">👥 Spectators ({params.spectatorCount})</div>
+                  <div className="text-lg font-bold font-mono text-white">
+                    +{results.spectatorMoistureLbHr.toFixed(1)}
+                  </div>
+                  <div className="text-xs text-surface-500">lb/hr (0.12/person)</div>
+                </div>
+                
+                {/* Swimmers */}
+                <div className="p-3 bg-surface-800 rounded-lg">
+                  <div className="text-xs text-emerald-400 mb-1">🏊‍♂️ Swimmers ({params.swimmerCount})</div>
+                  <div className="text-lg font-bold font-mono text-white">
+                    +{results.swimmerMoistureLbHr.toFixed(1)}
+                  </div>
+                  <div className="text-xs text-surface-500">lb/hr (0.7/person)</div>
+                </div>
+                
+                {/* Ventilation */}
+                <div className="p-3 bg-surface-800 rounded-lg">
+                  <div className="text-xs text-blue-400 mb-1">🌬️ Ventilation Air</div>
+                  {results.outdoorHumidityRatio ? (
+                    <>
+                      <div className={`text-lg font-bold font-mono ${results.ventilationMoistureLbHr < 0 ? 'text-green-400' : 'text-white'}`}>
+                        {results.ventilationMoistureLbHr > 0 ? '+' : ''}{results.ventilationMoistureLbHr.toFixed(1)}
+                      </div>
+                      <div className="text-xs text-surface-500">
+                        lb/hr ({results.outdoorHumidityRatio} → {results.indoorHumidityRatio} gr/lb)
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-lg font-bold font-mono text-surface-500">--</div>
+                      <div className="text-xs text-amber-400">Select location above</div>
+                    </>
+                  )}
+                </div>
+              </div>
+              
+              {/* Total bar */}
+              <div className="mt-3 pt-3 border-t border-surface-700 flex items-center justify-between">
+                <span className="text-sm text-surface-400">Total Dehumidification Load:</span>
+                <span className="text-xl font-bold font-mono text-cyan-400">{results.totalDehumidLbHr.toFixed(1)} lb/hr</span>
+              </div>
+            </div>
+            
             {/* Pool Breakdown */}
             <div className="mb-6">
-              <h4 className="text-sm font-medium text-surface-300 mb-2">Pool Moisture Contribution</h4>
+              <h4 className="text-sm font-medium text-surface-300 mb-2">Pool Surface Moisture Detail</h4>
               <p className="text-xs text-surface-500 mb-2">
                 Positive = evaporation (adds moisture) • Negative = condensation (absorbs moisture from cold pools)
               </p>
@@ -552,14 +750,14 @@ export default function PoolRoomTab() {
                   </tbody>
                   <tfoot>
                     <tr className="bg-surface-900/50">
-                      <td className="py-2 font-semibold text-white">Net Total</td>
+                      <td className="py-2 font-semibold text-white">Pool Subtotal</td>
                       <td className="py-2 text-right text-white font-mono">{results.totalPoolAreaSF.toLocaleString()}</td>
                       <td className="py-2"></td>
-                      <td className={`py-2 text-right font-mono font-bold ${results.totalEvaporationLbHr < 0 ? 'text-blue-400' : 'text-cyan-400'}`}>
-                        {results.totalEvaporationLbHr > 0 ? '+' : ''}{results.totalEvaporationLbHr.toFixed(1)}
+                      <td className={`py-2 text-right font-mono font-bold ${results.poolEvaporationLbHr < 0 ? 'text-blue-400' : 'text-cyan-400'}`}>
+                        {results.poolEvaporationLbHr > 0 ? '+' : ''}{results.poolEvaporationLbHr.toFixed(1)}
                       </td>
                       <td className="py-2 text-right text-xs text-surface-400">
-                        {results.totalEvaporationLbHr < 0 ? 'Net absorption' : 'Net evaporation'}
+                        {results.poolEvaporationLbHr < 0 ? 'Net absorption' : 'Net evaporation'}
                       </td>
                     </tr>
                   </tfoot>
@@ -569,12 +767,11 @@ export default function PoolRoomTab() {
             
             {/* Calculation Notes */}
             <div className="text-xs text-surface-500 space-y-1 mb-4">
-              <p>• Moisture: 0.1 × Area × Activity Factor × (Pw - Pa) per ASHRAE</p>
-              <p className="pl-3">→ Positive when water temp {">"} dew point (evaporation)</p>
-              <p className="pl-3">→ <span className="text-blue-400">Negative when water temp {"<"} dew point (condensation - cold pools absorb moisture!)</span></p>
-              <p>• Supply Air: Room Volume ({results.roomVolumeCF.toLocaleString()} CF) × {params.airChangesPerHour} ACH ÷ 60</p>
-              <p>• Outdoor Air: 0.48 CFM/ft² × ({results.totalPoolAreaSF} + {params.wetDeckAreaSF} SF) + 7.5 × {params.spectatorCount} spectators</p>
-              <p>• Exhaust: 110% of Outdoor Air (maintain negative pressure)</p>
+              <p><strong className="text-surface-400">Pool Evaporation:</strong> 0.1 × Area × Activity Factor × (Pw - Pa) per ASHRAE</p>
+              <p><strong className="text-surface-400">People Moisture:</strong> Spectators 0.12 lb/hr (sedentary) • Swimmers 0.7 lb/hr (active + wet skin)</p>
+              <p><strong className="text-surface-400">Ventilation:</strong> 4.5 × CFM × (W_outdoor - W_indoor) ÷ 7000 lb/hr</p>
+              <p><strong className="text-surface-400">Supply Air:</strong> Room Volume ({results.roomVolumeCF.toLocaleString()} CF) × {params.airChangesPerHour} ACH ÷ 60</p>
+              <p><strong className="text-surface-400">Outdoor Air:</strong> 0.48 CFM/ft² × ({results.totalPoolAreaSF} + {params.wetDeckAreaSF} SF deck) + 7.5 × {params.spectatorCount + params.swimmerCount} people</p>
             </div>
             
             {/* Apply Button */}

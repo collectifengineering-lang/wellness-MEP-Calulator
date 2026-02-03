@@ -48,9 +48,9 @@ export default function ProjectsGrid({ moduleTitle = 'Concept MEP Design' }: Pro
     setLoading(false)
   }
 
-  const handleCreateProject = async (name: string, targetSF: number, climate: ClimateType, electricPrimary: boolean) => {
+  const handleCreateProject = async (name: string, targetSF: number, climate: ClimateType, electricPrimary: boolean, ashraeLocationId?: string) => {
     const userId = user?.id || 'dev-user'
-    const newProject = createNewProject(userId, name, targetSF, climate, electricPrimary)
+    const newProject = createNewProject(userId, name, targetSF, climate, electricPrimary, ashraeLocationId)
     
     if (isSupabaseConfigured()) {
       const { error } = await supabase
@@ -122,7 +122,8 @@ export default function ProjectsGrid({ moduleTitle = 'Concept MEP Design' }: Pro
       `${project.name} (Copy)`, 
       project.targetSF, 
       project.climate, 
-      project.electricPrimary
+      project.electricPrimary,
+      project.ashraeLocationId
     )
     
     // Copy over settings from original
@@ -131,6 +132,7 @@ export default function ProjectsGrid({ moduleTitle = 'Concept MEP Design' }: Pro
     copiedProject.mechanicalSettings = { ...project.mechanicalSettings }
     copiedProject.contingency = project.contingency
     copiedProject.resultAdjustments = { ...project.resultAdjustments }
+    copiedProject.poolRoomDesign = project.poolRoomDesign ? { ...project.poolRoomDesign } : undefined
     
     if (isSupabaseConfigured()) {
       // Create the project copy
@@ -324,6 +326,7 @@ function dbProjectToProject(db: Record<string, unknown>): Project {
     targetSF: (db.target_sf as number) || 0,
     climate: (db.climate as ClimateType) || 'temperate',
     electricPrimary: db.electric_primary as boolean ?? true,
+    ashraeLocationId: db.ashrae_location_id as string | undefined,
     dhwSettings: (db.dhw_settings as Project['dhwSettings']) || {
       heaterType: 'gas',
       gasEfficiency: 0.95,
@@ -361,6 +364,11 @@ function dbProjectToProject(db: Record<string, unknown>): Project {
       fireAlarmNotes: '',
       overrides: {},
     },
+    poolRoomDesign: db.pool_room_design as Project['poolRoomDesign'] | undefined,
+    mepNarratives: db.mep_narratives as Project['mepNarratives'] | undefined,
+    reportLogo: db.report_logo as Project['reportLogo'] | undefined,
+    fixtureOverrides: db.fixture_overrides as Project['fixtureOverrides'] | undefined,
+    narrativeBackground: db.narrative_background as Project['narrativeBackground'] | undefined,
     createdAt: new Date(db.created_at as string),
     updatedAt: new Date(db.updated_at as string),
   }
@@ -374,11 +382,17 @@ function projectToDbProject(project: Project): Record<string, unknown> {
     target_sf: project.targetSF,
     climate: project.climate,
     electric_primary: project.electricPrimary,
+    ashrae_location_id: project.ashraeLocationId,
     dhw_settings: project.dhwSettings,
     electrical_settings: project.electricalSettings,
     mechanical_settings: project.mechanicalSettings,
     contingency: project.contingency,
     result_adjustments: project.resultAdjustments,
+    pool_room_design: project.poolRoomDesign,
+    mep_narratives: project.mepNarratives,
+    report_logo: project.reportLogo,
+    fixture_overrides: project.fixtureOverrides,
+    narrative_background: project.narrativeBackground,
   }
 }
 
@@ -386,6 +400,16 @@ function dbZoneToZone(db: Record<string, unknown>): import('../../types').Zone {
   // DEBUG: Log what we're loading from DB
   const lineItems = (db.line_items as import('../../types').LineItem[]) || []
   console.log(`📥 Loading zone "${db.name}": ${lineItems.length} line items from DB`)
+  
+  const rates = (db.rates as import('../../types').ZoneRates) || {
+    lighting_w_sf: 1, receptacle_va_sf: 3, ventilation_cfm_sf: 0.15, exhaust_cfm_sf: 0, cooling_sf_ton: 400, heating_btuh_sf: 25
+  }
+  
+  // Check if this is an existing zone with ventilation values but no ASHRAE space type
+  // If so, mark it as having custom overrides to preserve the existing values
+  const hasExistingVentilation = rates.ventilation_cfm_sf > 0 || rates.exhaust_cfm_sf > 0
+  const hasVentilationSpaceType = !!db.ventilation_space_type
+  const shouldPreserveAsOverride = hasExistingVentilation && !hasVentilationSpaceType
   
   return {
     id: db.id as string,
@@ -398,14 +422,22 @@ function dbZoneToZone(db: Record<string, unknown>): import('../../types').Zone {
     fixtures: (db.fixtures as import('../../types').ZoneFixtures) || {
       showers: 0, lavs: 0, wcs: 0, floorDrains: 0, serviceSinks: 0, washingMachines: 0, dryers: 0
     },
-    rates: (db.rates as import('../../types').ZoneRates) || {
-      lighting_w_sf: 1, receptacle_va_sf: 3, ventilation_cfm_sf: 0.15, exhaust_cfm_sf: 0, cooling_sf_ton: 400, heating_btuh_sf: 25
-    },
+    rates,
     processLoads: (db.process_loads as import('../../types').ZoneProcessLoads) || {
       fixed_kw: 0, gas_mbh: 0, ventilation_cfm: 0, exhaust_cfm: 0, pool_heater_mbh: 0, dehumid_lb_hr: 0, flue_size_in: 0, ceiling_height_ft: 10
     },
     laundryEquipment: db.laundry_equipment as import('../../types').LaundryEquipment | undefined,
     lineItems,
     sortOrder: (db.sort_order as number) || 0,
+    // New ventilation fields
+    ventilationSpaceType: db.ventilation_space_type as string | undefined,
+    ventilationStandard: db.ventilation_standard as 'ashrae62' | 'ashrae170' | 'custom' | undefined,
+    occupants: db.occupants as number | undefined,
+    ceilingHeightFt: db.ceiling_height_ft as number | undefined,
+    ventilationUnit: db.ventilation_unit as 'cfm_sf' | 'cfm' | 'ach' | undefined,
+    exhaustUnit: db.exhaust_unit as 'cfm_sf' | 'cfm' | 'ach' | undefined,
+    // Preserve existing values as custom overrides for migration
+    ventilationOverride: (db.ventilation_override as boolean) ?? shouldPreserveAsOverride,
+    exhaustOverride: (db.exhaust_override as boolean) ?? shouldPreserveAsOverride,
   }
 }

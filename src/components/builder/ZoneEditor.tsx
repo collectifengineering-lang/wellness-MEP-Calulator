@@ -1,10 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import LineItemsEditor from './LineItemsEditor'
 import { AddFixtureModal } from './AddFixtureModal'
+import VentilationSection from './VentilationSection'
 import { useProjectStore, calculateProcessLoads } from '../../store/useProjectStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { getZoneCategories, getZoneTypesByCategory, calculateLaundryLoads, type CustomLaundryEquipment } from '../../data/zoneDefaults'
 import { getFixtureById, LEGACY_FIXTURE_MAPPING } from '../../data/nycFixtures'
+import { COMMON_FLOORS, parseFloorFromName, getFloorColor } from '../../data/floorUtils'
+// ASHRAE calculations are now handled ONLY in VentilationSection - no duplicates!
 import type { Zone, ZoneType, ZoneProcessLoads } from '../../types'
 
 interface ZoneEditorProps {
@@ -100,10 +103,14 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
   // 1. RATE-BASED LOADS (per SF)
   const lightingKW = (localZone.sf * localZone.rates.lighting_w_sf) / 1000
   const receptacleKW = (localZone.sf * localZone.rates.receptacle_va_sf) / 1000
-  const rateVentCFM = localZone.sf * localZone.rates.ventilation_cfm_sf
-  const rateExhaustCFM = localZone.sf * localZone.rates.exhaust_cfm_sf
   const coolingTons = localZone.rates.cooling_sf_ton > 0 ? localZone.sf / localZone.rates.cooling_sf_ton : 0
   const heatingMBH = (localZone.sf * localZone.rates.heating_btuh_sf) / 1000
+  
+  // VENTILATION/EXHAUST - Read from zone's stored values
+  // VentilationSection calculates and syncs these values automatically
+  // For pool zones or overrides, values are set directly
+  const rateVentCFM = localZone.ventilationCfm ?? (localZone.sf * localZone.rates.ventilation_cfm_sf)
+  const rateExhaustCFM = localZone.exhaustCfm ?? (localZone.sf * localZone.rates.exhaust_cfm_sf)
   
   // 2. FIXTURE-BASED LOADS (using new fixture IDs, with legacy fallback)
   const getFixtureCount = (newId: string, legacyId?: string): number => {
@@ -188,7 +195,7 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Zone Name & Type Row */}
+          {/* Zone Name & SF Row */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-surface-300 mb-2">Zone Name</label>
@@ -211,6 +218,43 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-surface-400 text-sm">SF</span>
               </div>
+            </div>
+          </div>
+
+          {/* Floor Selection */}
+          <div>
+            <label className="block text-sm font-medium text-surface-300 mb-2">
+              Floor
+              <span className="text-surface-500 font-normal ml-2">
+                {(() => {
+                  const parsed = parseFloorFromName(localZone.name, localZone.floor)
+                  return parsed.floor ? `(detected: ${parsed.displayName})` : '(for organization)'
+                })()}
+              </span>
+            </label>
+            <div className="flex gap-2">
+              <select
+                value={localZone.floor || ''}
+                onChange={(e) => handleUpdate({ floor: e.target.value || undefined })}
+                className="flex-1 px-4 py-2.5 bg-surface-900 border border-surface-600 rounded-lg text-white"
+              >
+                <option value="">Auto-detect from name</option>
+                {COMMON_FLOORS.map(floor => (
+                  <option key={floor.value} value={floor.value}>{floor.label}</option>
+                ))}
+              </select>
+              {(localZone.floor || parseFloorFromName(localZone.name).floor) && (
+                <div 
+                  className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+                  style={{ 
+                    backgroundColor: getFloorColor(
+                      localZone.floor || parseFloorFromName(localZone.name).floor
+                    ) 
+                  }}
+                >
+                  {localZone.floor || parseFloorFromName(localZone.name).floor}
+                </div>
+              )}
             </div>
           </div>
 
@@ -273,16 +317,16 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
             </div>
           )}
 
+          {/* ASHRAE Ventilation Section */}
+          <VentilationSection zone={localZone} onUpdate={handleUpdate} />
 
-          {/* Rate-Based Loads (per SF) */}
+          {/* Rate-Based Loads (per SF) - Electrical & HVAC only (Ventilation moved to ASHRAE section) */}
           <div>
             <h4 className="text-sm font-medium text-surface-300 mb-3">📐 Rate-Based Loads (per SF)</h4>
             <div className="space-y-2">
               {[
                 { key: 'lighting_w_sf', label: 'Lighting', unit: 'W/SF', result: `${lightingKW.toFixed(2)} kW` },
                 { key: 'receptacle_va_sf', label: 'Receptacle', unit: 'VA/SF', result: `${receptacleKW.toFixed(2)} kW` },
-                { key: 'ventilation_cfm_sf', label: 'Ventilation', unit: 'CFM/SF', result: `${Math.round(rateVentCFM)} CFM` },
-                { key: 'exhaust_cfm_sf', label: 'Exhaust', unit: 'CFM/SF', result: `${Math.round(rateExhaustCFM)} CFM` },
                 { key: 'cooling_sf_ton', label: 'Cooling', unit: 'SF/Ton', result: coolingTons > 0 ? `${coolingTons.toFixed(2)} Tons` : '—' },
                 { key: 'heating_btuh_sf', label: 'Heating', unit: 'BTU/SF', result: heatingMBH > 0 ? `${heatingMBH.toFixed(1)} MBH` : '—' },
               ].map(rate => (
@@ -377,13 +421,13 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
               </div>
             )}
             
-            {/* Ventilation / Exhaust */}
+            {/* Ventilation / Exhaust - Values from ASHRAE section above */}
             <div className="mb-3 bg-surface-900/50 rounded p-3">
               <div className="text-xs text-surface-500 mb-2 uppercase tracking-wider">💨 Ventilation / Exhaust</div>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="space-y-1">
                   <div className="flex justify-between text-surface-400">
-                    <span>Rate ({localZone.rates.ventilation_cfm_sf}/SF):</span>
+                    <span>{localZone.ventilationSpaceType ? 'ASHRAE Calc:' : 'Rate-based:'}</span>
                     <span className="font-mono">{Math.round(rateVentCFM)}</span>
                   </div>
                   {lineItemVentCFM > 0 && (
@@ -399,7 +443,7 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
                 </div>
                 <div className="space-y-1">
                   <div className="flex justify-between text-surface-400">
-                    <span>Rate ({localZone.rates.exhaust_cfm_sf}/SF):</span>
+                    <span>{localZone.ventilationSpaceType ? 'ASHRAE Calc:' : 'Rate-based:'}</span>
                     <span className="font-mono">{Math.round(rateExhaustCFM)}</span>
                   </div>
                   {(lineItemExhaustCFM + fixtureExhaustCFM) > 0 && (

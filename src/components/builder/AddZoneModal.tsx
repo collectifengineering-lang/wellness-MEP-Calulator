@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useProjectStore } from '../../store/useProjectStore'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { getZoneCategories, getZoneTypesByCategory, getZoneColor, calculateFixturesFromSF } from '../../data/zoneDefaults'
+import { COMMON_FLOORS, generateZoneNameWithFloor, getFloorColor } from '../../data/floorUtils'
 import type { ZoneType } from '../../types'
 
 interface AddZoneModalProps {
@@ -9,12 +10,20 @@ interface AddZoneModalProps {
 }
 
 export default function AddZoneModal({ onClose }: AddZoneModalProps) {
-  const { addZone } = useProjectStore()
+  const { addZone, zones } = useProjectStore()
   const { customZoneTypes, getZoneDefaults } = useSettingsStore()
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedType, setSelectedType] = useState<string | null>(null)
   const [customName, setCustomName] = useState('')
   const [squareFootage, setSquareFootage] = useState<number | ''>()
+  const [selectedFloor, setSelectedFloor] = useState<string>('')
+  
+  // Get recently used floors from existing zones
+  const recentFloors = Array.from(new Set(
+    zones
+      .filter(z => z.floor)
+      .map(z => z.floor!)
+  )).slice(0, 5)
 
   // Include custom zone types in categories
   const baseCategories = getZoneCategories()
@@ -25,7 +34,19 @@ export default function AddZoneModal({ onClose }: AddZoneModalProps) {
   const handleAddZone = () => {
     if (!selectedType) return
     const sf = squareFootage || undefined
-    addZone(selectedType as ZoneType, customName || undefined, sf)
+    
+    // Generate zone name with floor prefix if floor is selected
+    let zoneName = customName || undefined
+    if (selectedFloor && !customName) {
+      // Auto-generate name with floor prefix
+      const defaults = getZoneDefaults(selectedType)
+      zoneName = generateZoneNameWithFloor(defaults.displayName, selectedFloor)
+    } else if (selectedFloor && customName) {
+      // Add floor prefix to custom name
+      zoneName = generateZoneNameWithFloor(customName, selectedFloor)
+    }
+    
+    addZone(selectedType as ZoneType, zoneName, sf)
     onClose()
   }
 
@@ -149,6 +170,48 @@ export default function AddZoneModal({ onClose }: AddZoneModalProps) {
             <div className="space-y-4 border-t border-surface-700 pt-6">
               <h3 className="text-sm font-medium text-surface-300">Zone Details</h3>
               
+              {/* Floor Selection */}
+              <div>
+                <label className="text-xs text-surface-400 mb-1 block">
+                  Floor <span className="text-surface-500">(for organization)</span>
+                </label>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {/* Recent floors quick select */}
+                  {recentFloors.length > 0 && (
+                    <>
+                      {recentFloors.map(floor => (
+                        <button
+                          key={floor}
+                          type="button"
+                          onClick={() => setSelectedFloor(floor)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            selectedFloor === floor
+                              ? 'text-white'
+                              : 'bg-surface-700 text-surface-300 hover:bg-surface-600'
+                          }`}
+                          style={{
+                            backgroundColor: selectedFloor === floor ? getFloorColor(floor) : undefined,
+                          }}
+                        >
+                          {floor}
+                        </button>
+                      ))}
+                      <div className="w-px h-6 bg-surface-600 self-center" />
+                    </>
+                  )}
+                </div>
+                <select
+                  value={selectedFloor}
+                  onChange={(e) => setSelectedFloor(e.target.value)}
+                  className="w-full px-4 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
+                >
+                  <option value="">No floor (or parse from name)</option>
+                  {COMMON_FLOORS.map(floor => (
+                    <option key={floor.value} value={floor.value}>{floor.label}</option>
+                  ))}
+                </select>
+              </div>
+              
               {/* Square Footage - REQUIRED */}
               <div>
                 <label className="text-xs text-surface-400 mb-1 block">
@@ -178,9 +241,17 @@ export default function AddZoneModal({ onClose }: AddZoneModalProps) {
                   type="text"
                   value={customName}
                   onChange={(e) => setCustomName(e.target.value)}
-                  placeholder={selectedDefaults.displayName}
+                  placeholder={selectedFloor 
+                    ? generateZoneNameWithFloor(selectedDefaults.displayName, selectedFloor)
+                    : selectedDefaults.displayName
+                  }
                   className="w-full px-4 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white"
                 />
+                {selectedFloor && !customName && (
+                  <p className="text-xs text-surface-500 mt-1">
+                    Will be named: <span className="text-white">{generateZoneNameWithFloor(selectedDefaults.displayName, selectedFloor)}</span>
+                  </p>
+                )}
               </div>
 
               {/* Preview */}

@@ -1,8 +1,13 @@
 import type { Zone, HVACCalcResult, ClimateType } from '../types'
-import { getZoneDefaults, calculateLaundryLoads } from '../data/zoneDefaults'
+import { getZoneDefaults } from '../data/zoneDefaults'
 import { climateFactors } from '../data/defaults'
-import { getLegacyFixtureCounts } from '../data/fixtureUtils'
 
+/**
+ * Calculate HVAC loads from zones
+ * 
+ * VENTILATION/EXHAUST: Uses stored values ONLY (from VentilationSection or pool calc)
+ * NO LEGACY FALLBACKS - if values aren't set, they're 0
+ */
 export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: number): HVACCalcResult {
   const factors = climateFactors[climate]
   
@@ -13,60 +18,34 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
   let dehumidLbHr = 0
   let poolChillerTons = 0
 
-  zones.forEach(zone => {
+  for (const zone of zones) {
+    // Per-zone flag: if THIS zone has a dehumidification line item, skip THIS zone's defaults
+    let zoneHasLineItemDehumid = false
     const defaults = getZoneDefaults(zone.type)
-    const processLoads = zone.processLoads || {}
     
-    // Cooling (SF/ton method)
+    // COOLING (SF/ton method)
     if (zone.rates.cooling_sf_ton > 0) {
       let tons = zone.sf / zone.rates.cooling_sf_ton
-      
-      // Apply latent adder for steam rooms, etc.
-      if (defaults.latent_adder) {
-        tons *= (1 + defaults.latent_adder)
-      }
-      
-      // Apply climate factor
+      if (defaults.latent_adder) tons *= (1 + defaults.latent_adder)
       tons *= factors.cooling
-      
       totalTons += tons
     }
     
-    // Heating (BTU/hr/SF)
+    // HEATING (BTU/hr/SF)
     if (zone.rates.heating_btuh_sf > 0) {
-      const btuhr = zone.sf * zone.rates.heating_btuh_sf * factors.heating
-      totalMBH += btuhr / 1000
+      totalMBH += (zone.sf * zone.rates.heating_btuh_sf * factors.heating) / 1000
     }
     
-    // 1. RATE-BASED ventilation (per SF)
-    if (zone.rates.ventilation_cfm_sf > 0) {
-      totalVentCFM += zone.sf * zone.rates.ventilation_cfm_sf
-    }
+    // VENTILATION/EXHAUST - stored values ONLY, no fallbacks
+    const ventVal = zone.ventilationCfm
+    const exhVal = zone.exhaustCfm
+    if (typeof ventVal === 'number') totalVentCFM += ventVal
+    if (typeof exhVal === 'number') totalExhaustCFM += exhVal
     
-    // 2. RATE-BASED exhaust (per SF)
-    if (zone.rates.exhaust_cfm_sf > 0) {
-      totalExhaustCFM += zone.sf * zone.rates.exhaust_cfm_sf
-    }
-    
-    // 3. FIXTURE-BASED exhaust (toilets, showers)
-    const legacyFixtures = getLegacyFixtureCounts(zone.fixtures)
-    if (defaults.exhaust_cfm_toilet) {
-      totalExhaustCFM += legacyFixtures.wcs * defaults.exhaust_cfm_toilet
-    }
-    if (defaults.exhaust_cfm_shower) {
-      totalExhaustCFM += legacyFixtures.showers * defaults.exhaust_cfm_shower
-    }
-    
-    // 4. LINE ITEMS - All fixed ventilation/exhaust/dehumidification/cooling equipment!
-    if (zone.lineItems && zone.lineItems.length > 0) {
-      console.log(`🔧 HVAC calc - Zone "${zone.name}" has ${zone.lineItems.length} line items:`)
-      zone.lineItems.forEach(li => {
-        console.log(`   - ${li.category}: ${li.name} = ${li.quantity} × ${li.value} ${li.unit}`)
-      })
-    }
-    
-    (zone.lineItems || []).forEach(li => {
-      const unit = li.unit?.toLowerCase() || ''
+    // LINE ITEMS - equipment loads
+    const items = zone.lineItems || []
+    for (const li of items) {
+      const unit = (li.unit || '').toLowerCase()
       
       if (li.category === 'ventilation' && unit === 'cfm') {
         totalVentCFM += li.quantity * li.value
@@ -74,46 +53,30 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
       if (li.category === 'exhaust' && unit === 'cfm') {
         totalExhaustCFM += li.quantity * li.value
       }
-      // Sum up dehumidification from line items (e.g., from pool room calculator)
       if (li.category === 'dehumidification' && (unit === 'lb/hr' || unit === 'lbs/hr')) {
-        console.log(`   ✅ Adding dehumidification: ${li.quantity} × ${li.value} = ${li.quantity * li.value} lb/hr`)
         dehumidLbHr += li.quantity * li.value
+        zoneHasLineItemDehumid = true
       }
-      // Sum up cooling from line items
       if (li.category === 'cooling' && unit === 'tons') {
         totalTons += li.quantity * li.value
       }
-      // Sum up pool chiller from line items (tracked separately for mechanical loads)
       if (li.category === 'pool_chiller' && unit === 'tons') {
-        console.log(`   ✅ Adding pool chiller: ${li.quantity} × ${li.value} = ${li.quantity * li.value} tons`)
         poolChillerTons += li.quantity * li.value
-        // Pool chiller also counts toward total cooling
         totalTons += li.quantity * li.value
       }
-      // Sum up heating from line items
       if (li.category === 'heating' && unit === 'mbh') {
         totalMBH += li.quantity * li.value
       }
-    })
-    
-    // 5. LAUNDRY exhaust (calculated from fixture counts)
-    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && legacyFixtures.dryers > 0) {
-      const laundryLoads = calculateLaundryLoads(
-        legacyFixtures.washingMachines || 0,
-        legacyFixtures.dryers,
-        zone.subType === 'gas' ? 'gas' : 'electric',
-        zone.laundryEquipment
-      )
-      totalExhaustCFM += laundryLoads.exhaust_cfm
-      totalVentCFM += laundryLoads.exhaust_cfm // MUA = exhaust
     }
     
-    // Dehumidification for pool areas - prefer zone's processLoads
-    const dehumidCapacity = processLoads.dehumid_lb_hr ?? defaults.dehumidification_lb_hr ?? 0
-    if (dehumidCapacity > 0) {
-      dehumidLbHr += dehumidCapacity * factors.dehumid
+    // DEHUMIDIFICATION - line items OR zone defaults (not both)
+    if (!zoneHasLineItemDehumid && zone.processLoads) {
+      const dehumidCapacity = zone.processLoads.dehumid_lb_hr || 0
+      if (dehumidCapacity > 0) {
+        dehumidLbHr += dehumidCapacity * factors.dehumid
+      }
     }
-  })
+  }
 
   // Apply contingency
   totalTons *= (1 + contingency)
@@ -122,8 +85,6 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
   // Estimate RTU count (rough: 1 RTU per 10-15 tons)
   const rtuCount = Math.max(Math.ceil(totalTons / 12), 1)
 
-  console.log(`🔧 HVAC Totals: ${totalTons.toFixed(1)} tons, ${dehumidLbHr} lb/hr dehumid, ${poolChillerTons} pool chiller tons`)
-  
   return {
     totalTons: Math.round(totalTons * 10) / 10,
     totalMBH: Math.round(totalMBH * 10) / 10,
@@ -135,7 +96,7 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
   }
 }
 
-// Get HVAC breakdown by zone
+// Get HVAC breakdown by zone - NO FALLBACKS, stored values only
 export function getHVACBreakdown(zones: Zone[], climate: ClimateType): {
   zoneName: string
   tons: number
@@ -147,8 +108,8 @@ export function getHVACBreakdown(zones: Zone[], climate: ClimateType): {
   
   return zones.map(zone => {
     const defaults = getZoneDefaults(zone.type)
-    const processLoads = zone.processLoads || {}
     
+    // COOLING - rate-based only
     let tons = 0
     if (zone.rates.cooling_sf_ton > 0) {
       tons = zone.sf / zone.rates.cooling_sf_ton * factors.cooling
@@ -157,51 +118,44 @@ export function getHVACBreakdown(zones: Zone[], climate: ClimateType): {
       }
     }
     
-    let ventCFM = zone.sf * zone.rates.ventilation_cfm_sf
-    const fixedVentCFM = processLoads.ventilation_cfm ?? defaults.ventilation_cfm ?? 0
-    if (fixedVentCFM > 0) ventCFM += fixedVentCFM
+    // VENTILATION/EXHAUST - stored values ONLY, no fallbacks
+    // VentilationSection sets these, pool calc sets these - that's it
+    let ventCFM = 0
+    let exhaustCFM = 0
+    const v = zone.ventilationCfm
+    const e = zone.exhaustCfm
+    if (typeof v === 'number') ventCFM = v
+    if (typeof e === 'number') exhaustCFM = e
     
-    let exhaustCFM = zone.sf * zone.rates.exhaust_cfm_sf
-    const fixedExhaustCFM = processLoads.exhaust_cfm ?? defaults.exhaust_cfm ?? 0
-    if (fixedExhaustCFM > 0) exhaustCFM += fixedExhaustCFM
-    const zoneLegacyFixtures = getLegacyFixtureCounts(zone.fixtures)
-    if (defaults.exhaust_cfm_toilet) exhaustCFM += zoneLegacyFixtures.wcs * defaults.exhaust_cfm_toilet
-    if (defaults.exhaust_cfm_shower) exhaustCFM += zoneLegacyFixtures.showers * defaults.exhaust_cfm_shower
-    
-    // Laundry exhaust - uses zone's custom specs
-    if (zone.type === 'laundry_commercial' && defaults.laundry_equipment && zoneLegacyFixtures.dryers > 0) {
-      const laundryLoads = calculateLaundryLoads(
-        zoneLegacyFixtures.washingMachines || 0, 
-        zoneLegacyFixtures.dryers, 
-        zone.subType === 'gas' ? 'gas' : 'electric',
-        zone.laundryEquipment
-      )
-      exhaustCFM += laundryLoads.exhaust_cfm
-      ventCFM += laundryLoads.exhaust_cfm // MUA
+    // LINE ITEMS - add ventilation/exhaust from equipment line items
+    const items = zone.lineItems || []
+    for (const li of items) {
+      const unit = (li.unit || '').toLowerCase()
+      if (li.category === 'ventilation' && unit === 'cfm') {
+        ventCFM += li.quantity * li.value
+      }
+      if (li.category === 'exhaust' && unit === 'cfm') {
+        exhaustCFM += li.quantity * li.value
+      }
     }
     
+    // Build notes
     const notes: string[] = []
-    const dehumidCapacity = processLoads.dehumid_lb_hr ?? defaults.dehumidification_lb_hr ?? 0
-    if (dehumidCapacity > 0) {
-      notes.push(`Dehumid: ${dehumidCapacity} lb/hr`)
+    if (zone.ventilationOverride) notes.push('Override')
+    else if (zone.ventilationSpaceType) notes.push('ASHRAE')
+    
+    // Equipment from line items
+    let lineItemsKW = 0
+    for (const li of items) {
+      const unit = (li.unit || '').toLowerCase()
+      if (unit === 'kw') lineItemsKW += li.quantity * li.value
     }
-    if (defaults.requires_type1_hood) {
-      notes.push('Type I hood required')
+    if (lineItemsKW > 0) {
+      notes.push(`${lineItemsKW.toFixed(0)} kW equip`)
     }
-    if (defaults.mau_cfm) {
-      notes.push(`MAU: ${defaults.mau_cfm} CFM`)
-    }
-    if (zone.type === 'laundry_commercial' && zoneLegacyFixtures.dryers > 0) {
-      notes.push(`${zoneLegacyFixtures.dryers} dryers @ 1,200 CFM each`)
-    }
-    if (defaults.requires_standby_power) {
-      notes.push('Standby power required')
-    }
-    // Show equipment load for thermal zones
-    const fixedKW = processLoads.fixed_kw ?? defaults.fixed_kw ?? 0
-    if (fixedKW > 0) {
-      notes.push(`Equipment: ${fixedKW} kW`)
-    }
+    
+    if (defaults.requires_type1_hood) notes.push('Type I hood')
+    if (defaults.requires_standby_power) notes.push('Standby power')
     
     return {
       zoneName: zone.name,

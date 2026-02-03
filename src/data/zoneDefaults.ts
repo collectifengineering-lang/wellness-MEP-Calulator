@@ -20,6 +20,9 @@ export interface ZoneDefaults {
   defaultFixtures: ZoneFixtures
   visibleFixtures?: string[]  // Fixture IDs to show in editor (even if count is 0)
   defaultRates: ZoneRates
+  // ASHRAE ventilation space type mapping
+  defaultVentilationSpaceType?: string  // ASHRAE 62.1/170 space type ID
+  defaultVentilationStandard?: 'ashrae62' | 'ashrae170' | 'custom'  // Source standard
   // Fixed loads (not per SF)
   fixed_kw?: number
   gas_mbh?: number
@@ -38,6 +41,10 @@ export interface ZoneDefaults {
   requires_mau?: boolean
   exhaust_cfm_toilet?: number
   exhaust_cfm_shower?: number
+  // Residential exhaust rates per ASHRAE 62.2 (dual rates for intermittent vs continuous)
+  exhaust_cfm_intermittent?: number   // Intermittent fan rate (higher CFM)
+  exhaust_cfm_continuous?: number     // Continuous ERV rate (lower CFM)
+  ventilation_mode?: 'intermittent' | 'continuous'  // Default mode for residential
   // Gas equipment details (for reference/reporting)
   gas_train_size_in?: number   // Gas train pipe size in inches
   gas_pressure_wc?: number     // Required gas pressure in " W.C.
@@ -116,6 +123,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Reception / Lounge',
     category: 'Support',
     defaultSF: 1500,
+    defaultVentilationSpaceType: 'reception',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {},  // Reception typically shares restrooms with building
     visibleFixtures: ['drinking_fountain', 'bottle_filler'],
     defaultRates: {
@@ -135,6 +144,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Mechanical Room',
     category: 'Support',
     defaultSF: 500,
+    defaultVentilationSpaceType: 'electrical_room',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       floor_drain_2in: 2,       // Equipment drains, relief valve discharge
       hose_bibb: 1,             // Maintenance
@@ -156,6 +167,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Retail',
     category: 'Support',
     defaultSF: 800,
+    defaultVentilationSpaceType: 'retail_sales',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {},      // Retail typically shares building restrooms
     visibleFixtures: [],
     defaultRates: {
@@ -175,6 +188,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Office / Admin',
     category: 'Support',
     defaultSF: 400,
+    defaultVentilationSpaceType: 'office',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {},      // Office typically shares building restrooms
     visibleFixtures: [],
     defaultRates: {
@@ -194,6 +209,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Storage',
     category: 'Support',
     defaultSF: 300,
+    defaultVentilationSpaceType: 'storage_conditioned',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {},
     visibleFixtures: ['floor_drain_2in'],
     defaultRates: {
@@ -210,6 +227,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Break Room / Lounge',
     category: 'Support',
     defaultSF: 500,
+    defaultVentilationSpaceType: 'break_room',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {
       kitchen_sink_commercial: 1,   // Pantry sink
       floor_drain_2in: 1,
@@ -238,6 +257,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Open Gym / Fitness Floor',
     category: 'Fitness',
     defaultSF: 5000,
+    defaultVentilationSpaceType: 'health_club_weights',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {
       drinking_fountain: 2,
       bottle_filler: 2,
@@ -260,6 +281,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Group Fitness Studio',
     category: 'Fitness',
     defaultSF: 2000,
+    defaultVentilationSpaceType: 'health_club_aerobics',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {
       drinking_fountain: 1,
     },
@@ -281,6 +304,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'MMA / Boxing Studio',
     category: 'Fitness',
     defaultSF: 2400,
+    defaultVentilationSpaceType: 'health_club_aerobics',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {
       drinking_fountain: 1,
       floor_drain_2in: 2,       // Mat cleaning drainage
@@ -303,6 +328,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Yoga Studio',
     category: 'Fitness',
     defaultSF: 800,
+    defaultVentilationSpaceType: 'yoga_studio',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {},
     visibleFixtures: ['drinking_fountain'],
     defaultRates: {
@@ -322,6 +349,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Pilates Studio',
     category: 'Fitness',
     defaultSF: 600,
+    defaultVentilationSpaceType: 'pilates_studio',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {},
     visibleFixtures: ['drinking_fountain'],
     defaultRates: {
@@ -341,6 +370,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Stretching / Recovery Area',
     category: 'Fitness',
     defaultSF: 500,
+    defaultVentilationSpaceType: 'spa_relaxation',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {},
     visibleFixtures: ['drinking_fountain'],
     defaultRates: {
@@ -365,6 +396,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Locker Room',
     category: 'Locker/Hygiene',
     defaultSF: 2500,
+    defaultVentilationSpaceType: 'spa_locker_room',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       shower_public: 8,              // For ~100 person capacity
       lavatory_public: 6,            
@@ -398,6 +431,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Restroom',
     category: 'Locker/Hygiene',
     defaultSF: 200,
+    defaultVentilationSpaceType: 'toilet_public',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       lavatory_public: 2, 
       water_closet_valve_public: 2, 
@@ -433,6 +468,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 500,
     defaultSubType: 'gas',
     switchable: false,
+    defaultVentilationSpaceType: 'sauna',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       floor_drain_3in: 2,      // Large drains for water/steam
       hose_bibb: 1,            // Cleanup
@@ -463,6 +500,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 200,
     defaultSubType: 'gas',
     switchable: true,
+    defaultVentilationSpaceType: 'sauna',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { floor_drain_2in: 1 },
     visibleFixtures: ['floor_drain_2in'],
     defaultRates: {
@@ -489,6 +528,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 200,
     defaultSubType: 'electric',
     switchable: true,
+    defaultVentilationSpaceType: 'sauna',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { floor_drain_2in: 1 },
     visibleFixtures: ['floor_drain_2in'],
     defaultRates: {
@@ -513,6 +554,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Thermal',
     defaultSF: 200,
     defaultSubType: 'electric',
+    defaultVentilationSpaceType: 'steam_room',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       floor_drain_2in: 2,      // Condensate + cleanup
     },
@@ -540,6 +583,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Thermal',
     defaultSF: 150,
     defaultSubType: 'electric',
+    defaultVentilationSpaceType: 'swimming_pool',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       floor_drain_2in: 1,
       pool_fill: 1,            // Fill/overflow
@@ -563,6 +608,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Thermal',
     defaultSF: 100,
     defaultSubType: 'electric',
+    defaultVentilationSpaceType: 'spa_treatment',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { floor_drain_2in: 1 },
     visibleFixtures: ['floor_drain_2in'],
     defaultRates: {
@@ -581,6 +628,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Thermal',
     defaultSF: 1500,
     defaultSubType: 'electric',
+    defaultVentilationSpaceType: 'swimming_pool',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       shower_public: 2,        // Rinse between contrasts
       floor_drain_3in: 4,
@@ -594,6 +643,7 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       cooling_sf_ton: 0,
       heating_btuh_sf: 0,
     },
+    fixed_kw: 50,
     ventilation_cfm: 1500,
     exhaust_cfm: 1500,
     rp_cfm_person: 15,
@@ -617,6 +667,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 3000,
     defaultSubType: 'gas',
     switchable: true,
+    defaultVentilationSpaceType: 'swimming_pool',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       floor_drain_3in: 4,
       trench_drain: 2,         // Deck perimeter
@@ -649,6 +701,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 2000,
     defaultSubType: 'gas',
     switchable: true,
+    defaultVentilationSpaceType: 'swimming_pool',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       trench_drain: 4,
     },
@@ -661,8 +715,9 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
       cooling_sf_ton: 0,
       heating_btuh_sf: 0,
     },
+    pool_heater_gas_mbh: 600,
     defaultEquipment: [
-      { category: 'gas', name: 'Pool Heater', quantity: 1, unit: 'MBH', value: 1000 },
+      { category: 'gas', name: 'Pool Heater', quantity: 1, unit: 'MBH', value: 600 },
     ],
     source_notes: 'Unconditioned outdoor',
   },
@@ -672,6 +727,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     defaultSF: 200,
     defaultSubType: 'gas',
     switchable: true,
+    defaultVentilationSpaceType: 'hot_tub_area',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       floor_drain_2in: 1,
       hot_tub_fill: 1,
@@ -693,6 +750,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Treatment Room',
     category: 'Pool/Spa',
     defaultSF: 150,
+    defaultVentilationSpaceType: 'spa_treatment',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { lavatory_public: 1 },
     visibleFixtures: ['lavatory_public'],
     defaultRates: {
@@ -712,6 +771,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Massage Room',
     category: 'Pool/Spa',
     defaultSF: 120,
+    defaultVentilationSpaceType: 'spa_massage',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { lavatory_public: 1 },
     visibleFixtures: ['lavatory_public'],
     defaultRates: {
@@ -731,6 +792,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Couples Treatment Room',
     category: 'Pool/Spa',
     defaultSF: 250,
+    defaultVentilationSpaceType: 'spa_treatment',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       lavatory_public: 1,
       shower_private: 1,       // Private shower for couples suite
@@ -753,6 +816,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Private Suite',
     category: 'Pool/Spa',
     defaultSF: 400,
+    defaultVentilationSpaceType: 'spa_treatment',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       lavatory_public: 1, 
       shower_public: 1, 
@@ -782,6 +847,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Kitchen/Laundry',
     defaultSF: 600,
     defaultSubType: 'gas',
+    defaultVentilationSpaceType: 'hotel_laundry',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       service_sink: 1,
       trench_drain: 3,
@@ -822,6 +889,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Kitchen/Laundry',
     defaultSF: 150,
     defaultSubType: 'electric',
+    defaultVentilationSpaceType: 'residential_laundry',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       floor_drain_2in: 1, 
       washing_machine_8lb_private: 1, 
@@ -846,6 +915,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Kitchen/Laundry',
     defaultSF: 700,
     defaultSubType: 'gas',
+    defaultVentilationSpaceType: 'kitchen_cooking',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       hand_sink: 2, 
       pot_sink_3comp: 1,
@@ -875,6 +946,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'Kitchen/Laundry',
     defaultSF: 300,
     defaultSubType: 'electric',
+    defaultVentilationSpaceType: 'break_room',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       hand_sink: 1, 
       bar_sink: 1,
@@ -904,6 +977,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Co-Work Space',
     category: 'Event/CoWork',
     defaultSF: 4000,
+    defaultVentilationSpaceType: 'office',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {
       drinking_fountain: 2,
       bottle_filler: 2,
@@ -926,6 +1001,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Conference Room',
     category: 'Event/CoWork',
     defaultSF: 500,
+    defaultVentilationSpaceType: 'conference_meeting',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {},
     visibleFixtures: [],
     defaultRates: {
@@ -945,6 +1022,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Event Space / Studio',
     category: 'Event/CoWork',
     defaultSF: 6000,
+    defaultVentilationSpaceType: 'hotel_multipurpose',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       floor_drain_2in: 2,
       hose_bibb: 2,
@@ -967,6 +1046,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Screening Room / Theater',
     category: 'Event/CoWork',
     defaultSF: 1000,
+    defaultVentilationSpaceType: 'auditorium',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {},
     visibleFixtures: [],
     defaultRates: {
@@ -991,6 +1072,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Child Care',
     category: 'Specialty',
     defaultSF: 1200,
+    defaultVentilationSpaceType: 'daycare_5plus',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       lavatory_public: 3, 
       water_closet_tank_public: 3, 
@@ -1015,6 +1098,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Recovery & Longevity',
     category: 'Specialty',
     defaultSF: 1600,
+    defaultVentilationSpaceType: 'spa_treatment',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       lavatory_public: 2, 
       floor_drain_2in: 2,
@@ -1042,6 +1127,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Basketball Court (Half)',
     category: 'Sports',
     defaultSF: 2400,
+    defaultVentilationSpaceType: 'gym_arena_play',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {
       drinking_fountain: 2,
     },
@@ -1063,6 +1150,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Padel Court',
     category: 'Sports',
     defaultSF: 2200,
+    defaultVentilationSpaceType: 'gym_arena_play',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: {
       drinking_fountain: 2,
     },
@@ -1089,6 +1178,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     category: 'F&B',
     defaultSF: 1200,
     defaultSubType: 'electric',
+    defaultVentilationSpaceType: 'cafe_fast_food',
+    defaultVentilationStandard: 'ashrae62',
     defaultFixtures: { 
       hand_sink: 1, 
       bar_sink: 1,
@@ -1118,6 +1209,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Terrace / Outdoor',
     category: 'Outdoor',
     defaultSF: 2500,
+    defaultVentilationSpaceType: 'corridor',
+    defaultVentilationStandard: 'custom',
     defaultFixtures: { 
       area_drain: 4,
       hose_bibb: 2,
@@ -1142,6 +1235,8 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
     displayName: 'Elevator',
     category: 'Vertical Transportation',
     defaultSF: 100,  // Typical elevator machine room/pit footprint
+    defaultVentilationSpaceType: 'corridor',
+    defaultVentilationStandard: 'custom',
     defaultFixtures: {
       floor_drain_2in: 1,  // Pit sump/drain
     },
@@ -1170,12 +1265,506 @@ export const zoneDefaults: Record<ZoneType, ZoneDefaults> = {
   },
 
   // ============================================
+  // CATEGORY 13: Residential
+  // ASHRAE 62.2 ventilation rates for dwelling units
+  // ============================================
+  res_kitchen_gas: {
+    displayName: 'Kitchen (Residential Gas)',
+    category: 'Residential',
+    defaultSF: 200,
+    defaultSubType: 'gas',
+    switchable: true,
+    defaultVentilationSpaceType: 'residential_kitchen',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {
+      kitchen_sink_private: 1,
+      dishwasher_private: 1,
+      floor_drain_2in: 1,
+    },
+    visibleFixtures: ['kitchen_sink_private', 'dishwasher_private', 'floor_drain_2in'],
+    defaultRates: {
+      lighting_w_sf: 1.00,
+      receptacle_va_sf: 5,      // Appliances: microwave, toaster, mixer
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0.50,
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 30,
+    },
+    exhaust_cfm_intermittent: 100,  // ASHRAE 62.2 - vented range hood
+    exhaust_cfm_continuous: 25,     // ASHRAE 62.2 - continuous exhaust
+    ventilation_mode: 'intermittent',
+    occupants_per_1000sf: 10,
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    defaultEquipment: [
+      { category: 'gas', name: 'Gas Range (Standard)', quantity: 1, unit: 'MBH', value: 65, notes: 'GE Profile 30". HIGH-END: Wolf GR486G 90 MBH' },
+      { category: 'power', name: 'Refrigerator', quantity: 1, unit: 'kW', value: 0.5, notes: 'Standard. HIGH-END: Sub-Zero BI-48S 0.8kW' },
+      { category: 'power', name: 'Dishwasher', quantity: 1, unit: 'kW', value: 1.8, notes: 'Standard. HIGH-END: Miele G7566SCVi 2.2kW' },
+      { category: 'power', name: 'Microwave', quantity: 1, unit: 'kW', value: 1.5 },
+      { category: 'exhaust', name: 'Range Hood', quantity: 1, unit: 'CFM', value: 400, notes: 'Standard. HIGH-END: Wolf PW362418 600 CFM' },
+    ],
+    source_notes: `ASHRAE 62.2 residential kitchen; Gas cooking equipment.
+HIGH-END ALTERNATIVES (Wolf/Thermador):
+- Wolf 30" Pro Range GR304: 55 MBH
+- Wolf 36" Pro Range GR366: 72 MBH
+- Wolf 48" Pro Range GR486G: 90 MBH
+- Wolf 60" Pro Range GR606DG: 108 MBH
+- Wolf 36" Rangetop SRT366: 91 MBH
+- Wolf 48" Rangetop SRT486G: 105 MBH
+- Thermador Pro Harmony 36" PRG366WH: 72 MBH
+- Thermador Pro Grand 48" PRG486WDG: 87 MBH
+- Thermador Pro Grand 60" PRG606WEG: 108 MBH`,
+  },
+  res_kitchen_electric: {
+    displayName: 'Kitchen (Residential Electric)',
+    category: 'Residential',
+    defaultSF: 200,
+    defaultSubType: 'electric',
+    switchable: true,
+    defaultVentilationSpaceType: 'residential_kitchen',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {
+      kitchen_sink_private: 1,
+      dishwasher_private: 1,
+      floor_drain_2in: 1,
+    },
+    visibleFixtures: ['kitchen_sink_private', 'dishwasher_private', 'floor_drain_2in'],
+    defaultRates: {
+      lighting_w_sf: 1.00,
+      receptacle_va_sf: 5,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0.50,
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 30,
+    },
+    exhaust_cfm_intermittent: 100,
+    exhaust_cfm_continuous: 25,
+    ventilation_mode: 'intermittent',
+    occupants_per_1000sf: 10,
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    defaultEquipment: [
+      // Standard tier - GE Profile / similar
+      { category: 'power', name: 'Electric Range (Standard)', quantity: 1, unit: 'kW', value: 12.5, notes: 'GE Profile 30" slide-in. HIGH-END: Wolf IR36550 10.8kW' },
+      { category: 'power', name: 'Refrigerator', quantity: 1, unit: 'kW', value: 0.5, notes: 'Standard. HIGH-END: Sub-Zero BI-48S 0.8kW' },
+      { category: 'power', name: 'Dishwasher', quantity: 1, unit: 'kW', value: 1.8, notes: 'Standard. HIGH-END: Miele G7566SCVi 2.2kW' },
+      { category: 'power', name: 'Microwave', quantity: 1, unit: 'kW', value: 1.5 },
+      { category: 'exhaust', name: 'Range Hood', quantity: 1, unit: 'CFM', value: 400, notes: 'Standard. HIGH-END: Wolf PW362418 600 CFM' },
+    ],
+    source_notes: `ASHRAE 62.2 residential kitchen; Electric/induction equipment.
+HIGH-END ALTERNATIVES (Wolf/Thermador/Miele):
+- Wolf 36" Induction Range IR36550: 10.8 kW
+- Wolf 36" Induction Cooktop CI365C/B: 11.0 kW
+- Thermador 36" Induction Cooktop CIT367YM: 9.6 kW
+- Thermador 36" Induction Range PRI36YBIT: 11.2 kW
+- Miele 36" Induction Cooktop KM7897FL: 11.1 kW
+- Wolf Convection Steam Oven CSO30PE: 5.3 kW
+- Wolf Double Wall Oven DO30PE: 9.6 kW
+- Sub-Zero 48" Built-In BI-48S: 0.8 kW
+- Sub-Zero Wine Storage UW-24: 0.4 kW
+- Wolf Warming Drawer WWD30: 0.5 kW`,
+  },
+  res_bathroom_master: {
+    displayName: 'Bathroom (Master)',
+    category: 'Residential',
+    defaultSF: 120,
+    defaultVentilationSpaceType: 'residential_bathroom',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {
+      bathtub_whirlpool: 1,
+      shower_private: 1,
+      lavatory_private: 2,      // Dual sinks
+      water_closet_tank_private: 1,
+      bidet: 1,
+      floor_drain_2in: 1,
+    },
+    visibleFixtures: ['bathtub_whirlpool', 'shower_private', 'lavatory_private', 'water_closet_tank_private', 'bidet', 'floor_drain_2in'],
+    defaultRates: {
+      lighting_w_sf: 1.00,
+      receptacle_va_sf: 2,      // Hair dryer, shavers
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0.42,     // 50 CFM / 120 SF
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 35,
+    },
+    exhaust_cfm_intermittent: 50,   // ASHRAE 62.2 per bathroom
+    exhaust_cfm_continuous: 20,     // ASHRAE 62.2 continuous
+    ventilation_mode: 'intermittent',
+    defaultEquipment: [
+      { category: 'exhaust', name: 'Bath Exhaust Fan (Panasonic WhisperGreen)', quantity: 1, unit: 'CFM', value: 80, notes: 'FV-0811VFL5' },
+      { category: 'power', name: 'Bath Exhaust Fan', quantity: 1, unit: 'kW', value: 0.05 },
+      { category: 'power', name: 'Heated Floor (Electric)', quantity: 1, unit: 'kW', value: 1.5, notes: '~12 W/SF' },
+    ],
+    source_notes: 'ASHRAE 62.2 private bathroom; Master suite with dual vanity',
+  },
+  res_bathroom_standard: {
+    displayName: 'Bathroom (Standard)',
+    category: 'Residential',
+    defaultSF: 60,
+    defaultVentilationSpaceType: 'residential_bathroom',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {
+      bathtub_private: 1,       // Tub/shower combo
+      lavatory_private: 1,
+      water_closet_tank_private: 1,
+    },
+    visibleFixtures: ['bathtub_private', 'lavatory_private', 'water_closet_tank_private', 'shower_private'],
+    defaultRates: {
+      lighting_w_sf: 1.00,
+      receptacle_va_sf: 2,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0.83,     // 50 CFM / 60 SF
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 35,
+    },
+    exhaust_cfm_intermittent: 50,
+    exhaust_cfm_continuous: 20,
+    ventilation_mode: 'intermittent',
+    defaultEquipment: [
+      { category: 'exhaust', name: 'Bath Exhaust Fan (Panasonic WhisperCeiling)', quantity: 1, unit: 'CFM', value: 50, notes: 'FV-0511VQL1' },
+      { category: 'power', name: 'Bath Exhaust Fan', quantity: 1, unit: 'kW', value: 0.03 },
+    ],
+    source_notes: 'ASHRAE 62.2 private bathroom; Standard tub/shower combo',
+  },
+  res_powder_room: {
+    displayName: 'Powder Room',
+    category: 'Residential',
+    defaultSF: 30,
+    defaultVentilationSpaceType: 'residential_bathroom',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {
+      lavatory_private: 1,
+      water_closet_tank_private: 1,
+    },
+    visibleFixtures: ['lavatory_private', 'water_closet_tank_private'],
+    defaultRates: {
+      lighting_w_sf: 1.20,
+      receptacle_va_sf: 1,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 1.67,     // 50 CFM / 30 SF
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 30,
+    },
+    exhaust_cfm_intermittent: 50,
+    exhaust_cfm_continuous: 20,
+    ventilation_mode: 'intermittent',
+    defaultEquipment: [
+      { category: 'exhaust', name: 'Bath Exhaust Fan', quantity: 1, unit: 'CFM', value: 50 },
+      { category: 'power', name: 'Bath Exhaust Fan', quantity: 1, unit: 'kW', value: 0.03 },
+    ],
+    source_notes: 'ASHRAE 62.2 private bathroom; Half bath / powder room',
+  },
+  res_bedroom_master: {
+    displayName: 'Bedroom (Master)',
+    category: 'Residential',
+    defaultSF: 300,
+    defaultVentilationSpaceType: 'residential_living',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: [],
+    defaultRates: {
+      lighting_w_sf: 0.50,
+      receptacle_va_sf: 1.5,    // Bedside lamps, chargers
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 500,      // Lower load - sleeping occupancy
+      heating_btuh_sf: 25,
+    },
+    occupants_per_1000sf: 7,    // ~2 people per bedroom
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    source_notes: 'ASHRAE 62.2 dwelling unit; Master bedroom',
+  },
+  res_bedroom_standard: {
+    displayName: 'Bedroom (Standard)',
+    category: 'Residential',
+    defaultSF: 150,
+    defaultVentilationSpaceType: 'residential_living',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: [],
+    defaultRates: {
+      lighting_w_sf: 0.50,
+      receptacle_va_sf: 1.5,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 500,
+      heating_btuh_sf: 25,
+    },
+    occupants_per_1000sf: 13,   // ~2 people per bedroom
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    source_notes: 'ASHRAE 62.2 dwelling unit; Standard bedroom',
+  },
+  res_bedroom_guest: {
+    displayName: 'Bedroom (Guest)',
+    category: 'Residential',
+    defaultSF: 180,
+    defaultVentilationSpaceType: 'residential_living',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: [],
+    defaultRates: {
+      lighting_w_sf: 0.50,
+      receptacle_va_sf: 1.5,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 500,
+      heating_btuh_sf: 25,
+    },
+    occupants_per_1000sf: 11,
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    source_notes: 'ASHRAE 62.2 dwelling unit; Guest bedroom',
+  },
+  res_living_room: {
+    displayName: 'Living Room',
+    category: 'Residential',
+    defaultSF: 400,
+    defaultSubType: 'gas',     // For fireplace option
+    defaultVentilationSpaceType: 'residential_living',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: [],
+    defaultRates: {
+      lighting_w_sf: 0.80,
+      receptacle_va_sf: 2,      // TV, lamps, chargers
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 450,
+      heating_btuh_sf: 25,
+    },
+    occupants_per_1000sf: 5,
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    defaultEquipment: [
+      { category: 'gas', name: 'Gas Fireplace (Direct Vent)', quantity: 1, unit: 'MBH', value: 40, notes: 'Optional - decorative/supplemental heat' },
+    ],
+    source_notes: 'ASHRAE 62.2 dwelling unit; Optional gas fireplace',
+  },
+  res_dining_room: {
+    displayName: 'Dining Room',
+    category: 'Residential',
+    defaultSF: 200,
+    defaultVentilationSpaceType: 'residential_living',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: [],
+    defaultRates: {
+      lighting_w_sf: 0.90,      // Chandelier/feature lighting
+      receptacle_va_sf: 1.5,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 450,
+      heating_btuh_sf: 25,
+    },
+    occupants_per_1000sf: 15,
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    source_notes: 'ASHRAE 62.2 dwelling unit; Formal dining',
+  },
+  res_family_room: {
+    displayName: 'Family Room',
+    category: 'Residential',
+    defaultSF: 350,
+    defaultSubType: 'gas',
+    defaultVentilationSpaceType: 'residential_living',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: [],
+    defaultRates: {
+      lighting_w_sf: 0.70,
+      receptacle_va_sf: 2.5,    // TV, gaming, multiple devices
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 25,
+    },
+    occupants_per_1000sf: 8,
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    defaultEquipment: [
+      { category: 'gas', name: 'Gas Fireplace Insert', quantity: 1, unit: 'MBH', value: 35, notes: 'Optional' },
+    ],
+    source_notes: 'ASHRAE 62.2 dwelling unit; Casual living space',
+  },
+  res_office: {
+    displayName: 'Home Office',
+    category: 'Residential',
+    defaultSF: 150,
+    defaultVentilationSpaceType: 'residential_living',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: [],
+    defaultRates: {
+      lighting_w_sf: 0.80,
+      receptacle_va_sf: 4,      // Computer, monitors, printer
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 350,      // Higher due to equipment
+      heating_btuh_sf: 25,
+    },
+    occupants_per_1000sf: 7,
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    source_notes: 'ASHRAE 62.2 dwelling unit; Work from home office',
+  },
+  res_study: {
+    displayName: 'Study / Library',
+    category: 'Residential',
+    defaultSF: 200,
+    defaultVentilationSpaceType: 'residential_living',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: [],
+    defaultRates: {
+      lighting_w_sf: 0.80,
+      receptacle_va_sf: 3,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 25,
+    },
+    occupants_per_1000sf: 5,
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    source_notes: 'ASHRAE 62.2 dwelling unit; Reading/study room',
+  },
+  res_media_room: {
+    displayName: 'Media Room / Theater',
+    category: 'Residential',
+    defaultSF: 300,
+    defaultVentilationSpaceType: 'residential_living',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: [],
+    defaultRates: {
+      lighting_w_sf: 0.60,      // Dimmable/theatrical
+      receptacle_va_sf: 3,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 300,      // AV equipment heat load
+      heating_btuh_sf: 20,
+    },
+    fixed_kw: 2,                // AV equipment
+    occupants_per_1000sf: 20,   // Theater seating
+    rp_cfm_person: 5,
+    ra_cfm_sf: 0.06,
+    defaultEquipment: [
+      { category: 'power', name: 'AV Equipment (Projector, Receiver, Speakers)', quantity: 1, unit: 'kW', value: 2.0 },
+    ],
+    source_notes: 'ASHRAE 62.2 dwelling unit; Home theater/media room',
+  },
+  res_wine_cellar: {
+    displayName: 'Wine Cellar',
+    category: 'Residential',
+    defaultSF: 100,
+    defaultVentilationSpaceType: 'storage_conditioned',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {
+      floor_drain_2in: 1,
+    },
+    visibleFixtures: ['floor_drain_2in'],
+    defaultRates: {
+      lighting_w_sf: 0.60,
+      receptacle_va_sf: 1,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 200,      // 55°F temperature control
+      heating_btuh_sf: 0,       // No heating - naturally cool
+    },
+    defaultEquipment: [
+      { category: 'cooling', name: 'Wine Cooling Unit', quantity: 1, unit: 'Tons', value: 0.5 },
+      { category: 'power', name: 'Wine Cooling Unit', quantity: 1, unit: 'kW', value: 1.5 },
+    ],
+    source_notes: 'Wine storage at 55°F, 60-70% RH; Specialized cooling required',
+  },
+  res_pantry: {
+    displayName: 'Pantry',
+    category: 'Residential',
+    defaultSF: 60,
+    defaultVentilationSpaceType: 'storage_conditioned',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: ['floor_drain_2in'],
+    defaultRates: {
+      lighting_w_sf: 0.60,
+      receptacle_va_sf: 1,      // Occasional small appliance
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 20,
+    },
+    source_notes: 'Food storage/butler pantry',
+  },
+  res_mudroom: {
+    displayName: 'Mudroom / Entry',
+    category: 'Residential',
+    defaultSF: 80,
+    defaultVentilationSpaceType: 'corridor',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {
+      floor_drain_2in: 1,
+    },
+    visibleFixtures: ['floor_drain_2in', 'service_sink'],
+    defaultRates: {
+      lighting_w_sf: 0.70,
+      receptacle_va_sf: 1,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 400,
+      heating_btuh_sf: 30,
+    },
+    source_notes: 'Entry/transition space; Floor drain for wet items',
+  },
+  res_corridor: {
+    displayName: 'Corridor / Hallway',
+    category: 'Residential',
+    defaultSF: 100,
+    defaultVentilationSpaceType: 'corridor',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: [],
+    defaultRates: {
+      lighting_w_sf: 0.50,
+      receptacle_va_sf: 0.5,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 500,
+      heating_btuh_sf: 20,
+    },
+    rp_cfm_person: 0,
+    ra_cfm_sf: 0.06,
+    source_notes: 'ASHRAE 62.2 corridor; Transfer air only',
+  },
+  res_closet_walkin: {
+    displayName: 'Walk-in Closet',
+    category: 'Residential',
+    defaultSF: 80,
+    defaultVentilationSpaceType: 'storage_conditioned',
+    defaultVentilationStandard: 'ashrae62',
+    defaultFixtures: {},
+    visibleFixtures: [],
+    defaultRates: {
+      lighting_w_sf: 0.80,
+      receptacle_va_sf: 0.5,
+      ventilation_cfm_sf: 0.06,
+      exhaust_cfm_sf: 0,
+      cooling_sf_ton: 500,
+      heating_btuh_sf: 20,
+    },
+    source_notes: 'Walk-in closet/dressing area',
+  },
+
+  // ============================================
   // Custom Zone
   // ============================================
   custom: {
     displayName: 'Custom Zone',
     category: 'Custom',
     defaultSF: 1000,
+    defaultVentilationSpaceType: 'office',
+    defaultVentilationStandard: 'custom',
     defaultFixtures: {},
     visibleFixtures: ['lavatory_public', 'water_closet_valve_public', 'floor_drain_2in'],
     defaultRates: { ...defaultRates },
@@ -1197,6 +1786,7 @@ const zoneColors: Record<string, string> = {
   Sports: '#84cc16',
   'F&B': '#f97316',
   Outdoor: '#22c55e',
+  Residential: '#a855f7',     // Purple for residential spaces
   Custom: '#94a3b8',
 }
 

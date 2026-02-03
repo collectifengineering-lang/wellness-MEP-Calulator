@@ -1,25 +1,69 @@
-import type { CalculationResults, ZoneFixtures } from '../../types'
-import { fixtureUnits } from '../../data/defaults'
+import type { CalculationResults, ZoneFixtures, FixtureOverride } from '../../types'
 import { useSettingsStore } from '../../store/useSettingsStore'
+import { useProjectStore } from '../../store/useProjectStore'
+import { NYC_FIXTURE_DATABASE } from '../../data/nycFixtures'
 
 interface PlumbingCalcsProps {
   results: CalculationResults
   fixtures: ZoneFixtures
 }
 
+// Helper to get fixture info from database WITH overrides applied
+function getFixtureInfo(fixtureId: string, overrides?: FixtureOverride[]) {
+  const fixture = NYC_FIXTURE_DATABASE.find(f => f.id === fixtureId)
+  if (fixture) {
+    // Check for override
+    const override = overrides?.find(o => o.fixtureId === fixtureId)
+    const wsfuCold = override?.wsfuCold ?? fixture.wsfuCold
+    const wsfuHot = override?.wsfuHot ?? fixture.wsfuHot
+    const dfu = override?.dfu ?? fixture.dfu
+    const hasOverride = override !== undefined
+    
+    return {
+      name: fixture.name,
+      wsfu: wsfuCold + (wsfuHot || 0),
+      dfu: dfu,
+      hasOverride,
+      originalWsfu: fixture.wsfuCold + (fixture.wsfuHot || 0),
+      originalDfu: fixture.dfu,
+    }
+  }
+  // Fallback for unknown fixtures
+  return { 
+    name: fixtureId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), 
+    wsfu: 1, 
+    dfu: 1,
+    hasOverride: false,
+    originalWsfu: 1,
+    originalDfu: 1,
+  }
+}
+
 export default function PlumbingCalcs({ results, fixtures }: PlumbingCalcsProps) {
   const { plumbing: plumbingSettings, updatePlumbingSettings } = useSettingsStore()
+  const { currentProject } = useProjectStore()
   const { plumbing } = results
+  
+  // Get fixture overrides from project
+  const fixtureOverrides = currentProject?.fixtureOverrides
 
-  // Calculate breakdown
-  const fixtureBreakdown = [
-    { name: 'Showers', count: fixtures.showers, wsfu: fixtureUnits.shower.wsfu, dfu: fixtureUnits.shower.dfu },
-    { name: 'Lavatories', count: fixtures.lavs, wsfu: fixtureUnits.lavatory.wsfu, dfu: fixtureUnits.lavatory.dfu },
-    { name: 'Water Closets', count: fixtures.wcs, wsfu: fixtureUnits.water_closet.wsfu, dfu: fixtureUnits.water_closet.dfu },
-    { name: 'Floor Drains', count: fixtures.floorDrains, wsfu: fixtureUnits.floor_drain.wsfu, dfu: fixtureUnits.floor_drain.dfu },
-    { name: 'Service Sinks', count: fixtures.serviceSinks, wsfu: fixtureUnits.service_sink.wsfu, dfu: fixtureUnits.service_sink.dfu },
-    { name: 'Washing Machines', count: fixtures.washingMachines, wsfu: fixtureUnits.washing_machine.wsfu, dfu: fixtureUnits.washing_machine.dfu },
-  ].filter(f => f.count > 0)
+  // Build fixture breakdown from actual fixture IDs (preserves specific types)
+  const fixtureBreakdown = Object.entries(fixtures)
+    .filter(([_, count]) => typeof count === 'number' && count > 0)
+    .map(([fixtureId, count]) => {
+      const info = getFixtureInfo(fixtureId, fixtureOverrides)
+      return {
+        id: fixtureId,
+        name: info.name,
+        count: count as number,
+        wsfu: info.wsfu,
+        dfu: info.dfu,
+        hasOverride: info.hasOverride,
+        originalWsfu: info.originalWsfu,
+        originalDfu: info.originalDfu,
+      }
+    })
+    .sort((a, b) => (b.count * b.wsfu) - (a.count * a.wsfu)) // Sort by total WSFU contribution
 
   return (
     <div className="bg-surface-800 rounded-xl border border-surface-700 overflow-hidden">
@@ -146,11 +190,26 @@ export default function PlumbingCalcs({ results, fixtures }: PlumbingCalcsProps)
             </thead>
             <tbody>
               {fixtureBreakdown.map((fixture, idx) => (
-                <tr key={idx} className="border-b border-surface-700/50">
-                  <td className="py-2 text-white">{fixture.name}</td>
+                <tr key={idx} className={`border-b border-surface-700/50 ${fixture.hasOverride ? 'bg-amber-900/10' : ''}`}>
+                  <td className="py-2 text-white">
+                    {fixture.name}
+                    {fixture.hasOverride && (
+                      <span className="ml-2 text-xs text-amber-400" title="Values overridden in Project Info">⚡</span>
+                    )}
+                  </td>
                   <td className="py-2 text-right text-surface-300 font-mono">{fixture.count}</td>
-                  <td className="py-2 text-right text-surface-300 font-mono">{fixture.wsfu}</td>
-                  <td className="py-2 text-right text-surface-300 font-mono">{fixture.dfu}</td>
+                  <td className={`py-2 text-right font-mono ${fixture.hasOverride && fixture.wsfu !== fixture.originalWsfu ? 'text-amber-400' : 'text-surface-300'}`}>
+                    {fixture.wsfu}
+                    {fixture.hasOverride && fixture.wsfu !== fixture.originalWsfu && (
+                      <span className="text-xs text-surface-500 ml-1">({fixture.originalWsfu})</span>
+                    )}
+                  </td>
+                  <td className={`py-2 text-right font-mono ${fixture.hasOverride && fixture.dfu !== fixture.originalDfu ? 'text-amber-400' : 'text-surface-300'}`}>
+                    {fixture.dfu}
+                    {fixture.hasOverride && fixture.dfu !== fixture.originalDfu && (
+                      <span className="text-xs text-surface-500 ml-1">({fixture.originalDfu})</span>
+                    )}
+                  </td>
                   <td className="py-2 text-right text-cyan-400 font-mono">{(fixture.count * fixture.wsfu).toFixed(1)}</td>
                   <td className="py-2 text-right text-amber-400 font-mono">{fixture.count * fixture.dfu}</td>
                 </tr>
@@ -251,14 +310,28 @@ export default function PlumbingCalcs({ results, fixtures }: PlumbingCalcsProps)
           </div>
         </div>
 
+        {/* Override Notice */}
+        {fixtureOverrides && fixtureOverrides.length > 0 && (
+          <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg p-3 flex items-start gap-2">
+            <span className="text-amber-400">⚡</span>
+            <div>
+              <p className="text-sm text-amber-300 font-medium">Fixture Overrides Active</p>
+              <p className="text-xs text-amber-400/80 mt-0.5">
+                {fixtureOverrides.length} fixture type(s) have custom WSFU/DFU values. 
+                Values shown in <span className="text-amber-400">amber</span> are overridden (original in parentheses).
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Notes */}
         <div className="text-xs text-surface-500 space-y-1">
-          <p>* WSFU values based on IPC/UPC public use fixtures</p>
+          <p>* WSFU/DFU values per NYC Plumbing Code Table P-202.1</p>
           <p>* GPM conversion uses Hunter's Curve approximation</p>
           <p>* Pipe sizing formula: d = √(GPM × 0.408 / V)</p>
           <p>* Cold water design velocity: {plumbingSettings.cold_water_velocity_fps} FPS</p>
           <p>* Hot water design velocity: {plumbingSettings.hot_water_velocity_fps} FPS</p>
-          <p>* HW/CW flow ratio: {plumbingSettings.hot_water_flow_ratio}</p>
+          <p>* HW/CW flow ratio: {plumbingSettings.use_calculated_hw_ratio ? 'Calculated from fixtures' : plumbingSettings.hot_water_flow_ratio}</p>
         </div>
       </div>
     </div>

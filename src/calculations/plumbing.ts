@@ -1,4 +1,4 @@
-import type { ZoneFixtures, PlumbingCalcResult } from '../types'
+import type { ZoneFixtures, PlumbingCalcResult, FixtureOverride } from '../types'
 import { getFixtureById, LEGACY_FIXTURE_MAPPING } from '../data/nycFixtures'
 import { sanitarySizing, waterMeterSizing } from '../data/defaults'
 
@@ -14,9 +14,44 @@ interface PlumbingCalcOptions {
                                    // If not provided, will be calculated from fixture WSFU values
                                    // Manual override: set to specific value (0.3-0.8 typical)
   useCalculatedHWRatio?: boolean  // If true, always use fixture-calculated ratio instead of manual
+  fixtureOverrides?: FixtureOverride[]  // Custom fixture parameters (WSFU/DFU overrides)
   // Legacy fields for backwards compatibility
   designVelocityFPS?: number      // @deprecated - use coldWaterVelocityFPS
   hotWaterDemandFactor?: number   // @deprecated - use hotWaterFlowRatio
+}
+
+/**
+ * Get fixture values with optional overrides applied
+ */
+function getFixtureValues(fixtureId: string, overrides?: FixtureOverride[]) {
+  const fixtureDef = getFixtureById(fixtureId)
+  if (!fixtureDef) return null
+  
+  // Check for override
+  const override = overrides?.find(o => o.fixtureId === fixtureId)
+  
+  // Debug: Log when override is found or expected
+  if (overrides && overrides.length > 0) {
+    console.log(`🔧 getFixtureValues: checking "${fixtureId}" against ${overrides.length} overrides:`, 
+      overrides.map(o => o.fixtureId))
+    if (override) {
+      console.log(`✅ Override FOUND for ${fixtureId}:`, override)
+    }
+  }
+  
+  const result = {
+    wsfuCold: override?.wsfuCold ?? fixtureDef.wsfuCold,
+    wsfuHot: override?.wsfuHot ?? fixtureDef.wsfuHot,
+    wsfuTotal: (override?.wsfuCold ?? fixtureDef.wsfuCold) + (override?.wsfuHot ?? fixtureDef.wsfuHot),
+    dfu: override?.dfu ?? fixtureDef.dfu,
+    hotWaterGPH: override?.hotWaterGPH ?? fixtureDef.hotWaterGPH,
+  }
+  
+  if (override) {
+    console.log(`📊 Final values for ${fixtureId}: wsfuTotal=${result.wsfuTotal} (was ${fixtureDef.wsfuCold + fixtureDef.wsfuHot})`)
+  }
+  
+  return result
 }
 
 /**
@@ -27,8 +62,8 @@ export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalc
   const coldWaterVelocity = options?.coldWaterVelocityFPS ?? options?.designVelocityFPS ?? 5
   const hotWaterVelocity = options?.hotWaterVelocityFPS ?? options?.designVelocityFPS ?? 4
   
-  // Calculate HW ratio from fixture units (ASPE method)
-  const calculatedRatio = calculateHotWaterRatioFromFixtures(fixtures)
+  // Calculate HW ratio from fixture units (ASPE method) - apply overrides
+  const calculatedRatio = calculateHotWaterRatioFromFixtures(fixtures, options?.fixtureOverrides)
   
   // Use calculated ratio unless manual override is provided
   // If useCalculatedHWRatio is true, always use calculated
@@ -55,14 +90,13 @@ export function calculatePlumbing(fixtures: ZoneFixtures, options?: PlumbingCalc
     // Map legacy IDs to new IDs
     const mappedId = LEGACY_FIXTURE_MAPPING[fixtureId] || fixtureId
     
-    // Look up fixture in database
-    const fixtureDef = getFixtureById(mappedId)
+    // Look up fixture in database (with overrides applied)
+    const fixtureValues = getFixtureValues(mappedId, options?.fixtureOverrides)
     
-    if (fixtureDef) {
-      // Use wsfuTotal from ASPE tables (or fall back to legacy wsfu)
-      const wsfu = 'wsfuTotal' in fixtureDef ? (fixtureDef as any).wsfuTotal : (fixtureDef as any).wsfu || 0
-      totalWSFU += count * wsfu
-      totalDFU += count * fixtureDef.dfu
+    if (fixtureValues) {
+      // Use wsfuTotal (cold + hot) with any overrides applied
+      totalWSFU += count * fixtureValues.wsfuTotal
+      totalDFU += count * fixtureValues.dfu
     } else {
       // Fallback for unknown fixtures - use conservative estimates
       console.warn(`Unknown fixture type: ${fixtureId}, using default values`)
@@ -201,7 +235,10 @@ export function getFixtureSummary(fixtures: ZoneFixtures): string[] {
 /**
  * Calculate total hot water demand in GPH from fixtures
  */
-export function calculateHotWaterDemand(fixtures: ZoneFixtures): number {
+export function calculateHotWaterDemand(
+  fixtures: ZoneFixtures,
+  fixtureOverrides?: FixtureOverride[]
+): number {
   let totalGPH = 0
   
   for (const [fixtureId, count] of Object.entries(fixtures)) {
@@ -209,10 +246,12 @@ export function calculateHotWaterDemand(fixtures: ZoneFixtures): number {
     
     // Map legacy IDs to new IDs
     const mappedId = LEGACY_FIXTURE_MAPPING[fixtureId] || fixtureId
-    const fixtureDef = getFixtureById(mappedId)
     
-    if (fixtureDef && fixtureDef.hotWaterGPH > 0) {
-      totalGPH += count * fixtureDef.hotWaterGPH
+    // Get fixture values with overrides applied
+    const fixtureValues = getFixtureValues(mappedId, fixtureOverrides)
+    
+    if (fixtureValues && fixtureValues.hotWaterGPH > 0) {
+      totalGPH += count * fixtureValues.hotWaterGPH
     }
   }
   
@@ -231,7 +270,10 @@ export function calculateHotWaterDemand(fixtures: ZoneFixtures): number {
  *   - totalWsfuHot: sum of hot water WSFU
  *   - totalWsfu: total WSFU
  */
-export function calculateHotWaterRatioFromFixtures(fixtures: ZoneFixtures): {
+export function calculateHotWaterRatioFromFixtures(
+  fixtures: ZoneFixtures,
+  fixtureOverrides?: FixtureOverride[]
+): {
   ratio: number
   totalWsfuCold: number
   totalWsfuHot: number
@@ -245,11 +287,13 @@ export function calculateHotWaterRatioFromFixtures(fixtures: ZoneFixtures): {
     
     // Map legacy IDs to new IDs
     const mappedId = LEGACY_FIXTURE_MAPPING[fixtureId] || fixtureId
-    const fixtureDef = getFixtureById(mappedId)
     
-    if (fixtureDef) {
-      totalWsfuCold += count * fixtureDef.wsfuCold
-      totalWsfuHot += count * fixtureDef.wsfuHot
+    // Get fixture values with overrides applied
+    const fixtureValues = getFixtureValues(mappedId, fixtureOverrides)
+    
+    if (fixtureValues) {
+      totalWsfuCold += count * fixtureValues.wsfuCold
+      totalWsfuHot += count * fixtureValues.wsfuHot
     }
   }
   

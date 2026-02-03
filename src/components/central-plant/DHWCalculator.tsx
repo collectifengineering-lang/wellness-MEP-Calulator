@@ -1,6 +1,7 @@
 import { useProjectStore } from '../../store/useProjectStore'
 import { gasHeaterEfficiencyPresets, getHeatPumpPresetsForConditions, type DHWCalcBreakdown } from '../../calculations/dhw'
 import { dhwDefaults, dhwBuildingTypeFactors } from '../../data/defaults'
+import { getLegacyFixtureCounts } from '../../data/fixtureUtils'
 import type { CalculationResults, ZoneFixtures, DHWBuildingType, DHWSystemType } from '../../types'
 
 interface DHWCalculatorProps {
@@ -10,6 +11,9 @@ interface DHWCalculatorProps {
 
 export default function DHWCalculator({ results, fixtures }: DHWCalculatorProps) {
   const { currentProject, updateDHWSettings } = useProjectStore()
+  
+  // Convert full fixtures to legacy format for display
+  const legacyFixtures = getLegacyFixtureCounts(fixtures)
 
   if (!currentProject) return null
 
@@ -358,19 +362,19 @@ export default function DHWCalculator({ results, fixtures }: DHWCalculatorProps)
           <h4 className="text-sm font-medium text-surface-300 mb-3">Fixture Demand Summary</h4>
           <div className="grid grid-cols-2 gap-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-surface-400">Showers ({fixtures.showers}):</span>
+              <span className="text-surface-400">Showers ({legacyFixtures.showers}):</span>
               <span className="text-white font-mono">{breakdown?.showerDemandGPH ?? '--'} GPH</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-surface-400">Lavatories ({fixtures.lavs}):</span>
+              <span className="text-surface-400">Lavatories ({legacyFixtures.lavs}):</span>
               <span className="text-white font-mono">{breakdown?.lavDemandGPH ?? '--'} GPH</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-surface-400">Service Sinks ({fixtures.serviceSinks}):</span>
+              <span className="text-surface-400">Service Sinks ({legacyFixtures.serviceSinks}):</span>
               <span className="text-white font-mono">{breakdown?.serviceSinkDemandGPH ?? '--'} GPH</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-surface-400">Washers ({fixtures.washingMachines}):</span>
+              <span className="text-surface-400">Washers ({legacyFixtures.washingMachines}):</span>
               <span className="text-white font-mono">{breakdown?.washerDemandGPH ?? '--'} GPH</span>
             </div>
             <div className="col-span-2 border-t border-surface-700 mt-2 pt-2 flex justify-between font-medium">

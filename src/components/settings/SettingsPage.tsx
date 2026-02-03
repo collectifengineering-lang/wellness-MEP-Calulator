@@ -4,6 +4,8 @@ import UserMenu from '../auth/UserMenu'
 import ZoneDefaultsEditor from './ZoneDefaultsEditor'
 import NewZoneTypeModal from './NewZoneTypeModal'
 import GlobalSettingsPanel from './GlobalSettingsPanel'
+import ASHRAEDefaultsEditor from './ASHRAEDefaultsEditor'
+import AdminManagement from './AdminManagement'
 import { Logo } from '../shared/Logo'
 import { useSettingsStore } from '../../store/useSettingsStore'
 import { zoneDefaults as builtInDefaults, getZoneCategories } from '../../data/zoneDefaults'
@@ -52,7 +54,7 @@ function getModifiedSettings(store: ReturnType<typeof useSettingsStore.getState>
   }
 }
 
-type SettingsTab = 'zones' | 'global'
+type SettingsTab = 'zones' | 'global' | 'ashrae' | 'admins'
 
 export default function SettingsPage() {
   const navigate = useNavigate()
@@ -89,13 +91,21 @@ export default function SettingsPage() {
 
   const categories = ['all', ...getZoneCategories(), 'Custom']
   
+  // Check if a zone type has actual modifications
+  // Since database is now the source of truth (admin-only edits), 
+  // we no longer show "Modified" tags - all values ARE the defaults
+  const hasActualModifications = (_zoneType: string): boolean => {
+    // Database is the source of truth - no "modified" concept anymore
+    return false
+  }
+  
   // Get all zone types with their categories
   const allZoneTypes = [
     ...Object.entries(builtInDefaults).map(([id, defaults]) => ({
       id,
       ...defaults,
       isCustom: false,
-      isModified: !!customZoneDefaults[id],
+      isModified: hasActualModifications(id),
     })),
     ...customZoneTypes
       .filter(id => customZoneDefaults[id]) // Only include custom types that have defaults
@@ -192,6 +202,16 @@ export default function SettingsPage() {
             🏗️ Zone Type Defaults
           </button>
           <button
+            onClick={() => setActiveTab('ashrae')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'ashrae'
+                ? 'bg-primary-600 text-white'
+                : 'text-surface-400 hover:text-white hover:bg-surface-700'
+            }`}
+          >
+            💨 ASHRAE Ventilation
+          </button>
+          <button
             onClick={() => setActiveTab('global')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'global'
@@ -201,10 +221,24 @@ export default function SettingsPage() {
           >
             ⚙️ Global Calculation Settings
           </button>
+          <button
+            onClick={() => setActiveTab('admins')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'admins'
+                ? 'bg-primary-600 text-white'
+                : 'text-surface-400 hover:text-white hover:bg-surface-700'
+            }`}
+          >
+            👥 Admin Users
+          </button>
         </div>
 
         {activeTab === 'global' ? (
           <GlobalSettingsPanel />
+        ) : activeTab === 'ashrae' ? (
+          <ASHRAEDefaultsEditor />
+        ) : activeTab === 'admins' ? (
+          <AdminManagement />
         ) : (
           <>
             {/* Actions Bar */}

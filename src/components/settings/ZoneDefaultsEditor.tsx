@@ -1,11 +1,227 @@
 import { useState, useEffect, useMemo } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { useSettingsStore } from '../../store/useSettingsStore'
+import { useSettingsStore, type DbZoneTypeDefault } from '../../store/useSettingsStore'
 import { zoneDefaults as builtInDefaults } from '../../data/zoneDefaults'
 import type { ZoneDefaults } from '../../data/zoneDefaults'
 import { getFixtureById, LEGACY_FIXTURE_MAPPING } from '../../data/nycFixtures'
-import type { ZoneFixtures } from '../../types'
+import { ASHRAE62_SPACE_TYPES, ASHRAE170_SPACES } from '../../data/ashrae62'
+import type { ZoneFixtures, VentilationStandard } from '../../types'
 import { AddFixtureModal } from '../builder/AddFixtureModal'
+
+// Get all unique ASHRAE 62.1 categories for grouping
+const ASHRAE62_CATEGORIES = Array.from(
+  new Set(ASHRAE62_SPACE_TYPES.map(st => st.category))
+).sort()
+
+/**
+ * ASHRAE Ventilation Space Type Selector for Zone Defaults
+ */
+function ASHRAEVentilationSection({
+  spaceTypeId,
+  standard: _standard, // Used to determine initial selection but recalculated from spaceTypeId
+  onChange,
+}: {
+  spaceTypeId?: string
+  standard?: VentilationStandard
+  onChange: (spaceTypeId: string | undefined, standard: VentilationStandard | undefined) => void
+}) {
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  
+  // Find current space type
+  const ashrae62SpaceType = ASHRAE62_SPACE_TYPES.find(st => st.id === spaceTypeId)
+  const ashrae170SpaceType = ASHRAE170_SPACES.find(st => st.id === spaceTypeId)
+  const isHealthcare = !!ashrae170SpaceType
+  
+  // Filter by search
+  const filteredAshrae62 = useMemo(() => {
+    if (!searchQuery) return null
+    const query = searchQuery.toLowerCase()
+    return ASHRAE62_SPACE_TYPES.filter(st =>
+      st.displayName.toLowerCase().includes(query) ||
+      st.category.toLowerCase().includes(query)
+    )
+  }, [searchQuery])
+  
+  const filteredAshrae170 = useMemo(() => {
+    if (!searchQuery) return ASHRAE170_SPACES
+    const query = searchQuery.toLowerCase()
+    return ASHRAE170_SPACES.filter(st =>
+      st.spaceType.toLowerCase().includes(query)
+    )
+  }, [searchQuery])
+  
+  // Get display name
+  const displayName = ashrae62SpaceType?.displayName || 
+                      ashrae170SpaceType?.spaceType || 
+                      (spaceTypeId ? 'Custom' : 'Not Set')
+  
+  const handleSelect = (id: string, std: VentilationStandard) => {
+    onChange(id, std)
+    setIsDropdownOpen(false)
+    setSearchQuery('')
+  }
+  
+  const handleClear = () => {
+    onChange(undefined, undefined)
+    setIsDropdownOpen(false)
+  }
+  
+  return (
+    <div className={`rounded-lg border p-4 ${
+      isHealthcare 
+        ? 'bg-purple-900/20 border-purple-500/30' 
+        : 'bg-cyan-900/20 border-cyan-500/30'
+    }`}>
+      <h3 className={`text-sm font-semibold mb-3 ${isHealthcare ? 'text-purple-300' : 'text-cyan-300'}`}>
+        💨 ASHRAE Ventilation Space Type
+      </h3>
+      <p className="text-xs text-surface-400 mb-3">
+        Select an ASHRAE space type to auto-populate ventilation rates for new zones of this type
+      </p>
+      
+      <div className="relative">
+        <button
+          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+          className={`w-full p-3 rounded-lg text-left flex items-center justify-between transition-colors ${
+            isHealthcare 
+              ? 'bg-purple-900/30 border border-purple-500/50 hover:border-purple-400' 
+              : spaceTypeId
+                ? 'bg-cyan-900/30 border border-cyan-500/50 hover:border-cyan-400'
+                : 'bg-surface-900 border border-surface-600 hover:border-surface-500'
+          }`}
+        >
+          <div>
+            <div className={`font-medium ${
+              isHealthcare ? 'text-purple-300' : 
+              spaceTypeId ? 'text-cyan-400' : 'text-surface-400'
+            }`}>
+              {displayName}
+            </div>
+            {spaceTypeId && (
+              <div className="text-xs mt-0.5 space-y-0.5">
+                {isHealthcare ? (
+                  <div className="text-purple-400">
+                    ASHRAE 170 | {ashrae170SpaceType?.minTotalACH} ACH total, {ashrae170SpaceType?.minOAach} OA
+                    {ashrae170SpaceType?.allAirExhaust && <span className="text-red-400 ml-1">| All Exhaust</span>}
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-cyan-400">
+                      Vent: Rp {ashrae62SpaceType?.Rp || 0} + Ra {ashrae62SpaceType?.Ra || 0}
+                    </div>
+                    {(ashrae62SpaceType?.exhaustCfmSf || ashrae62SpaceType?.exhaustCfmUnit) && (
+                      <div className="text-red-400">
+                        Exh: {ashrae62SpaceType?.exhaustCfmSf ? `${ashrae62SpaceType.exhaustCfmSf}/SF` : ''}
+                        {ashrae62SpaceType?.exhaustCfmUnit ? `${ashrae62SpaceType.exhaustCfmMin || ashrae62SpaceType.exhaustCfmUnit}-${ashrae62SpaceType.exhaustCfmMax || ashrae62SpaceType.exhaustCfmUnit}/${ashrae62SpaceType.exhaustUnitType}` : ''}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <svg className={`w-5 h-5 transition-transform ${isDropdownOpen ? 'rotate-180' : ''} ${
+            isHealthcare ? 'text-purple-400' : 'text-surface-400'
+          }`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        
+        {isDropdownOpen && (
+          <div className="absolute z-30 mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg shadow-xl max-h-80 overflow-hidden">
+            {/* Search */}
+            <div className="p-2 border-b border-surface-700">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search space types..."
+                className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded text-white text-sm placeholder-surface-500"
+                autoFocus
+              />
+            </div>
+            
+            <div className="overflow-y-auto max-h-64">
+              {/* Clear option */}
+              <button
+                onClick={handleClear}
+                className="w-full px-3 py-2 text-left hover:bg-surface-700 text-surface-400 border-b border-surface-700"
+              >
+                ❌ Clear (No ASHRAE default)
+              </button>
+              
+              {/* ASHRAE 170 Healthcare */}
+              <div className="px-2 py-1.5 bg-purple-900/30 text-purple-300 text-xs font-semibold uppercase sticky top-0">
+                🏥 ASHRAE 170 Healthcare
+              </div>
+              {filteredAshrae170.map(st => (
+                <button
+                  key={st.id}
+                  onClick={() => handleSelect(st.id, 'ashrae170')}
+                  className={`w-full px-3 py-2 text-left hover:bg-purple-900/30 transition-colors ${
+                    spaceTypeId === st.id ? 'bg-purple-900/40 text-purple-200' : 'text-surface-300'
+                  }`}
+                >
+                  <div className="text-sm text-purple-300">{st.spaceType}</div>
+                  <div className="text-xs text-surface-500">{st.minTotalACH} ACH total, {st.minOAach} OA</div>
+                </button>
+              ))}
+              
+              {/* ASHRAE 62.1 by Category */}
+              {(filteredAshrae62 ? [{ category: 'Search Results', types: filteredAshrae62 }] : 
+                ASHRAE62_CATEGORIES.map(cat => ({
+                  category: cat,
+                  types: ASHRAE62_SPACE_TYPES.filter(st => st.category === cat)
+                }))
+              ).map(group => (
+                <div key={group.category}>
+                  <div className="px-2 py-1.5 bg-cyan-900/30 text-cyan-300 text-xs font-semibold uppercase sticky top-0">
+                    {group.category}
+                  </div>
+                  {group.types.map(st => {
+                    // Build exhaust display
+                    let exhaustDisplay = ''
+                    if (st.exhaustCfmSf) exhaustDisplay += `${st.exhaustCfmSf}/SF`
+                    if (st.exhaustCfmUnit) {
+                      const unit = st.exhaustUnitType === 'toilet' ? 'WC' : 
+                                  st.exhaustUnitType === 'shower' ? 'shwr' : st.exhaustUnitType || 'unit'
+                      if (st.exhaustCfmMin && st.exhaustCfmMax) {
+                        exhaustDisplay += `${exhaustDisplay ? ' + ' : ''}${st.exhaustCfmMin}-${st.exhaustCfmMax}/${unit}`
+                      } else {
+                        exhaustDisplay += `${exhaustDisplay ? ' + ' : ''}${st.exhaustCfmUnit}/${unit}`
+                      }
+                    }
+                    
+                    return (
+                      <button
+                        key={st.id}
+                        onClick={() => handleSelect(st.id, 'ashrae62')}
+                        className={`w-full px-3 py-2 text-left hover:bg-surface-700 transition-colors ${
+                          spaceTypeId === st.id ? 'bg-cyan-900/30 text-cyan-200' : 'text-surface-300'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <span className="text-sm">{st.displayName}</span>
+                          <div className="text-right text-xs space-y-0.5">
+                            <div className="text-cyan-400">Rp:{st.Rp} Ra:{st.Ra}</div>
+                            {exhaustDisplay && (
+                              <div className="text-red-400">EXH: {exhaustDisplay}</div>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // Equipment categories with display info
 const equipmentCategories = [
@@ -439,16 +655,21 @@ interface ZoneDefaultsEditorProps {
 export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaultsEditorProps) {
   const { 
     getZoneDefaults, 
-    updateZoneDefaults, 
     resetZoneDefaults, 
     deleteCustomZoneType,
     isCustomZoneType,
-    customZoneDefaults  // Subscribe to changes in custom defaults
+    customZoneDefaults,  // Subscribe to changes in custom defaults
+    // Database functions
+    dbZoneTypeDefaults,
+    saveZoneTypeDefault,
   } = useSettingsStore()
   
   const isCustom = isCustomZoneType(zoneTypeId)
   const builtInDefault = builtInDefaults[zoneTypeId as keyof typeof builtInDefaults]
   const currentDefaults = getZoneDefaults(zoneTypeId)
+  
+  // Note: dbZoneTypeDefaults is available for future use to show if data exists in DB
+  void dbZoneTypeDefaults // Available for future enhancements
   
   const [localDefaults, setLocalDefaults] = useState<ZoneDefaults>(currentDefaults)
   const [isSaving, setIsSaving] = useState(false)
@@ -464,14 +685,44 @@ export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaults
     try {
       // Make a clean copy to avoid any reference issues
       const toSave = JSON.parse(JSON.stringify(localDefaults))
-      console.log('Saving zone defaults:', zoneTypeId, toSave)
-      updateZoneDefaults(zoneTypeId, toSave)
-      // Give the store time to persist
-      await new Promise(resolve => setTimeout(resolve, 100))
+      console.log('Saving zone defaults to DATABASE:', zoneTypeId, toSave)
+      
+      // ADMIN ONLY: Save directly to database (not localStorage)
+      // All users will see these changes
+      const dbRecord: DbZoneTypeDefault = {
+        id: zoneTypeId,
+        display_name: toSave.displayName,
+        category: toSave.category,
+        default_sf: toSave.defaultSF,
+        switchable: toSave.switchable,
+        ashrae_space_type_id: toSave.defaultVentilationSpaceType,
+        lighting_w_sf: toSave.defaultRates?.lighting_w_sf,
+        receptacle_va_sf: toSave.defaultRates?.receptacle_va_sf,
+        cooling_sf_ton: toSave.defaultRates?.cooling_sf_ton,
+        heating_btuh_sf: toSave.defaultRates?.heating_btuh_sf,
+        fixed_kw: toSave.fixed_kw,
+        gas_mbh: toSave.gas_mbh,
+        ventilation_cfm: toSave.ventilation_cfm,
+        exhaust_cfm: toSave.exhaust_cfm,
+        pool_heater_gas_mbh: toSave.pool_heater_gas_mbh,
+        latent_adder: toSave.latent_adder,
+        occupants_per_1000sf: toSave.occupants_per_1000sf,
+        default_fixtures: toSave.defaultFixtures,
+        visible_fixtures: toSave.visibleFixtures,
+        default_equipment: toSave.defaultEquipment,
+        requires_standby_power: toSave.requires_standby_power,
+        requires_type1_hood: toSave.requires_type1_hood,
+        source_notes: toSave.source_notes,
+      }
+      await saveZoneTypeDefault(dbRecord)
+      
+      // Refresh zone defaults from database
+      await useSettingsStore.getState().fetchZoneTypeDefaults()
+      
       onClose()
     } catch (error) {
       console.error('Failed to save zone defaults:', error)
-      alert('Failed to save! Check console for details.')
+      alert('Failed to save to database! Check console for details.')
     } finally {
       setIsSaving(false)
     }
@@ -573,7 +824,7 @@ export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaults
             </div>
           </div>
 
-          {/* Rate-Based Defaults */}
+          {/* Rate-Based Defaults - Electrical & HVAC (Ventilation/Exhaust controlled by ASHRAE section below) */}
           <div>
             <h3 className="text-sm font-semibold text-white mb-3">Rate-Based Defaults (per SF)</h3>
             <div className="grid grid-cols-2 gap-4">
@@ -598,26 +849,6 @@ export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaults
                 />
               </div>
               <div>
-                <label className="block text-xs text-surface-400 mb-1">Ventilation (CFM/SF)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={localDefaults.defaultRates.ventilation_cfm_sf}
-                  onChange={(e) => updateRate('ventilation_cfm_sf', Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Exhaust (CFM/SF)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={localDefaults.defaultRates.exhaust_cfm_sf}
-                  onChange={(e) => updateRate('exhaust_cfm_sf', Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-              <div>
                 <label className="block text-xs text-surface-400 mb-1">Cooling (SF/Ton)</label>
                 <input
                   type="number"
@@ -638,30 +869,20 @@ export default function ZoneDefaultsEditor({ zoneTypeId, onClose }: ZoneDefaults
             </div>
           </div>
 
-          {/* Exhaust per Fixture */}
-          <div>
-            <h3 className="text-sm font-semibold text-white mb-3">Exhaust per Fixture</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Per Toilet (CFM)</label>
-                <input
-                  type="number"
-                  value={localDefaults.exhaust_cfm_toilet || 0}
-                  onChange={(e) => updateField('exhaust_cfm_toilet', Number(e.target.value) || undefined)}
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-surface-400 mb-1">Per Shower (CFM)</label>
-                <input
-                  type="number"
-                  value={localDefaults.exhaust_cfm_shower || 0}
-                  onChange={(e) => updateField('exhaust_cfm_shower', Number(e.target.value) || undefined)}
-                  className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                />
-              </div>
-            </div>
-          </div>
+          {/* ASHRAE Ventilation Space Type */}
+          <ASHRAEVentilationSection 
+            spaceTypeId={localDefaults.defaultVentilationSpaceType}
+            standard={localDefaults.defaultVentilationStandard}
+            onChange={(spaceTypeId, standard) => {
+              setLocalDefaults(prev => ({
+                ...prev,
+                defaultVentilationSpaceType: spaceTypeId,
+                defaultVentilationStandard: standard,
+              }))
+            }}
+          />
+
+          {/* Note: Exhaust per fixture now comes from ASHRAE space type selection above */}
 
           {/* Default Fixtures - Dynamic Editor */}
           <DefaultFixturesEditor 

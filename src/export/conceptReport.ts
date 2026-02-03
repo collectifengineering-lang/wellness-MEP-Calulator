@@ -62,11 +62,14 @@ export async function exportConceptPDF(
 ): Promise<void> {
   const legacyFixtures = getLegacyFixtureCounts(fixtures)
   
+  // Use project's logo if available, otherwise fall back to stored logo
+  const logoUrl = project.reportLogo?.currentLogoUrl || storedLogoDataUrl
+  
   // Build header with logo - centered on each page
-  const headerContent: Content = storedLogoDataUrl ? {
+  const headerContent: Content = logoUrl ? {
     stack: [
       { 
-        image: storedLogoDataUrl, 
+        image: logoUrl, 
         width: 50, 
         alignment: 'center' as const,
         margin: [0, 10, 0, 0] 
@@ -121,7 +124,7 @@ export async function exportConceptPDF(
             ],
             [
               { text: `${results.hvac.totalTons} Tons\n${results.hvac.totalMBH.toLocaleString()} MBH`, style: 'summaryValue', fillColor: '#f4fafd' },
-              { text: `${results.electrical.totalKW.toLocaleString()} kW\n${results.electrical.recommendedService}`, style: 'summaryValue', fillColor: '#fffdf4' },
+              { text: `${results.electrical.totalKVA.toLocaleString()} kVA\n${results.electrical.recommendedService}`, style: 'summaryValue', fillColor: '#fffdf4' },
               { text: `${results.plumbing.peakGPM} GPM\n${results.plumbing.totalWSFU} WSFU`, style: 'summaryValue', fillColor: '#f4fdf8' },
               { text: `${results.gas.totalCFH.toLocaleString()} CFH\n${results.gas.totalMBH.toLocaleString()} MBH`, style: 'summaryValue', fillColor: '#fdf4f4' },
             ],
@@ -164,10 +167,10 @@ export async function exportConceptPDF(
         ],
         margin: [0, 0, 0, 3],
       },
-      // HVAC System Description (if provided)
-      ...(project.mechanicalSettings?.hvacSystemDescription ? [
+      // HVAC Narrative (from MEP Narratives or legacy hvacSystemDescription)
+      ...((narrativeText => narrativeText ? [
         { 
-          text: project.mechanicalSettings.hvacSystemDescription, 
+          text: narrativeText, 
           style: 'body', 
           fontSize: 8,
           margin: [0, 0, 0, 6] as [number, number, number, number],
@@ -181,7 +184,7 @@ export async function exportConceptPDF(
           fontSize: 8,
           margin: [0, 0, 0, 6] as [number, number, number, number],
         }
-      ]),
+      ])(project.mepNarratives?.hvac || project.mechanicalSettings?.hvacSystemDescription)),
 
       // 2. Electrical
       { text: '2. Electrical / Fire Alarm', style: 'sectionHeader' },
@@ -193,7 +196,7 @@ export async function exportConceptPDF(
               { text: 'Service Sizing:', style: 'subHeader' },
               { 
                 ul: [
-                  `Connected Load: ${results.electrical.totalKW.toLocaleString()} kW / ${results.electrical.totalKVA.toLocaleString()} kVA`,
+                  `Total Load: ${results.electrical.totalKVA.toLocaleString()} kVA`,
                   `@ 208V/3PH: ${results.electrical.amps_208v.toLocaleString()}A`,
                   `@ 480V/3PH: ${results.electrical.amps_480v.toLocaleString()}A`,
                   `Recommended: ${results.electrical.recommendedService}`,
@@ -217,8 +220,19 @@ export async function exportConceptPDF(
             ],
           },
         ],
-        margin: [0, 0, 0, 6],
+        margin: [0, 0, 0, 3],
       },
+      // Electrical Narrative (from MEP Narratives)
+      ...((text => text ? [
+        { 
+          text, 
+          style: 'body', 
+          fontSize: 8,
+          margin: [0, 0, 0, 6] as [number, number, number, number],
+          italics: true,
+          color: '#444444',
+        }
+      ] : [])(project.mepNarratives?.electrical)),
 
       // 3. Plumbing
       { text: '3. Plumbing', style: 'sectionHeader' },
@@ -269,8 +283,19 @@ export async function exportConceptPDF(
             ],
           },
         ],
-        margin: [0, 0, 0, 6],
+        margin: [0, 0, 0, 3],
       },
+      // Plumbing Narrative (from MEP Narratives)
+      ...((text => text ? [
+        { 
+          text, 
+          style: 'body', 
+          fontSize: 8,
+          margin: [0, 0, 0, 6] as [number, number, number, number],
+          italics: true,
+          color: '#444444',
+        }
+      ] : [])(project.mepNarratives?.plumbing)),
 
       // 4. Gas
       { text: '4. Gas Service', style: 'sectionHeader' },
@@ -315,8 +340,19 @@ export async function exportConceptPDF(
           `System: Wet pipe with high-temp heads in sauna/steam areas`,
         ],
         style: 'list',
-        margin: [0, 0, 0, 6],
+        margin: [0, 0, 0, 3],
       },
+      // Fire Protection Narrative (from MEP Narratives)
+      ...((text => text ? [
+        { 
+          text, 
+          style: 'body', 
+          fontSize: 8,
+          margin: [0, 0, 0, 6] as [number, number, number, number],
+          italics: true,
+          color: '#444444',
+        }
+      ] : [])(project.mepNarratives?.fireProtection)),
 
       // Zone Schedule (compact)
       { text: 'Zone Schedule', style: 'sectionHeader' },
@@ -576,13 +612,21 @@ export async function exportConceptWord(
         new Paragraph({ text: `RTU/AHU Count: ~${results.hvac.rtuCount} units` }),
         new Paragraph({ text: `Fresh Air: ${results.hvac.totalVentCFM.toLocaleString()} CFM  •  Exhaust: ${results.hvac.totalExhaustCFM.toLocaleString()} CFM` }),
         ...(results.hvac.dehumidLbHr > 0 ? [new Paragraph({ text: `Dehumidification: ${results.hvac.dehumidLbHr} lb/hr` })] : []),
+        // HVAC Narrative
+        ...(project.mepNarratives?.hvac ? project.mepNarratives.hvac.split('\n\n').map(p => 
+          new Paragraph({ text: p.trim(), spacing: { before: 50, after: 50 } })
+        ) : []),
 
         // 2. Electrical
         new Paragraph({ text: '2. Electrical / Fire Alarm', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
-        new Paragraph({ text: `Connected Load: ${results.electrical.totalKW.toLocaleString()} kW / ${results.electrical.totalKVA.toLocaleString()} kVA` }),
+        new Paragraph({ text: `Total Load: ${results.electrical.totalKVA.toLocaleString()} kVA` }),
         new Paragraph({ text: `Service @ 208V/3PH: ${results.electrical.amps_208v.toLocaleString()}A  •  @ 480V: ${results.electrical.amps_480v.toLocaleString()}A` }),
         new Paragraph({ text: `Recommended Service: ${results.electrical.recommendedService}` }),
         new Paragraph({ text: `Panelboards: ~${results.electrical.panelCount} required` }),
+        // Electrical Narrative
+        ...(project.mepNarratives?.electrical ? project.mepNarratives.electrical.split('\n\n').map(p => 
+          new Paragraph({ text: p.trim(), spacing: { before: 50, after: 50 } })
+        ) : []),
 
         // 3. Plumbing
         new Paragraph({ text: '3. Plumbing', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
@@ -590,6 +634,10 @@ export async function exportConceptWord(
         new Paragraph({ text: `Peak Demand: ${results.plumbing.peakGPM} GPM (${results.plumbing.totalWSFU} WSFU)` }),
         new Paragraph({ text: `Hot Water: ${results.dhw.tanklessUnits} heaters @ ${(results.dhw.grossBTU / 1000).toLocaleString()} MBH total  •  Storage: ${results.dhw.storageGallons.toLocaleString()} gal` }),
         new Paragraph({ text: `Sanitary: ${results.plumbing.recommendedDrainSize} drain (${results.plumbing.totalDFU} DFU)` }),
+        // Plumbing Narrative
+        ...(project.mepNarratives?.plumbing ? project.mepNarratives.plumbing.split('\n\n').map(p => 
+          new Paragraph({ text: p.trim(), spacing: { before: 50, after: 50 } })
+        ) : []),
 
         // 4. Gas
         new Paragraph({ text: '4. Gas Service', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
@@ -599,6 +647,10 @@ export async function exportConceptWord(
         // 5. Fire Protection
         new Paragraph({ text: '5. Fire Protection', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
         new Paragraph({ text: `Occupancy: Group A-3, NFPA-13 compliant  •  Est. ${Math.ceil(totalSF / 130)} sprinkler heads` }),
+        // Fire Protection Narrative
+        ...(project.mepNarratives?.fireProtection ? project.mepNarratives.fireProtection.split('\n\n').map(p => 
+          new Paragraph({ text: p.trim(), spacing: { before: 50, after: 50 } })
+        ) : []),
 
         // Zone Schedule
         new Paragraph({ text: 'Zone Schedule', heading: HeadingLevel.HEADING_2, spacing: { before: 300, after: 100 } }),

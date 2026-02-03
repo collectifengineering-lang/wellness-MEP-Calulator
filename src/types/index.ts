@@ -103,7 +103,89 @@ export type ZoneType =
   | 'terrace'
   | 'recovery_longevity'
   | 'elevator'
+  // Residential zone types
+  | 'res_kitchen_gas'
+  | 'res_kitchen_electric'
+  | 'res_bathroom_master'
+  | 'res_bathroom_standard'
+  | 'res_powder_room'
+  | 'res_bedroom_master'
+  | 'res_bedroom_standard'
+  | 'res_bedroom_guest'
+  | 'res_living_room'
+  | 'res_dining_room'
+  | 'res_family_room'
+  | 'res_office'
+  | 'res_study'
+  | 'res_media_room'
+  | 'res_wine_cellar'
+  | 'res_pantry'
+  | 'res_mudroom'
+  | 'res_corridor'
+  | 'res_closet_walkin'
   | 'custom'
+
+// Residential ventilation mode per ASHRAE 62.2
+export type ResidentialVentilationMode = 'intermittent' | 'continuous'
+
+// Project client/contact information
+export interface ProjectClientInfo {
+  clientName?: string
+  clientCompany?: string
+  clientEmail?: string
+  clientPhone?: string
+  projectAddress?: string
+  projectCity?: string
+  projectState?: string
+  projectZip?: string
+  projectDescription?: string
+  projectPhase?: 'concept' | 'schematic' | 'dd' | 'cd' | 'construction' | 'as_built'
+  projectNumber?: string
+  designedBy?: string
+  checkedBy?: string
+}
+
+// MEP Report Narratives - editable text sections for each trade
+export interface MEPNarratives {
+  // HVAC narrative (aim for 5 paragraphs)
+  hvac: string
+  hvacLastGenerated?: Date
+  
+  // Electrical & Fire Alarm narrative (aim for 3 paragraphs)
+  electrical: string
+  electricalLastGenerated?: Date
+  
+  // Plumbing narrative (aim for 4 paragraphs)
+  plumbing: string
+  plumbingLastGenerated?: Date
+  
+  // Fire Protection narrative (aim for 2 paragraphs)
+  fireProtection: string
+  fireProtectionLastGenerated?: Date
+}
+
+// Logo history for reports
+export interface ReportLogoHistory {
+  currentLogoUrl?: string
+  previousLogos: string[]  // URLs of previously uploaded logos
+}
+
+// Fixture parameter overrides - customize WSFU/DFU/GPH for specific fixtures
+export interface FixtureOverride {
+  fixtureId: string           // NYC_FIXTURE_DATABASE ID
+  wsfuCold?: number           // Override cold WSFU
+  wsfuHot?: number            // Override hot WSFU
+  dfu?: number                // Override DFU
+  hotWaterGPH?: number        // Override hot water demand (GPH)
+}
+
+// MEP Narrative Background Information - user-provided context for each trade
+export interface NarrativeBackground {
+  mechanical?: string         // HVAC/Mechanical background (existing systems, constraints, scope)
+  electrical?: string         // Electrical background
+  plumbing?: string           // Plumbing background
+  fireProtection?: string     // Fire protection background
+}
 
 export interface Project {
   id: string
@@ -112,6 +194,12 @@ export interface Project {
   targetSF: number
   climate: ClimateType
   electricPrimary: boolean
+  ashraeLocationId?: string  // ASHRAE climate location for design conditions
+  clientInfo?: ProjectClientInfo  // Client and project information
+  mepNarratives?: MEPNarratives  // MEP report narratives for each trade
+  reportLogo?: ReportLogoHistory  // Logo history for reports
+  fixtureOverrides?: FixtureOverride[]  // Custom fixture parameters (WSFU/DFU/GPH overrides)
+  narrativeBackground?: NarrativeBackground  // User background info for MEP narrative generation
   dhwSettings: DHWSettings
   electricalSettings: ProjectElectricalSettings
   mechanicalSettings: MechanicalElectricalSettings  // Mechanical equipment electrical loads
@@ -131,10 +219,38 @@ export interface ProjectElectricalSettings {
   spareCapacity: number     // Spare capacity % (0 - 0.50)
 }
 
+// HVAC System Types
+export type HVACSystemType = 
+  | 'chiller_ahu'        // Chiller plant with AHUs (air-cooled or water-cooled chiller)
+  | 'heat_pump_ahu'      // Central heat pump plant with AHUs
+  | 'vrf_erv'            // VRF (Variable Refrigerant Flow) with ERV/DOAS
+  | 'rtu'                // Packaged Rooftop Units
+  | 'wshp'               // Water Source Heat Pumps (with cooling tower/boiler)
+  | 'split_system'       // Split systems (for smaller projects)
+  | 'custom'             // Custom/hybrid system
+
+// HVAC System configuration for a specific system type
+export interface HVACSystemConfig {
+  type: HVACSystemType
+  name: string
+  description: string
+  coolingKvaPerTon: number        // Electrical load per ton cooling
+  heatingKvaPerMbh: number        // Electric heating load per MBH
+  hasEnergyRecovery: boolean      // System includes ERV/HRV
+  typicalSfPerTon: number         // Typical sizing (SF per ton)
+  supportsGasHeat: boolean        // Can use gas heating
+  supportsElectricHeat: boolean   // Can use electric heating
+  ventilationType: 'integrated' | 'doas' | 'separate'  // How ventilation is handled
+  unitSizeRange: { min: number; max: number }  // Typical unit size in tons
+}
+
 // Mechanical equipment electrical load settings
 export interface MechanicalElectricalSettings {
-  // Conversion factors - adjustable per project
-  coolingKvaPerTon: number       // Default: 1.5 (typical air-cooled chiller)
+  // HVAC System Type Selection
+  hvacSystemType: HVACSystemType  // Selected HVAC system type
+  
+  // Conversion factors - adjustable per project (auto-set based on system type)
+  coolingKvaPerTon: number       // Default varies by system type
   heatingKvaPerMbh: number       // Default: 0.293 (1 MBH = 293W electric resistance)
   poolChillerKvaPerTon: number   // Default: 1.5 (water-cooled)
   dehumidKvaPerLbHr: number      // Default: 0.4 (dehumidification unit)
@@ -185,6 +301,12 @@ export interface LaundryEquipment {
   dryer_mua_sqin?: number
 }
 
+// Ventilation unit types
+export type VentilationUnit = 'cfm_sf' | 'cfm' | 'ach'
+
+// Ventilation standard source
+export type VentilationStandard = 'ashrae62' | 'ashrae170' | 'custom'
+
 export interface Zone {
   id: string
   projectId: string
@@ -198,7 +320,19 @@ export interface Zone {
   processLoads: ZoneProcessLoads
   lineItems: LineItem[]
   sortOrder: number
+  floor?: string  // Floor identifier (e.g., "B1", "1", "2", "R" for roof)
   laundryEquipment?: LaundryEquipment  // Optional laundry equipment overrides
+  // ASHRAE ventilation fields
+  ventilationSpaceType?: string           // ASHRAE 62.1 or 170 space type ID
+  ventilationStandard?: VentilationStandard  // Source standard (ashrae62, ashrae170, custom)
+  occupants?: number                      // Override (auto-calc from density × SF)
+  ceilingHeightFt?: number                // Default 10ft
+  ventilationUnit?: VentilationUnit       // Display/input unit for ventilation
+  exhaustUnit?: VentilationUnit           // Display/input unit for exhaust
+  ventilationOverride?: boolean           // True if user overrode ASHRAE defaults
+  exhaustOverride?: boolean               // True if user overrode exhaust defaults
+  ventilationCfm?: number                 // Calculated or override ventilation CFM
+  exhaustCfm?: number                     // Calculated or override exhaust CFM
 }
 
 // ASHRAE building types for DHW demand factors
@@ -249,12 +383,16 @@ export interface DHWSettings {
 }
 
 export interface ResultAdjustments {
+  // Report narrative text for each section (editable by user)
+  executiveSummary: string
   hvacNotes: string
   electricalNotes: string
+  plumbingNotes: string      // Domestic water & sanitary
   gasNotes: string
-  waterSanitaryNotes: string
+  waterSanitaryNotes: string // Legacy - use plumbingNotes
   sprinklerNotes: string
   fireAlarmNotes: string
+  // Custom overrides for calculated values
   overrides: Record<string, number | string>
 }
 
@@ -318,6 +456,7 @@ export interface ElectricalCalcResult {
   calculatedAmps?: number       // Raw calculated amps
   standardServiceAmps?: number  // Upsized to standard service size
   exceedsMaxService?: boolean   // True if > max standard size for voltage
+  mechanicalKVA?: number        // Mechanical equipment kVA (with demand factor and spare applied)
 }
 
 export interface HVACCalcResult {
@@ -405,12 +544,22 @@ export interface PoolRoomParams {
   relativeHumidity: number  // typically 50-60%
   wetDeckAreaSF: number     // deck area around pools
   spectatorCount: number    // number of spectators (not swimmers)
+  swimmerCount: number      // number of active swimmers in pools
   airChangesPerHour: number // 4-6 recommended for natatoriums
+  ashraeLocationId?: string // ASHRAE location ID for outdoor air moisture calculation
 }
 
 export interface PoolRoomResults {
-  // Dehumidification
-  totalEvaporationLbHr: number
+  // Total Dehumidification Load (all sources)
+  totalDehumidLbHr: number
+  
+  // Moisture Source Breakdown
+  poolEvaporationLbHr: number       // From pool surfaces
+  spectatorMoistureLbHr: number     // From spectators (sedentary)
+  swimmerMoistureLbHr: number       // From swimmers (active)
+  ventilationMoistureLbHr: number   // From outdoor air (can be negative in dry climates)
+  
+  // Pool breakdown detail
   poolBreakdown: Array<{ id: string; name: string; lbHr: number; surfaceAreaSF: number }>
   
   // Airflow
@@ -425,6 +574,10 @@ export interface PoolRoomResults {
   // Reference values
   recommendedACH: { min: number; max: number }
   actualACH: number
+  
+  // Indoor/Outdoor humidity ratio (grains/lb) for reference
+  indoorHumidityRatio?: number
+  outdoorHumidityRatio?: number
 }
 
 // Pool configuration for a single zone

@@ -1,7 +1,8 @@
 import { usePlumbingStore } from '../../../store/usePlumbingStore'
 import { NYC_FIXTURE_DATABASE } from '../../../data/nycFixtures'
 import { calculatePlumbing } from '../../../calculations/plumbing'
-import { getLegacyFixtureCounts } from '../../../data/fixtureUtils'
+import { getLegacyFixtureCounts, mergeFixtures } from '../../../data/fixtureUtils'
+import type { ZoneFixtures } from '../../../types'
 
 export default function PlumbingResults() {
   const { spaces, currentProject } = usePlumbingStore()
@@ -9,21 +10,15 @@ export default function PlumbingResults() {
 
   if (!settings) return null
 
-  // Aggregate fixtures
-  const aggregatedFixtures = spaces.reduce((acc, space) => {
-    const legacy = getLegacyFixtureCounts(space.fixtures)
-    return {
-      showers: acc.showers + legacy.showers,
-      lavs: acc.lavs + legacy.lavs,
-      wcs: acc.wcs + legacy.wcs,
-      floorDrains: acc.floorDrains + legacy.floorDrains,
-      serviceSinks: acc.serviceSinks + legacy.serviceSinks,
-      washingMachines: acc.washingMachines + legacy.washingMachines,
-      dryers: acc.dryers + legacy.dryers,
-    }
-  }, { showers: 0, lavs: 0, wcs: 0, floorDrains: 0, serviceSinks: 0, washingMachines: 0, dryers: 0 })
+  // Aggregate FULL fixtures (keep specific fixture IDs for accurate WSFU/DFU)
+  const fullAggregatedFixtures = spaces.reduce((acc, space) => {
+    return mergeFixtures(acc, space.fixtures)
+  }, {} as ZoneFixtures)
+  
+  // Convert to legacy format for display only
+  const legacyFixtures = getLegacyFixtureCounts(fullAggregatedFixtures)
 
-  // Calculate totals
+  // Calculate totals using FULL fixture data (accurate WSFU/DFU from ASPE database)
   let totalWSFU = 0
   let totalDFU = 0
   let totalHotWaterGPH = 0
@@ -39,14 +34,16 @@ export default function PlumbingResults() {
     })
   })
 
-  const plumbingResult = calculatePlumbing(aggregatedFixtures, {
+  // Use FULL fixtures for calculation (accurate WSFU per fixture type)
+  const plumbingResult = calculatePlumbing(fullAggregatedFixtures, {
     coldWaterVelocityFPS: settings.coldWaterVelocityFps,
     hotWaterVelocityFPS: settings.hotWaterVelocityFps,
-    hotWaterFlowRatio: 0.7,
+    hotWaterFlowRatio: settings.hotWaterFlowRatio,
+    useCalculatedHWRatio: settings.useCalculatedHWRatio,
   })
 
   const totalSF = spaces.reduce((sum, s) => sum + s.sf, 0)
-  const totalFixtures = Object.values(aggregatedFixtures).reduce((sum, count) => sum + count, 0)
+  const totalFixtures = Object.values(legacyFixtures).reduce((sum, count) => sum + count, 0)
 
   // DHW calculations
   const peakDemandGPH = totalHotWaterGPH * settings.dhwDemandFactor
@@ -119,40 +116,40 @@ export default function PlumbingResults() {
         <div className="bg-surface-800 border border-surface-700 rounded-xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">🚿 Fixture Summary</h3>
           <div className="space-y-3">
-            {aggregatedFixtures.wcs > 0 && (
+            {legacyFixtures.wcs > 0 && (
               <div className="flex justify-between">
                 <span className="text-surface-400">🚽 Water Closets</span>
-                <span className="text-white font-medium">{aggregatedFixtures.wcs}</span>
+                <span className="text-white font-medium">{legacyFixtures.wcs}</span>
               </div>
             )}
-            {aggregatedFixtures.lavs > 0 && (
+            {legacyFixtures.lavs > 0 && (
               <div className="flex justify-between">
                 <span className="text-surface-400">🚰 Lavatories</span>
-                <span className="text-white font-medium">{aggregatedFixtures.lavs}</span>
+                <span className="text-white font-medium">{legacyFixtures.lavs}</span>
               </div>
             )}
-            {aggregatedFixtures.showers > 0 && (
+            {legacyFixtures.showers > 0 && (
               <div className="flex justify-between">
                 <span className="text-surface-400">🚿 Showers</span>
-                <span className="text-white font-medium">{aggregatedFixtures.showers}</span>
+                <span className="text-white font-medium">{legacyFixtures.showers}</span>
               </div>
             )}
-            {aggregatedFixtures.floorDrains > 0 && (
+            {legacyFixtures.floorDrains > 0 && (
               <div className="flex justify-between">
                 <span className="text-surface-400">🕳️ Floor Drains</span>
-                <span className="text-white font-medium">{aggregatedFixtures.floorDrains}</span>
+                <span className="text-white font-medium">{legacyFixtures.floorDrains}</span>
               </div>
             )}
-            {aggregatedFixtures.serviceSinks > 0 && (
+            {legacyFixtures.serviceSinks > 0 && (
               <div className="flex justify-between">
                 <span className="text-surface-400">🧹 Service Sinks</span>
-                <span className="text-white font-medium">{aggregatedFixtures.serviceSinks}</span>
+                <span className="text-white font-medium">{legacyFixtures.serviceSinks}</span>
               </div>
             )}
-            {aggregatedFixtures.washingMachines > 0 && (
+            {legacyFixtures.washingMachines > 0 && (
               <div className="flex justify-between">
                 <span className="text-surface-400">🧺 Washing Machines</span>
-                <span className="text-white font-medium">{aggregatedFixtures.washingMachines}</span>
+                <span className="text-white font-medium">{legacyFixtures.washingMachines}</span>
               </div>
             )}
             <div className="border-t border-surface-700 pt-3 mt-3">

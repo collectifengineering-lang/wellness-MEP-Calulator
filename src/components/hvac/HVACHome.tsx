@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Logo } from '../shared/Logo'
 import UserMenu from '../auth/UserMenu'
-import { useHVACStore, createHVACProject, defaultHVACProjectSettings } from '../../store/useHVACStore'
+import { useHVACStore, createHVACProject, defaultHVACProjectSettings, HVACSpace } from '../../store/useHVACStore'
+import { useScannerStore, ScanProject } from '../../store/useScannerStore'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import { useAuthStore } from '../../store/useAuthStore'
 import type { Project, Zone } from '../../types'
+import { ASHRAE62_SPACE_TYPES, matchSpaceNameToASHRAE, getSpaceType, ASHRAE62SpaceType } from '../../data/ashrae62'
 
 interface HVACProjectSummary {
   id: string
@@ -20,7 +22,8 @@ interface HVACProjectSummary {
 export default function HVACHome() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const { setCurrentProject, setSpaces, setZones, setSystems } = useHVACStore()
+  const { setCurrentProject, setSpaces, setZones, setSystems, addSpace: addHVACSpace } = useHVACStore()
+  const { scans } = useScannerStore()
   const [projects, setProjects] = useState<HVACProjectSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [showNewModal, setShowNewModal] = useState(false)
@@ -30,6 +33,31 @@ export default function HVACHome() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [conceptMEPProjects, setConceptMEPProjects] = useState<Project[]>([])
   const [loadingConceptMEP, setLoadingConceptMEP] = useState(false)
+  
+  // Plan Scanner import state
+  const [showPlanScanImportModal, setShowPlanScanImportModal] = useState(false)
+  const [selectedScanProject, setSelectedScanProject] = useState<ScanProject | null>(null)
+  const [showSpaceTypeMatching, setShowSpaceTypeMatching] = useState(false)
+  const [spaceTypeMappings, setSpaceTypeMappings] = useState<Array<{
+    spaceId: string
+    spaceName: string
+    suggestedTypeId: string  // ASHRAE space type ID
+    selectedTypeId: string
+    areaSf: number
+    floor?: string
+  }>>([])
+  
+  // Group ASHRAE space types by category
+  const spaceTypesByCategory = useMemo(() => {
+    const categories: Record<string, ASHRAE62SpaceType[]> = {}
+    ASHRAE62_SPACE_TYPES.forEach(type => {
+      if (!categories[type.category]) {
+        categories[type.category] = []
+      }
+      categories[type.category].push(type)
+    })
+    return categories
+  }, [])
   
   // Load projects
   useEffect(() => {
@@ -326,6 +354,128 @@ export default function HVACHome() {
     return mapping[zoneType] || 'office'
   }
   
+  // Plan Scanner import functions
+  const handleSelectScanProject = (scanProject: ScanProject) => {
+    setSelectedScanProject(scanProject)
+    
+    // Initialize space type mappings
+    const mappings = scanProject.extractedSpaces.map(space => {
+      const suggestedTypeId = matchSpaceNameToASHRAE(space.name)
+      return {
+        spaceId: space.id,
+        spaceName: space.name,
+        suggestedTypeId,
+        selectedTypeId: suggestedTypeId || 'office',
+        areaSf: space.sf,
+        floor: space.floor,
+      }
+    })
+    setSpaceTypeMappings(mappings)
+    setShowPlanScanImportModal(false)
+    setShowSpaceTypeMatching(true)
+  }
+  
+  const handleImportFromPlanScan = async () => {
+    if (!user || !selectedScanProject) return
+    
+    const newProject = createHVACProject(user.id, `${selectedScanProject.name} (HVAC Import)`)
+    
+    // Create the HVAC project
+    if (isSupabaseConfigured()) {
+      const { error: projectError } = await supabase
+        .from('hvac_projects')
+        .insert({
+          id: newProject.id,
+          user_id: newProject.userId,
+          name: newProject.name,
+          settings: newProject.settings,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as never)
+      
+      if (projectError) {
+        console.error('Error creating imported project:', projectError)
+        alert('Failed to import project')
+        return
+      }
+    }
+    
+    setCurrentProject(newProject)
+    setSpaces([])
+    setZones([])
+    setSystems([])
+    
+    // Create HVAC spaces from mappings
+    for (const mapping of spaceTypeMappings) {
+      const extractedSpace = selectedScanProject.extractedSpaces.find(s => s.id === mapping.spaceId)
+      if (!extractedSpace) continue
+      
+      const ashraeType = ASHRAE62_SPACE_TYPES.find(t => t.id === mapping.selectedTypeId)
+      
+      // Calculate ASHRAE occupancy from area and density
+      const ashraeOccupancy = ashraeType 
+        ? Math.ceil(extractedSpace.sf / (1000 / ashraeType.defaultOccupancy))
+        : Math.ceil(extractedSpace.sf / 100)
+      
+      // Use the greater of seat count or ASHRAE occupancy
+      const finalOccupancy = Math.max(
+        extractedSpace.seatCountManual ?? extractedSpace.seatCountAI ?? 0,
+        ashraeOccupancy
+      )
+      
+      const hvacSpace: Omit<HVACSpace, 'id'> = {
+        projectId: newProject.id,
+        name: extractedSpace.name,
+        ashraeSpaceType: mapping.selectedTypeId,
+        areaSf: extractedSpace.sf,
+        ceilingHeightFt: 10, // Default
+        occupancyOverride: finalOccupancy,
+        zoneId: null,
+        notes: `Imported from Plan Scan. ASHRAE type: ${ashraeType?.name || 'Unknown'}`,
+        floor: extractedSpace.floor,
+      }
+      
+      addHVACSpace(hvacSpace)
+    }
+    
+    // Save spaces to Supabase
+    if (isSupabaseConfigured()) {
+      const hvacSpaces = spaceTypeMappings.map((mapping, index) => {
+        const extractedSpace = selectedScanProject.extractedSpaces.find(s => s.id === mapping.spaceId)
+        const ashraeType = ASHRAE62_SPACE_TYPES.find(t => t.id === mapping.selectedTypeId)
+        const ashraeOccupancy = ashraeType 
+          ? Math.ceil((extractedSpace?.sf || 0) / (1000 / ashraeType.defaultOccupancy))
+          : Math.ceil((extractedSpace?.sf || 0) / 100)
+        
+        return {
+          id: crypto.randomUUID(),
+          project_id: newProject.id,
+          name: extractedSpace?.name || mapping.spaceName,
+          ashrae_space_type: mapping.selectedTypeId,
+          area_sf: extractedSpace?.sf || mapping.areaSf,
+          ceiling_height_ft: 10,
+          occupancy_override: Math.max(
+            extractedSpace?.seatCountManual ?? extractedSpace?.seatCountAI ?? 0,
+            ashraeOccupancy
+          ),
+          zone_id: null,
+          notes: `Imported from Plan Scan. ASHRAE type: ${ashraeType?.name || 'Unknown'}`,
+          floor: extractedSpace?.floor || mapping.floor,
+          sort_order: index,
+        }
+      })
+      
+      await supabase.from('hvac_spaces').insert(hvacSpaces as never)
+    }
+    
+    setShowSpaceTypeMatching(false)
+    setSelectedScanProject(null)
+    await loadProjects()
+    
+    // Navigate to the new project
+    navigate(`/hvac/${newProject.id}`)
+  }
+  
   return (
     <div className="min-h-screen bg-surface-900">
       {/* Header */}
@@ -369,6 +519,12 @@ export default function HVACHome() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
               </svg>
               Import from Concept MEP
+            </button>
+            <button
+              onClick={() => setShowPlanScanImportModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors"
+            >
+              📐 Import from Plan Scan
             </button>
             <button
               onClick={() => navigate('/hvac/calculators')}
@@ -600,6 +756,196 @@ export default function HVACHome() {
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Import from Plan Scan Modal */}
+      {showPlanScanImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-surface-800 rounded-2xl border border-surface-700 w-full max-w-2xl p-6 shadow-xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-white">Import from Plan Scan 📐</h2>
+                <p className="text-sm text-surface-400 mt-1">
+                  Select a scan project to import spaces with ASHRAE 62.1 type matching.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowPlanScanImportModal(false)}
+                className="text-surface-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto">
+              {scans.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-4">📐</div>
+                  <p className="text-surface-400">No Plan Scan projects found</p>
+                  <p className="text-sm text-surface-500 mt-1">Create one in the Plan Scanner section first</p>
+                  <button
+                    onClick={() => {
+                      setShowPlanScanImportModal(false)
+                      navigate('/plan-scanner')
+                    }}
+                    className="mt-4 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors"
+                  >
+                    Go to Plan Scanner
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {scans.filter(s => s.extractedSpaces.length > 0).map(scanProject => (
+                    <button
+                      key={scanProject.id}
+                      onClick={() => handleSelectScanProject(scanProject)}
+                      className="w-full flex items-center gap-4 p-4 bg-surface-700/50 hover:bg-surface-700 rounded-xl text-left transition-colors group"
+                    >
+                      <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center group-hover:bg-emerald-500/30">
+                        <span className="text-2xl">📐</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-white font-medium truncate">{scanProject.name}</h3>
+                        <p className="text-sm text-surface-400">
+                          {scanProject.extractedSpaces.length} spaces • {scanProject.drawings.length} drawings
+                          {scanProject.updatedAt && ` • Updated ${new Date(scanProject.updatedAt).toLocaleDateString()}`}
+                        </p>
+                      </div>
+                      <div className="text-emerald-400 text-sm opacity-0 group-hover:opacity-100 transition-opacity">
+                        Select →
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-end pt-4 border-t border-surface-700 mt-4">
+              <button
+                onClick={() => setShowPlanScanImportModal(false)}
+                className="px-4 py-2 bg-surface-700 hover:bg-surface-600 text-white rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* ASHRAE Space Type Matching Modal */}
+      {showSpaceTypeMatching && selectedScanProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-surface-800 rounded-2xl border border-surface-700 w-full max-w-4xl max-h-[85vh] flex flex-col shadow-xl">
+            <div className="flex items-center justify-between p-6 border-b border-surface-700">
+              <div>
+                <h2 className="text-xl font-bold text-white">Match Spaces to ASHRAE 62.1 Types ❄️</h2>
+                <p className="text-sm text-surface-400 mt-1">
+                  Review AI suggestions and adjust space types for accurate ventilation calculations
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowSpaceTypeMatching(false)
+                  setSelectedScanProject(null)
+                }}
+                className="p-2 rounded-lg hover:bg-surface-700 text-surface-400 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-3">
+                {spaceTypeMappings.map((mapping, index) => {
+                  const selectedType = ASHRAE62_SPACE_TYPES.find(t => t.id === mapping.selectedTypeId)
+                  
+                  return (
+                    <div 
+                      key={mapping.spaceId}
+                      className="flex items-center gap-4 p-4 bg-surface-700/50 rounded-xl border border-surface-600"
+                    >
+                      {/* Space Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-white font-medium truncate">{mapping.spaceName}</span>
+                          {mapping.floor && (
+                            <span className="px-2 py-0.5 rounded bg-violet-600/30 text-violet-300 text-xs">
+                              {mapping.floor}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 text-sm text-surface-400">
+                          <span>{mapping.areaSf?.toLocaleString() || 0} SF</span>
+                          {mapping.suggestedTypeId && (
+                            <span className="text-emerald-400">
+                              AI suggested: {getSpaceType(mapping.suggestedTypeId)?.name || mapping.suggestedTypeId}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Arrow */}
+                      <div className="text-surface-500">→</div>
+                      
+                      {/* ASHRAE Type Selector */}
+                      <div className="w-80">
+                        <select
+                          value={mapping.selectedTypeId}
+                          onChange={(e) => {
+                            setSpaceTypeMappings(prev => prev.map((m, i) => 
+                              i === index ? { ...m, selectedTypeId: e.target.value } : m
+                            ))
+                          }}
+                          className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white text-sm focus:border-cyan-500 focus:outline-none"
+                        >
+                          {Object.entries(spaceTypesByCategory).map(([category, types]) => (
+                            <optgroup key={category} label={category}>
+                              {types.map(type => (
+                                <option key={type.id} value={type.id}>
+                                  {type.name} (Rp: {type.Rp}, Ra: {type.Ra})
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
+                        {selectedType && (
+                          <div className="mt-1 text-xs text-surface-500">
+                            Default: {selectedType.defaultOccupancy} people/1000 SF
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-between p-6 border-t border-surface-700 bg-surface-800/50">
+              <div className="text-sm text-surface-400">
+                {spaceTypeMappings.length} spaces ready to import
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowSpaceTypeMatching(false)
+                    setSelectedScanProject(null)
+                  }}
+                  className="px-4 py-2 bg-surface-700 hover:bg-surface-600 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleImportFromPlanScan}
+                  className="px-6 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                >
+                  Import to HVAC 🐐
+                </button>
+              </div>
             </div>
           </div>
         </div>

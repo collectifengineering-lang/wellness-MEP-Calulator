@@ -1,4 +1,5 @@
 import type { Zone } from '../../types'
+import { parseFloorFromName, getFloorColor } from '../../data/floorUtils'
 
 interface ZoneBlockProps {
   zone: Zone
@@ -10,6 +11,8 @@ interface ZoneBlockProps {
 
 export default function ZoneBlock({ zone, totalSF, height, isSelected, onClick }: ZoneBlockProps) {
   const percentage = totalSF > 0 ? ((zone.sf / totalSF) * 100).toFixed(1) : '0'
+  const floorInfo = parseFloorFromName(zone.name, zone.floor)
+  const floorColor = getFloorColor(floorInfo.floor)
   
   return (
     <div
@@ -19,7 +22,7 @@ export default function ZoneBlock({ zone, totalSF, height, isSelected, onClick }
         backgroundColor: `${zone.color}15`,
         borderColor: isSelected ? zone.color : `${zone.color}40`,
       }}
-      className={`relative rounded-xl border-2 p-4 cursor-pointer transition-all duration-200 hover:shadow-lg ${
+      className={`relative rounded-xl border-2 p-4 cursor-pointer transition-all duration-200 hover:shadow-lg group ${
         isSelected ? 'ring-2 ring-offset-2 ring-offset-surface-900' : ''
       }`}
     >
@@ -29,9 +32,20 @@ export default function ZoneBlock({ zone, totalSF, height, isSelected, onClick }
         style={{ backgroundColor: zone.color }}
       />
       
+      {/* Floor badge - top right */}
+      {floorInfo.floor && (
+        <div 
+          className="absolute top-2 right-2 w-6 h-6 rounded flex items-center justify-center text-white text-xs font-bold"
+          style={{ backgroundColor: floorColor }}
+          title={floorInfo.displayName}
+        >
+          {floorInfo.floor}
+        </div>
+      )}
+      
       {/* Zone name */}
-      <h3 className="text-white font-semibold mt-2 truncate" title={zone.name}>
-        {zone.name}
+      <h3 className="text-white font-semibold mt-2 truncate pr-8" title={zone.name}>
+        {floorInfo.nameWithoutPrefix || zone.name}
       </h3>
       
       {/* Zone type badge */}

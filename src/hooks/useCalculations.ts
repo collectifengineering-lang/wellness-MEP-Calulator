@@ -55,17 +55,27 @@ export function useCalculations() {
       demand_factor: projectElectrical.demandFactor,
     }
 
+    // Get fixture overrides from project
+    const fixtureOverrides = currentProject.fixtureOverrides
+    
+    // Debug: Log fixture overrides
+    if (fixtureOverrides && fixtureOverrides.length > 0) {
+      console.log(`🔧 useCalculations: ${fixtureOverrides.length} fixture overrides active:`, 
+        fixtureOverrides.map(o => `${o.fixtureId}: wsfuCold=${o.wsfuCold}, wsfuHot=${o.wsfuHot}`))
+    }
+
     // Run all calculations with merged settings
     const electrical = calculateElectrical(zones, contingency, { settings: mergedElectricalSettings })
     const hvac = calculateHVAC(zones, climate, contingency)
     const gas = calculateGas(zones, contingency)
-    const dhw = calculateDHW(aggregatedFixtures, currentProject.dhwSettings, contingency)
+    const dhw = calculateDHW(aggregatedFixtures, currentProject.dhwSettings, contingency, fixtureOverrides)
     const plumbing = calculatePlumbing(aggregatedFixtures, { 
       useCommercialLaundry: hasCommercialLaundry,
       coldWaterVelocityFPS: plumbingSettings.cold_water_velocity_fps,
       hotWaterVelocityFPS: plumbingSettings.hot_water_velocity_fps,
       hotWaterFlowRatio: plumbingSettings.hot_water_flow_ratio,
       useCalculatedHWRatio: plumbingSettings.use_calculated_hw_ratio ?? true,
+      fixtureOverrides,
     })
 
     // Add DHW gas load to total gas if using gas heaters
@@ -106,10 +116,13 @@ export function useCalculations() {
     }
     
     // Recalculate electrical with mechanical loads included
+    // Pass demand factor and spare capacity so mechanical loads are treated the same as building loads
     const electricalWithMechanical = recalculateServiceWithMechanical(
       electrical,
       mechanicalKVA.total,
-      projectElectrical.voltage
+      projectElectrical.voltage,
+      projectElectrical.demandFactor,
+      projectElectrical.spareCapacity
     )
     
     const results: CalculationResults = {

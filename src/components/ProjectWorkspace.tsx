@@ -3,15 +3,17 @@ import { useParams, useNavigate } from 'react-router-dom'
 import UserMenu from './auth/UserMenu'
 import ZoneCanvas from './builder/ZoneCanvas'
 import PoolRoomTab from './pool-design/PoolRoomTab'
+import { HydronicTab } from './hydronic/HydronicTab'
 import CentralPlantTab from './central-plant/CentralPlantTab'
 import ResultsTab from './results/ResultsTab'
+import ProjectInfoTab from './project-info/ProjectInfoTab'
 import { Logo } from './shared/Logo'
 import { useProjectStore } from '../store/useProjectStore'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { useCalculations } from '../hooks/useCalculations'
 import { getDefaultDHWSettings, getDefaultElectricalSettings, getDefaultResultAdjustments, getDefaultMechanicalSettings } from '../data/defaults'
 
-type TabType = 'builder' | 'pool' | 'central' | 'results'
+type TabType = 'info' | 'builder' | 'pool' | 'hydronic' | 'central' | 'results'
 
 export default function ProjectWorkspace() {
   const { projectId } = useParams()
@@ -107,6 +109,10 @@ export default function ProjectWorkspace() {
           targetSF: (pd.target_sf as number) || 0,
           climate,
           electricPrimary: pd.electric_primary as boolean ?? true,
+          ashraeLocationId: pd.ashrae_location_id as string | undefined,
+          clientInfo: pd.client_info as import('../types').ProjectClientInfo | undefined,
+          mepNarratives: pd.mep_narratives as import('../types').MEPNarratives | undefined,
+          reportLogo: pd.report_logo as import('../types').ReportLogoHistory | undefined,
           electricalSettings: mergedElectrical,
           mechanicalSettings: mergedMechanical,
           dhwSettings: mergedDHW,
@@ -127,7 +133,7 @@ export default function ProjectWorkspace() {
           console.log('📥 LOADING ZONES FROM DB:')
           const loadedZones = (zonesData as Record<string, unknown>[]).map(z => {
             const lineItems = (z.line_items as import('../types').LineItem[]) || []
-            console.log(`  📦 "${z.name}": ${lineItems.length} line items, laundryEquipment:`, z.laundry_equipment ? 'YES' : 'NO')
+            console.log(`  📦 "${z.name}": ${lineItems.length} line items, ventCfm:${z.ventilation_cfm}, exhCfm:${z.exhaust_cfm}`)
             return {
               id: z.id as string,
               projectId: z.project_id as string,
@@ -142,6 +148,17 @@ export default function ProjectWorkspace() {
               laundryEquipment: z.laundry_equipment as import('../types').LaundryEquipment | undefined,
               lineItems,
               sortOrder: (z.sort_order as number) || 0,
+              // VENTILATION FIELDS - MUST LOAD THESE!
+              ventilationSpaceType: z.ventilation_space_type as string | undefined,
+              ventilationStandard: z.ventilation_standard as 'ashrae62' | 'ashrae170' | 'custom' | undefined,
+              occupants: z.occupants as number | undefined,
+              ceilingHeightFt: z.ceiling_height_ft as number | undefined,
+              ventilationUnit: z.ventilation_unit as 'cfm_sf' | 'cfm' | 'ach' | undefined,
+              exhaustUnit: z.exhaust_unit as 'cfm_sf' | 'cfm' | 'ach' | undefined,
+              ventilationOverride: z.ventilation_override as boolean | undefined,
+              exhaustOverride: z.exhaust_override as boolean | undefined,
+              ventilationCfm: z.ventilation_cfm as number | undefined,
+              exhaustCfm: z.exhaust_cfm as number | undefined,
             } as import('../types').Zone
           })
           setZones(loadedZones)
@@ -224,6 +241,12 @@ export default function ProjectWorkspace() {
               targetSF: (pd.target_sf as number) || 0,
               climate,
               electricPrimary: pd.electric_primary as boolean ?? true,
+              ashraeLocationId: pd.ashrae_location_id as string | undefined,
+              clientInfo: pd.client_info as import('../types').ProjectClientInfo | undefined,
+              mepNarratives: pd.mep_narratives as import('../types').MEPNarratives | undefined,
+              reportLogo: pd.report_logo as import('../types').ReportLogoHistory | undefined,
+              fixtureOverrides: pd.fixture_overrides as import('../types').FixtureOverride[] | undefined,
+              narrativeBackground: pd.narrative_background as import('../types').NarrativeBackground | undefined,
               electricalSettings: mergedElectrical,
               mechanicalSettings: mergedMechanical,
               dhwSettings: mergedDHW,
@@ -274,6 +297,17 @@ export default function ProjectWorkspace() {
               laundryEquipment: z.laundry_equipment as import('../types').LaundryEquipment | undefined,
               lineItems: (z.line_items as import('../types').LineItem[]) || [],
               sortOrder: (z.sort_order as number) || 0,
+              // New ventilation fields
+              ventilationSpaceType: z.ventilation_space_type as string | undefined,
+              ventilationStandard: z.ventilation_standard as 'ashrae62' | 'ashrae170' | 'custom' | undefined,
+              occupants: z.occupants as number | undefined,
+              ceilingHeightFt: z.ceiling_height_ft as number | undefined,
+              ventilationUnit: z.ventilation_unit as 'cfm_sf' | 'cfm' | 'ach' | undefined,
+              exhaustUnit: z.exhaust_unit as 'cfm_sf' | 'cfm' | 'ach' | undefined,
+              ventilationOverride: z.ventilation_override as boolean | undefined,
+              exhaustOverride: z.exhaust_override as boolean | undefined,
+              ventilationCfm: z.ventilation_cfm as number | undefined,
+              exhaustCfm: z.exhaust_cfm as number | undefined,
             } as import('../types').Zone
             
             // Update or add the zone - need to get current zones from store
@@ -338,6 +372,7 @@ export default function ProjectWorkspace() {
 
     if (isSupabaseConfigured()) {
       try {
+        console.log('💾 SAVING PROJECT - ashraeLocationId:', currentProject.ashraeLocationId)
         await supabase.from('projects').upsert({
           id: currentProject.id,
           user_id: currentProject.userId,
@@ -345,12 +380,18 @@ export default function ProjectWorkspace() {
           target_sf: currentProject.targetSF,
           climate: currentProject.climate,
           electric_primary: currentProject.electricPrimary,
+          ashrae_location_id: currentProject.ashraeLocationId,
+          client_info: currentProject.clientInfo as unknown as Record<string, unknown>,
           electrical_settings: currentProject.electricalSettings as unknown as Record<string, unknown>,
           mechanical_settings: currentProject.mechanicalSettings as unknown as Record<string, unknown>,
           dhw_settings: currentProject.dhwSettings as unknown as Record<string, unknown>,
           contingency: currentProject.contingency,
           result_adjustments: currentProject.resultAdjustments as unknown as Record<string, unknown>,
           pool_room_design: currentProject.poolRoomDesign as unknown as Record<string, unknown>,
+          mep_narratives: currentProject.mepNarratives as unknown as Record<string, unknown>,
+          report_logo: currentProject.reportLogo as unknown as Record<string, unknown>,
+          fixture_overrides: currentProject.fixtureOverrides as unknown as Record<string, unknown>,
+          narrative_background: currentProject.narrativeBackground as unknown as Record<string, unknown>,
           updated_at: timestamp,
         } as unknown as never)
 
@@ -386,6 +427,17 @@ export default function ProjectWorkspace() {
             laundry_equipment: zone.laundryEquipment as unknown as Record<string, unknown>,
             line_items: zone.lineItems as unknown as Record<string, unknown>[],
             sort_order: zone.sortOrder,
+            // VENTILATION FIELDS - MUST SAVE THESE!
+            ventilation_space_type: zone.ventilationSpaceType,
+            ventilation_standard: zone.ventilationStandard,
+            occupants: zone.occupants,
+            ceiling_height_ft: zone.ceilingHeightFt,
+            ventilation_unit: zone.ventilationUnit,
+            exhaust_unit: zone.exhaustUnit,
+            ventilation_override: zone.ventilationOverride,
+            exhaust_override: zone.exhaustOverride,
+            ventilation_cfm: zone.ventilationCfm,
+            exhaust_cfm: zone.exhaustCfm,
           } as unknown as never)
         }
         
@@ -472,8 +524,10 @@ export default function ProjectWorkspace() {
             {/* Tabs */}
             <nav className="flex items-center gap-1 bg-surface-800 rounded-lg p-1">
               {[
+                { id: 'info', label: '📋 Info' },
                 { id: 'builder', label: 'Zone Builder' },
                 { id: 'pool', label: '🏊 Pool Room' },
+                { id: 'hydronic', label: '💧 Hydronic' },
                 { id: 'central', label: 'Central Plant' },
                 { id: 'results', label: 'Results' },
               ].map(tab => (
@@ -534,11 +588,17 @@ export default function ProjectWorkspace() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-hidden">
+        {activeTab === 'info' && (
+          <ProjectInfoTab />
+        )}
         {activeTab === 'builder' && (
           <ZoneCanvas calculations={calculations} />
         )}
         {activeTab === 'pool' && (
           <PoolRoomTab />
+        )}
+        {activeTab === 'hydronic' && projectId && (
+          <HydronicTab projectId={projectId} />
         )}
         {activeTab === 'central' && (
           <CentralPlantTab calculations={calculations} />

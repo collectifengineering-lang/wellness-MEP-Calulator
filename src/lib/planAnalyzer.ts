@@ -845,3 +845,237 @@ function parseBoundaryResponse(
     notes: parsed.notes || '',
   }
 }
+
+// =============================================================================
+// FLOOR/LEVEL DETECTION - Detect floor level from drawing
+// =============================================================================
+
+const FLOOR_DETECTION_PROMPT = `You are detecting the FLOOR or LEVEL number from an architectural floor plan.
+
+TASK: Find the floor/level indicator in the drawing's title block, header, or labels.
+
+WHERE TO LOOK:
+1. TITLE BLOCK (usually bottom right or bottom of drawing)
+2. SHEET HEADER (top of drawing)
+3. PLAN LABELS like "Level 3 - Wellness", "First Floor Plan", "B1 - Basement"
+4. Drawing number prefixes like "A-301" (3 might indicate floor 3)
+
+COMMON FORMATS:
+- "Level 1", "Level 2", "L1", "L2"
+- "First Floor", "Second Floor", "Third Floor"
+- "Ground Floor", "Ground", "G"
+- "Basement", "B1", "B2", "Lower Level"
+- "Mezzanine", "Mezz", "M"
+- "Penthouse", "PH", "Roof"
+- "1F", "2F", "3F" (floor indicators)
+
+Respond with ONLY valid JSON:
+{
+  "floor": "Level 3",
+  "confidence": 85,
+  "source": "title block"
+}`
+
+export async function detectFloorLevel(
+  imageBase64: string,
+  mimeType: string = 'image/png'
+): Promise<{ floor: string; confidence: number }> {
+  console.log('🏢 Detecting floor level...')
+  
+  // Try Claude first
+  if (isClaudeReady()) {
+    try {
+      const response = await fetch(ANTHROPIC_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
+              { type: 'text', text: FLOOR_DETECTION_PROMPT },
+            ],
+          }],
+        }),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        const text = data.content?.[0]?.text || ''
+        const jsonMatch = text.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0])
+          console.log(`✅ Floor detected: ${parsed.floor} (${parsed.confidence}% confidence)`)
+          return { floor: parsed.floor || 'Unknown', confidence: parsed.confidence || 50 }
+        }
+      }
+    } catch (error) {
+      console.error('Floor detection failed:', error)
+    }
+  }
+  
+  return { floor: 'Unknown', confidence: 0 }
+}
+
+// =============================================================================
+// SEAT/CHAIR DETECTION - Count occupants for ventilation calculation
+// =============================================================================
+
+const SEAT_DETECTION_PROMPT = `You are counting SEATS, CHAIRS, and OCCUPANT INDICATORS in a section of an architectural floor plan.
+
+TASK: Count all items that indicate where people would sit or occupy space.
+
+WHAT TO COUNT:
+1. CHAIRS - individual seats, desk chairs, lounge chairs
+2. TABLES with chair positions shown
+3. BENCH SEATING - count linear feet / 2 for approximate seats
+4. WORKSTATIONS - individual desk positions
+5. GYM EQUIPMENT positions (each machine = 1 occupant)
+6. TOILET FIXTURES count (indicates restroom capacity)
+7. SHOWER STALLS count (indicates locker room capacity)
+8. LOCKERS (every 5-10 lockers suggests 1 occupant)
+9. Theater/auditorium seating rows
+
+COMMON SYMBOLS:
+- Small circles or squares = chairs
+- L-shaped symbols = desk with chair
+- Rows of rectangles = stadium/theater seating
+- Exercise machine symbols = gym stations
+
+BE THOROUGH - count everything that suggests occupancy!
+
+Respond with ONLY valid JSON:
+{
+  "seatCount": 24,
+  "breakdown": {
+    "chairs": 20,
+    "benches": 0,
+    "workstations": 4,
+    "fixtures": 0
+  },
+  "confidence": 75,
+  "notes": "Found 20 desk chairs and 4 workstation positions"
+}`
+
+export interface SeatDetectionResult {
+  seatCount: number
+  breakdown: {
+    chairs: number
+    benches: number
+    workstations: number
+    fixtures: number
+  }
+  confidence: number
+  notes: string
+}
+
+export async function detectSeatsInRegion(
+  imageBase64: string,
+  mimeType: string = 'image/png'
+): Promise<SeatDetectionResult> {
+  console.log('🪑 Detecting seats/occupants in region...')
+  
+  const defaultResult: SeatDetectionResult = {
+    seatCount: 0,
+    breakdown: { chairs: 0, benches: 0, workstations: 0, fixtures: 0 },
+    confidence: 0,
+    notes: 'Detection failed',
+  }
+  
+  // Try Claude
+  if (isClaudeReady()) {
+    try {
+      const response = await fetch(ANTHROPIC_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1024,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mimeType, data: imageBase64 } },
+              { type: 'text', text: SEAT_DETECTION_PROMPT },
+            ],
+          }],
+        }),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        const text = data.content?.[0]?.text || ''
+        const jsonMatch = text.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0])
+          console.log(`✅ Detected ${parsed.seatCount} seats (${parsed.confidence}% confidence)`)
+          return {
+            seatCount: parsed.seatCount || 0,
+            breakdown: parsed.breakdown || defaultResult.breakdown,
+            confidence: parsed.confidence || 50,
+            notes: parsed.notes || '',
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Seat detection failed:', error)
+    }
+  }
+  
+  // Fallback to Grok
+  if (isGrokReady()) {
+    try {
+      const response = await fetch(XAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${XAI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'grok-2-vision-1212',
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+              { type: 'text', text: SEAT_DETECTION_PROMPT },
+            ],
+          }],
+          max_tokens: 1024,
+        }),
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        const text = data.choices?.[0]?.message?.content || ''
+        const jsonMatch = text.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0])
+          return {
+            seatCount: parsed.seatCount || 0,
+            breakdown: parsed.breakdown || defaultResult.breakdown,
+            confidence: parsed.confidence || 50,
+            notes: parsed.notes || '',
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Grok seat detection failed:', error)
+    }
+  }
+  
+  return defaultResult
+}
+
+// Export the floor prefix formatter for use elsewhere
+export { formatFloorPrefix }

@@ -387,8 +387,8 @@ export default function PoolDehumidification() {
               
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 <ResultCard
-                  label="Total Evaporation"
-                  value={results.totalEvaporationLbHr.toFixed(1)}
+                  label="Total Dehumidification"
+                  value={results.totalDehumidLbHr.toFixed(1)}
                   unit="lb/hr"
                   icon="💧"
                 />
@@ -457,7 +457,7 @@ export default function PoolDehumidification() {
               <div className="mt-4 pt-4 border-t border-surface-700">
                 <h4 className="text-sm font-medium text-surface-300 mb-3">🐐 Equipment Notes</h4>
                 <ul className="space-y-1 text-sm text-surface-400">
-                  <li>• Dehumidification unit sized for {results.totalEvaporationLbHr.toFixed(1)} lb/hr moisture removal</li>
+                  <li>• Dehumidification unit sized for {results.totalDehumidLbHr.toFixed(1)} lb/hr moisture removal</li>
                   <li>• Consider dedicated outdoor air system (DOAS) for ventilation requirements</li>
                   <li>• Pool space should maintain 50-60% RH to prevent condensation and corrosion</li>
                   <li>• Air temperature should be 2-4°F above water temperature</li>

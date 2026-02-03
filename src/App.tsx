@@ -5,6 +5,7 @@ import { useAuthStore } from './store/useAuthStore'
 import { initializeSettings } from './store/useSettingsStore'
 import LoginPage from './components/auth/LoginPage'
 import AuthGuard from './components/auth/AuthGuard'
+import AdminGuard from './components/auth/AdminGuard'
 import LandingPage from './components/landing/LandingPage'
 import ConceptMEPHome from './components/concept-mep/ConceptMEPHome'
 import ProjectWorkspace from './components/ProjectWorkspace'
@@ -17,6 +18,7 @@ import PlumbingHome from './components/plumbing/PlumbingHome'
 import PlumbingWorkspace from './components/plumbing/PlumbingWorkspace'
 import HVACWorkspace from './components/hvac/HVACWorkspace'
 import SettingsPage from './components/settings/SettingsPage'
+import { fetchAdminEmails } from './lib/auth'
 
 function App() {
   const { setUser, setLoading } = useAuthStore()
@@ -29,8 +31,11 @@ function App() {
       setUser(session?.user ?? null)
       setLoading(false)
       
-      // Load shared settings from database
-      await initializeSettings()
+      // Load shared settings and admin list from database
+      await Promise.all([
+        initializeSettings(),
+        fetchAdminEmails(),
+      ])
       
       setInitialized(true)
     }
@@ -159,13 +164,13 @@ function App() {
           }
         />
         
-        {/* Global Settings */}
+        {/* Global Settings (Admin Only) */}
         <Route
           path="/settings"
           element={
-            <AuthGuard>
+            <AdminGuard>
               <SettingsPage />
-            </AuthGuard>
+            </AdminGuard>
           }
         />
         

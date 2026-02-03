@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../store/useAuthStore'
+import { isAdmin } from '../../lib/auth'
 import UserMenu from '../auth/UserMenu'
 
 interface ModuleCardProps {
@@ -150,12 +151,14 @@ export default function LandingPage() {
           </div>
           
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => navigate('/settings')}
-              className="px-4 py-2 text-sm text-surface-300 hover:text-white hover:bg-surface-700 rounded-lg transition-colors"
-            >
-              ⚙️ Settings
-            </button>
+            {user && isAdmin(user.email) && (
+              <button
+                onClick={() => navigate('/settings')}
+                className="px-4 py-2 text-sm text-surface-300 hover:text-white hover:bg-surface-700 rounded-lg transition-colors"
+              >
+                ⚙️ Settings
+              </button>
+            )}
             {user && <UserMenu />}
           </div>
         </div>

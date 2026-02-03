@@ -1,6 +1,18 @@
-import type { DHWSettings, DHWCalcResult, ZoneFixtures } from '../types'
+import type { DHWSettings, DHWCalcResult, ZoneFixtures, FixtureOverride } from '../types'
 import { dhwDefaults, dhwBuildingTypeFactors, fixtureUnits } from '../data/defaults'
 import { getFixtureById } from '../data/nycFixtures'
+
+/**
+ * Get hot water GPH for a fixture with optional override applied
+ */
+function getFixtureHotWaterGPH(fixtureId: string, overrides?: FixtureOverride[]): number {
+  const fixtureDef = getFixtureById(fixtureId)
+  if (!fixtureDef) return 0
+  
+  // Check for override
+  const override = overrides?.find(o => o.fixtureId === fixtureId)
+  return override?.hotWaterGPH ?? fixtureDef.hotWaterGPH
+}
 
 export interface DHWCalcBreakdown {
   // Fixture demand
@@ -46,7 +58,8 @@ export interface DHWCalcBreakdown {
 export function calculateDHW(
   fixtures: ZoneFixtures,
   settings: DHWSettings,
-  contingency: number
+  contingency: number,
+  fixtureOverrides?: FixtureOverride[]
 ): DHWCalcResult & { breakdown?: DHWCalcBreakdown } {
   // Get building type factors
   const buildingFactors = dhwBuildingTypeFactors[settings.buildingType] || dhwBuildingTypeFactors.gymnasium
@@ -108,11 +121,11 @@ export function calculateDHW(
     if (count <= 0) continue
     if (coreFixtureIds.has(fixtureId)) continue
     
-    // Map legacy IDs to new IDs and get fixture definition
-    const fixtureDef = getFixtureById(fixtureId)
+    // Get hot water GPH with override applied
+    const hotWaterGPH = getFixtureHotWaterGPH(fixtureId, fixtureOverrides)
     
-    if (fixtureDef && fixtureDef.hotWaterGPH > 0) {
-      additionalHotWaterGPH += count * fixtureDef.hotWaterGPH
+    if (hotWaterGPH > 0) {
+      additionalHotWaterGPH += count * hotWaterGPH
     }
   }
   

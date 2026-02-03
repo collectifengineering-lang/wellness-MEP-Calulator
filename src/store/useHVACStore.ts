@@ -10,13 +10,15 @@ export interface HVACSpace {
   id: string
   projectId: string
   name: string
-  spaceType: string           // Reference to ASHRAE 62.1 space type
+  spaceType?: string          // Reference to ASHRAE 62.1 space type
+  ashraeSpaceType?: string    // Alternative field name for ASHRAE space type
   areaSf: number
   ceilingHeightFt: number
   occupancyOverride?: number  // Manual override for occupancy
-  zoneId?: string             // Which zone this space belongs to
+  zoneId?: string | null      // Which zone this space belongs to
   notes?: string
-  sortOrder: number
+  sortOrder?: number
+  floor?: string              // Floor/level designation
   
   // Ventilation Rate Overrides (if set, override ASHRAE 62.1 defaults)
   rpOverride?: number         // CFM/person override
@@ -30,6 +32,33 @@ export interface HVACSpace {
   // Standalone Fan Tagging
   exhaustFanTag?: string      // Tag for standalone exhaust fan (e.g., "EF-1")
   supplyFanTag?: string       // Tag for standalone supply fan (e.g., "SF-1")
+  
+  // Pool Configuration (for natatoriums/pool rooms)
+  poolConfigs?: PoolConfigRef[]
+  poolRoomParams?: PoolRoomParamsRef
+}
+
+// Pool configuration reference (stored in HVAC space)
+export interface PoolConfigRef {
+  id: string
+  name: string
+  surfaceAreaSF: number
+  waterTempF: number
+  activityFactor: number
+  poolType: string
+}
+
+export interface PoolRoomParamsRef {
+  roomSF: number
+  ceilingHeightFt: number
+  airTempF: number
+  relativeHumidity: number
+  wetDeckAreaSF: number
+  spectatorCount: number
+  swimmerCount: number
+  airChangesPerHour: number
+  outdoorAirDbF: number
+  outdoorAirWbF: number
 }
 
 export interface HVACZone {
@@ -181,6 +210,10 @@ interface HVACStore {
   // Organization actions
   assignSpaceToZone: (spaceId: string, zoneId: string | null) => void
   assignZoneToSystem: (zoneId: string, systemId: string | null) => void
+  
+  // Pool configuration actions
+  updateSpacePoolConfig: (spaceId: string, pools: PoolConfigRef[], params: PoolRoomParamsRef) => void
+  getSpacePoolConfig: (spaceId: string) => { pools: PoolConfigRef[]; params: PoolRoomParamsRef | undefined } | null
   
   // Bulk operations
   importSpacesFromScan: (scanData: Array<{ name: string; areaSf: number; spaceType?: string }>) => void
@@ -365,6 +398,26 @@ export const useHVACStore = create<HVACStore>()(
             z.id === zoneId ? { ...z, systemId: systemId ?? undefined } : z
           ),
         }))
+      },
+      
+      // Pool configuration actions
+      updateSpacePoolConfig: (spaceId, pools, params) => {
+        set((state) => ({
+          spaces: state.spaces.map((s) =>
+            s.id === spaceId 
+              ? { ...s, poolConfigs: pools, poolRoomParams: params }
+              : s
+          ),
+        }))
+      },
+      
+      getSpacePoolConfig: (spaceId) => {
+        const space = get().spaces.find(s => s.id === spaceId)
+        if (!space) return null
+        return {
+          pools: space.poolConfigs || [],
+          params: space.poolRoomParams,
+        }
       },
       
       // Bulk operations

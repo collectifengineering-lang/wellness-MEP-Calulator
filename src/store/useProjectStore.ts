@@ -4,7 +4,7 @@ import type { Project, Zone, DHWSettings, ResultAdjustments, ClimateType, ZoneTy
 import { getZoneColor, calculateFixturesFromSF, type ZoneDefaults } from '../data/zoneDefaults'
 import { useSettingsStore } from './useSettingsStore'
 import { getDefaultDHWSettings, getDefaultResultAdjustments, getDefaultElectricalSettings, getDefaultMechanicalSettings } from '../data/defaults'
-import { getLegacyFixtureCounts, mergeFixtures } from '../data/fixtureUtils'
+import { mergeFixtures } from '../data/fixtureUtils'
 
 // Default process loads (all zeros)
 const defaultProcessLoads: ZoneProcessLoads = {
@@ -185,16 +185,17 @@ export function generateDefaultLineItems(
     })
   }
   
-  // 6. Dehumidification for pools
+  // 6. Dehumidification for pools - use 'dehumidification' category so HVAC calc recognizes it
+  // NOTE: This is a placeholder default - user should run Pool Room Calculator for accurate values
   if (defaults.dehumidification_lb_hr && defaults.dehumidification_lb_hr > 0) {
     items.push({
       id: uuidv4(),
-      category: 'other',
-      name: 'Pool Dehumidifier',
+      category: 'dehumidification',  // Must be 'dehumidification' for HVAC calc to recognize it
+      name: 'Pool Dehumidifier (Default - Run Pool Calc for Accuracy)',
       quantity: 1,
       unit: 'lb/hr',
       value: defaults.dehumidification_lb_hr,
-      notes: 'Pool area dehumidification capacity'
+      notes: 'Default estimate - use Pool Room Calculator for accurate sizing'
     })
   }
   
@@ -366,6 +367,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       processLoads,
       lineItems: defaultLineItems,  // Pre-populated with default equipment!
       sortOrder: get().zones.length,
+      // ASHRAE ventilation from zone defaults
+      ventilationSpaceType: defaults.defaultVentilationSpaceType,
+      ventilationStandard: defaults.defaultVentilationStandard,
     }
     set((state) => ({ zones: [...state.zones, newZone] }))
   },
@@ -503,9 +507,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   
   getAggregatedFixtures: () => {
     const zones = get().zones
-    // Merge all fixtures dynamically, then convert to legacy format for backwards compatibility
-    const mergedFixtures = mergeFixtures(...zones.map(z => z.fixtures))
-    return getLegacyFixtureCounts(mergedFixtures)
+    // Merge all fixtures dynamically - keep full fixture IDs for accurate WSFU/DFU calculations
+    // Components that need legacy format can call getLegacyFixtureCounts() themselves
+    return mergeFixtures(...zones.map(z => z.fixtures))
   },
 }))
 
@@ -515,7 +519,8 @@ export function createNewProject(
   name: string,
   targetSF: number,
   climate: ClimateType,
-  electricPrimary: boolean
+  electricPrimary: boolean,
+  ashraeLocationId?: string
 ): Project {
   return {
     id: uuidv4(),
@@ -524,6 +529,7 @@ export function createNewProject(
     targetSF,
     climate,
     electricPrimary,
+    ashraeLocationId,
     dhwSettings: getDefaultDHWSettings(climate),
     electricalSettings: getDefaultElectricalSettings(),
     mechanicalSettings: getDefaultMechanicalSettings(),

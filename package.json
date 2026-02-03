@@ -14,6 +14,7 @@
     "@tanstack/react-table": "^8.20.5",
     "docx": "^9.5.1",
     "file-saver": "^2.0.5",
+    "lucide-react": "^0.563.0",
     "pdfjs-dist": "^5.4.530",
     "pdfmake": "^0.2.12",
     "react": "^18.3.1",

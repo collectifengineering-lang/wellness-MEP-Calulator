@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useHVACStore } from '../../../store/useHVACStore'
 import { useScannerStore } from '../../../store/useScannerStore'
-import { ASHRAE62_SPACE_TYPES, getCategories, getSpaceTypesByCategory, calculateDefaultOccupancy, matchSpaceNameToASHRAE, matchZoneTypeToASHRAE } from '../../../data/ashrae62'
+import { ASHRAE62_SPACE_TYPES, ASHRAE170_SPACES, getCategories, getSpaceTypesByCategory, calculateDefaultOccupancy, matchSpaceNameToASHRAE, matchZoneTypeToASHRAE } from '../../../data/ashrae62'
 import { supabase, isSupabaseConfigured } from '../../../lib/supabase'
 import type { ASHRAE62SpaceType } from '../../../data/ashrae62'
 
@@ -15,7 +15,7 @@ export default function HVACSpaceCanvas() {
   // Filter spaces by search
   const filteredSpaces = spaces.filter(s => 
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.spaceType.toLowerCase().includes(searchQuery.toLowerCase())
+    (s.spaceType || '').toLowerCase().includes(searchQuery.toLowerCase())
   )
   
   // Group by zone assignment
@@ -174,12 +174,15 @@ interface SpaceCardProps {
 
 function SpaceCard({ space, zoneName, onEdit, onDelete }: SpaceCardProps) {
   const spaceType = ASHRAE62_SPACE_TYPES.find(st => st.id === space.spaceType)
-  const occupancy = space.occupancyOverride ?? calculateDefaultOccupancy(space.spaceType, space.areaSf)
+  const occupancy = space.occupancyOverride ?? calculateDefaultOccupancy(space.spaceType || 'office_space', space.areaSf)
   
-  // Calculate Vbz
-  const Rp = spaceType?.Rp ?? 5
-  const Ra = spaceType?.Ra ?? 0.06
+  // Calculate Vbz - use overrides if defined (including 0), otherwise use defaults
+  const defaultRp = spaceType?.Rp ?? 5
+  const defaultRa = spaceType?.Ra ?? 0.06
+  const Rp = space.rpOverride !== undefined ? space.rpOverride : defaultRp
+  const Ra = space.raOverride !== undefined ? space.raOverride : defaultRa
   const Vbz = (Rp * occupancy) + (Ra * space.areaSf)
+  const hasOverride = space.rpOverride !== undefined || space.raOverride !== undefined
   
   return (
     <div className="bg-surface-800 rounded-lg border border-surface-700 p-4 hover:border-surface-600 transition-colors">
@@ -225,13 +228,19 @@ function SpaceCard({ space, zoneName, onEdit, onDelete }: SpaceCardProps) {
         </div>
         <div>
           <div className="text-surface-500">Vbz</div>
-          <div className="text-cyan-400 font-medium">{Math.round(Vbz)} CFM</div>
+          <div className={`font-medium ${hasOverride ? 'text-amber-400' : 'text-cyan-400'}`}>
+            {Math.round(Vbz)} CFM {hasOverride && '⚡'}
+          </div>
         </div>
       </div>
       
-      <div className="mt-3 pt-3 border-t border-surface-700 flex justify-between text-xs text-surface-500">
-        <span>Rp: {Rp} CFM/person</span>
-        <span>Ra: {Ra} CFM/SF</span>
+      <div className="mt-3 pt-3 border-t border-surface-700 flex justify-between text-xs">
+        <span className={space.rpOverride !== undefined ? 'text-amber-400' : 'text-surface-500'}>
+          Rp: {Rp} CFM/person {space.rpOverride !== undefined && `(was ${defaultRp})`}
+        </span>
+        <span className={space.raOverride !== undefined ? 'text-amber-400' : 'text-surface-500'}>
+          Ra: {Ra} CFM/SF {space.raOverride !== undefined && `(was ${defaultRa})`}
+        </span>
       </div>
     </div>
   )
@@ -430,6 +439,8 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
   const { spaces, updateSpace, zones } = useHVACStore()
   const space = spaces.find(s => s.id === spaceId)
   const [activeSection, setActiveSection] = useState<'basic' | 'ventilation' | 'fans'>('basic')
+  const [showSpaceTypeDropdown, setShowSpaceTypeDropdown] = useState(false)
+  const [spaceTypeSearch, setSpaceTypeSearch] = useState('')
   
   const [form, setForm] = useState({
     name: space?.name || '',
@@ -438,6 +449,7 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
     occupancyOverride: space?.occupancyOverride,
     zoneId: space?.zoneId,
     notes: space?.notes || '',
+    spaceType: space?.spaceType || 'office',
     // Ventilation overrides
     rpOverride: space?.rpOverride,
     raOverride: space?.raOverride,
@@ -452,10 +464,38 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
   
   if (!space) return null
   
-  const spaceType = ASHRAE62_SPACE_TYPES.find(st => st.id === space.spaceType)
-  const defaultOccupancy = calculateDefaultOccupancy(space.spaceType, form.areaSf)
+  // Get unique ASHRAE 62.1 categories
+  const ashrae62Categories = useMemo(() => 
+    Array.from(new Set(ASHRAE62_SPACE_TYPES.map(st => st.category))).sort(),
+    []
+  )
+  
+  // Find current space type (check both ASHRAE 62.1 and 170)
+  const spaceType = ASHRAE62_SPACE_TYPES.find(st => st.id === form.spaceType)
+  const ashrae170SpaceType = ASHRAE170_SPACES.find(st => st.id === form.spaceType)
+  const isHealthcareSpace = !!ashrae170SpaceType
+  
+  const defaultOccupancy = calculateDefaultOccupancy(form.spaceType || 'office', form.areaSf)
   const defaultRp = spaceType?.Rp || 5
   const defaultRa = spaceType?.Ra || 0.06
+  
+  // Filter space types by search
+  const filteredAshrae62 = useMemo(() => {
+    if (!spaceTypeSearch) return null
+    const query = spaceTypeSearch.toLowerCase()
+    return ASHRAE62_SPACE_TYPES.filter(st =>
+      st.displayName.toLowerCase().includes(query) ||
+      st.category.toLowerCase().includes(query)
+    )
+  }, [spaceTypeSearch])
+  
+  const filteredAshrae170 = useMemo(() => {
+    if (!spaceTypeSearch) return ASHRAE170_SPACES
+    const query = spaceTypeSearch.toLowerCase()
+    return ASHRAE170_SPACES.filter(st =>
+      st.spaceType.toLowerCase().includes(query)
+    )
+  }, [spaceTypeSearch])
   
   // Calculate CFM from ACH
   const volumeCF = form.areaSf * form.ceilingHeightFt
@@ -471,6 +511,7 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
       occupancyOverride: form.occupancyOverride,
       zoneId: form.zoneId,
       notes: form.notes,
+      spaceType: form.spaceType,
       rpOverride: form.rpOverride,
       raOverride: form.raOverride,
       ventilationAch: form.ventilationAch,
@@ -480,6 +521,13 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
       supplyFanTag: form.supplyFanTag || undefined,
     })
     onClose()
+  }
+  
+  // Handle space type selection
+  const handleSpaceTypeSelect = (typeId: string) => {
+    setForm(f => ({ ...f, spaceType: typeId }))
+    setShowSpaceTypeDropdown(false)
+    setSpaceTypeSearch('')
   }
   
   return (
@@ -519,12 +567,95 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
         </div>
         
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Space Type Header */}
-          <div className="p-3 bg-surface-900 rounded-lg">
-            <div className="text-cyan-400 font-medium">{spaceType?.displayName || space.spaceType}</div>
-            <div className="text-xs text-surface-400 mt-1">
-              Default: Rp: {defaultRp} CFM/person | Ra: {defaultRa} CFM/SF | {spaceType?.defaultOccupancy || 5}/1000SF
-            </div>
+          {/* Space Type Selector */}
+          <div className="relative">
+            <label className="block text-sm text-surface-400 mb-1">ASHRAE Space Type</label>
+            <button
+              onClick={() => setShowSpaceTypeDropdown(!showSpaceTypeDropdown)}
+              className={`w-full p-3 rounded-lg text-left flex items-center justify-between transition-colors ${
+                isHealthcareSpace 
+                  ? 'bg-purple-900/30 border border-purple-500/50 hover:border-purple-400' 
+                  : 'bg-surface-900 border border-surface-600 hover:border-surface-500'
+              }`}
+            >
+              <div>
+                <div className={`font-medium ${isHealthcareSpace ? 'text-purple-300' : 'text-cyan-400'}`}>
+                  {isHealthcareSpace 
+                    ? ashrae170SpaceType?.spaceType 
+                    : spaceType?.displayName || form.spaceType}
+                </div>
+                <div className="text-xs text-surface-400 mt-0.5">
+                  {isHealthcareSpace 
+                    ? `ASHRAE 170 | ${ashrae170SpaceType?.minTotalACH} ACH total, ${ashrae170SpaceType?.minOAach} ACH OA`
+                    : `ASHRAE 62.1 | Rp: ${defaultRp} CFM/p, Ra: ${defaultRa} CFM/SF, ${spaceType?.defaultOccupancy || 5}/1000SF`}
+                </div>
+              </div>
+              <svg className={`w-5 h-5 transition-transform ${showSpaceTypeDropdown ? 'rotate-180' : ''} ${isHealthcareSpace ? 'text-purple-400' : 'text-surface-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {/* Space Type Dropdown */}
+            {showSpaceTypeDropdown && (
+              <div className="absolute z-20 mt-1 w-full bg-surface-800 border border-surface-600 rounded-lg shadow-xl max-h-80 overflow-hidden">
+                {/* Search */}
+                <div className="p-2 border-b border-surface-700">
+                  <input
+                    type="text"
+                    value={spaceTypeSearch}
+                    onChange={(e) => setSpaceTypeSearch(e.target.value)}
+                    placeholder="Search space types..."
+                    className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded text-white text-sm placeholder-surface-500"
+                    autoFocus
+                  />
+                </div>
+                
+                <div className="overflow-y-auto max-h-64">
+                  {/* ASHRAE 170 Healthcare */}
+                  <div className="px-2 py-1.5 bg-purple-900/30 text-purple-300 text-xs font-semibold uppercase sticky top-0">
+                    🏥 ASHRAE 170 Healthcare
+                  </div>
+                  {filteredAshrae170.map(st => (
+                    <button
+                      key={st.id}
+                      onClick={() => handleSpaceTypeSelect(st.id)}
+                      className={`w-full px-3 py-2 text-left hover:bg-purple-900/30 transition-colors ${
+                        form.spaceType === st.id ? 'bg-purple-900/40 text-purple-200' : 'text-surface-300'
+                      }`}
+                    >
+                      <div className="text-sm text-purple-300">{st.spaceType}</div>
+                      <div className="text-xs text-surface-500">{st.minTotalACH} ACH total, {st.minOAach} OA</div>
+                    </button>
+                  ))}
+                  
+                  {/* ASHRAE 62.1 by Category */}
+                  {(filteredAshrae62 ? [{ category: 'Search Results', types: filteredAshrae62 }] : 
+                    ashrae62Categories.map(cat => ({
+                      category: cat,
+                      types: ASHRAE62_SPACE_TYPES.filter(st => st.category === cat)
+                    }))
+                  ).map(group => (
+                    <div key={group.category}>
+                      <div className="px-2 py-1.5 bg-cyan-900/30 text-cyan-300 text-xs font-semibold uppercase sticky top-0">
+                        {group.category}
+                      </div>
+                      {group.types.map(st => (
+                        <button
+                          key={st.id}
+                          onClick={() => handleSpaceTypeSelect(st.id)}
+                          className={`w-full px-3 py-2 text-left hover:bg-surface-700 transition-colors ${
+                            form.spaceType === st.id ? 'bg-cyan-900/30 text-cyan-200' : 'text-surface-300'
+                          }`}
+                        >
+                          <div className="text-sm">{st.displayName}</div>
+                          <div className="text-xs text-surface-500">Rp: {st.Rp}, Ra: {st.Ra}</div>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           
           {activeSection === 'basic' && (
@@ -624,7 +755,7 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
                         value={form.rpOverride ?? ''}
                         onChange={(e) => setForm(f => ({ 
                           ...f, 
-                          rpOverride: e.target.value ? Number(e.target.value) : undefined 
+                          rpOverride: e.target.value !== '' ? Number(e.target.value) : undefined 
                         }))}
                         placeholder={String(defaultRp)}
                         className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white pr-20"
@@ -643,7 +774,7 @@ function EditSpaceModal({ spaceId, onClose }: { spaceId: string; onClose: () => 
                         value={form.raOverride ?? ''}
                         onChange={(e) => setForm(f => ({ 
                           ...f, 
-                          raOverride: e.target.value ? Number(e.target.value) : undefined 
+                          raOverride: e.target.value !== '' ? Number(e.target.value) : undefined 
                         }))}
                         placeholder={String(defaultRa)}
                         className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white pr-16"

@@ -41,9 +41,10 @@ export default function TotalsBar({ calculations }: TotalsBarProps) {
     {
       title: 'Electrical',
       items: [
-        // Building load is total minus mechanical
-        { label: 'Building Load', value: Math.round(results.electrical.totalKVA - mechanicalKVA.total).toLocaleString(), unit: 'kVA', color: 'text-amber-400' },
+        // Show raw connected load (kW) and raw mechanical for transparency
+        { label: 'Connected', value: results.electrical.totalKW.toLocaleString(), unit: 'kW', color: 'text-amber-400' },
         mechanicalKVA.total > 0 && { label: 'Mech. Equip', value: Math.round(mechanicalKVA.total).toLocaleString(), unit: 'kVA', color: 'text-cyan-400' },
+        // Final total includes all factors (demand, contingency, spare) applied to both
         { label: 'Total Load', value: results.electrical.totalKVA.toLocaleString(), unit: 'kVA', color: 'text-yellow-400', bold: true },
         { label: 'Service', value: results.electrical.recommendedService, color: 'text-white' },
         { label: '@ 480V', value: results.electrical.amps_480v.toLocaleString(), unit: 'A', color: 'text-surface-300' },

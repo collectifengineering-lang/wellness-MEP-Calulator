@@ -50,11 +50,100 @@ export interface ClimateMultipliers {
   temperate: { cooling: number; heating: number; ventilation: number }
 }
 
+// Custom ASHRAE space type for user-defined ventilation rates
+export interface CustomAshraeSpaceType {
+  id: string
+  category: string
+  name: string
+  displayName: string
+  // ASHRAE 62.1 style (occupancy-based)
+  Rp?: number                    // CFM per person
+  Ra?: number                    // CFM per SF
+  defaultOccupancy?: number      // People per 1000 SF
+  // ASHRAE 170 style (ACH-based)
+  minTotalACH?: number           // Total air changes per hour
+  minOAach?: number              // Outdoor air ACH
+  pressureRelationship?: 'positive' | 'negative' | 'equal'
+  allAirExhaust?: boolean
+  // Exhaust requirements (Table 6-2)
+  exhaustCfmSf?: number          // Exhaust rate per area (CFM/SF)
+  exhaustCfmUnit?: number        // Exhaust rate per fixture
+  exhaustUnitType?: 'toilet' | 'urinal' | 'shower' | 'room' | 'kitchen'
+  exhaustCfmMin?: number         // Min rate (continuous)
+  exhaustCfmMax?: number         // Max rate (intermittent)
+  exhaustMinPerRoom?: number     // Minimum per room
+  exhaustNotes?: string
+  // Common
+  standard: 'ashrae62' | 'ashrae170' | 'custom'
+  notes?: string
+}
+
+// Database-loaded ASHRAE space type (from ashrae_space_types table)
+export interface DbAshraeSpaceType {
+  id: string
+  category: string
+  name: string
+  display_name: string
+  standard: 'ashrae62' | 'ashrae170' | 'custom'
+  rp?: number
+  ra?: number
+  default_occupancy?: number
+  air_class?: number
+  min_total_ach?: number
+  min_oa_ach?: number
+  pressure_relationship?: string
+  all_air_exhaust?: boolean
+  recirculated?: boolean
+  exhaust_cfm_sf?: number
+  exhaust_cfm_unit?: number
+  exhaust_unit_type?: string
+  exhaust_cfm_min?: number
+  exhaust_cfm_max?: number
+  exhaust_min_per_room?: number
+  exhaust_notes?: string
+  exhaust_fixtures_per_sf?: Record<string, number>
+  notes?: string
+}
+
+// Database-loaded zone type default (from zone_type_defaults table)
+export interface DbZoneTypeDefault {
+  id: string
+  display_name: string
+  category: string
+  default_sf: number
+  switchable?: boolean
+  ashrae_space_type_id?: string
+  lighting_w_sf?: number
+  receptacle_va_sf?: number
+  cooling_sf_ton?: number
+  heating_btuh_sf?: number
+  fixed_kw?: number
+  gas_mbh?: number
+  ventilation_cfm?: number
+  exhaust_cfm?: number
+  pool_heater_gas_mbh?: number
+  latent_adder?: number
+  occupants_per_1000sf?: number
+  default_fixtures?: Record<string, number>
+  visible_fixtures?: string[]
+  default_equipment?: any[]
+  requires_standby_power?: boolean
+  requires_type1_hood?: boolean
+  source_notes?: string
+}
+
 interface SettingsState {
   // Custom zone defaults (overrides built-in defaults)
   customZoneDefaults: Record<string, ZoneDefaults>
   // Custom zone types added by user
   customZoneTypes: string[]
+  // Custom ASHRAE space types added by user
+  customAshraeSpaceTypes: CustomAshraeSpaceType[]
+  
+  // Database-loaded data (single source of truth when available)
+  dbAshraeSpaceTypes: DbAshraeSpaceType[]
+  dbZoneTypeDefaults: DbZoneTypeDefault[]
+  dbDataLoaded: boolean
   
   // Global calculation settings
   electrical: ElectricalSettings
@@ -75,6 +164,20 @@ interface SettingsState {
   resetZoneDefaults: (zoneType: string) => void
   resetAllDefaults: () => void
   
+  // ASHRAE space type actions
+  addCustomAshraeSpaceType: (spaceType: CustomAshraeSpaceType) => void
+  updateCustomAshraeSpaceType: (id: string, updates: Partial<CustomAshraeSpaceType>) => void
+  deleteCustomAshraeSpaceType: (id: string) => void
+  getCustomAshraeSpaceType: (id: string) => CustomAshraeSpaceType | undefined
+  
+  // Database ASHRAE/Zone actions
+  fetchAshraeSpaceTypes: () => Promise<void>
+  fetchZoneTypeDefaults: () => Promise<void>
+  saveAshraeSpaceType: (spaceType: DbAshraeSpaceType) => Promise<void>
+  saveZoneTypeDefault: (zoneDefault: DbZoneTypeDefault) => Promise<void>
+  deleteDbAshraeSpaceType: (id: string) => Promise<void>
+  deleteDbZoneTypeDefault: (id: string) => Promise<void>
+  
   // Global settings actions
   updateElectricalSettings: (updates: Partial<ElectricalSettings>) => void
   updateGasSettings: (updates: Partial<GasSettings>) => void
@@ -91,6 +194,18 @@ interface SettingsState {
   getZoneDefaults: (zoneType: string) => ZoneDefaults
   getAllZoneTypes: () => string[]
   isCustomZoneType: (zoneType: string) => boolean
+  getDbAshraeSpaceType: (id: string) => DbAshraeSpaceType | undefined
+  getDbZoneTypeDefault: (id: string) => DbZoneTypeDefault | undefined
+  
+  // Unified getters (database only)
+  getAllAshraeSpaceTypes: () => DbAshraeSpaceType[]
+  getAshraeSpaceType: (id: string) => DbAshraeSpaceType | undefined
+  getAshraeCategories: () => string[]
+  getAshraeSpaceTypesByCategory: (category: string) => DbAshraeSpaceType[]
+  getAshrae62SpaceTypes: () => DbAshraeSpaceType[]
+  getAshrae170SpaceTypes: () => DbAshraeSpaceType[]
+  calculateDefaultOccupancy: (spaceTypeId: string, areaSf: number) => number
+  isUsingDatabase: () => boolean
 }
 
 // Default values for global settings
@@ -147,6 +262,12 @@ export const useSettingsStore = create<SettingsState>()(
     (set, get) => ({
       customZoneDefaults: {},
       customZoneTypes: [],
+      customAshraeSpaceTypes: [],
+      
+      // Database-loaded data
+      dbAshraeSpaceTypes: [],
+      dbZoneTypeDefaults: [],
+      dbDataLoaded: false,
       
       // Global settings with defaults
       electrical: defaultElectrical,
@@ -213,6 +334,7 @@ export const useSettingsStore = create<SettingsState>()(
         set({
           customZoneDefaults: {},
           customZoneTypes: [],
+          customAshraeSpaceTypes: [],
           electrical: defaultElectrical,
           gas: defaultGas,
           dhw: defaultDHW,
@@ -220,6 +342,236 @@ export const useSettingsStore = create<SettingsState>()(
           climate: defaultClimate,
         })
         get().saveToDatabase()
+      },
+      
+      // ASHRAE space type actions
+      addCustomAshraeSpaceType: (spaceType) => {
+        set((state) => ({
+          customAshraeSpaceTypes: [...state.customAshraeSpaceTypes, spaceType],
+        }))
+        get().saveToDatabase()
+      },
+      
+      updateCustomAshraeSpaceType: (id, updates) => {
+        set((state) => ({
+          customAshraeSpaceTypes: state.customAshraeSpaceTypes.map((st) =>
+            st.id === id ? { ...st, ...updates } : st
+          ),
+        }))
+        get().saveToDatabase()
+      },
+      
+      deleteCustomAshraeSpaceType: (id) => {
+        set((state) => ({
+          customAshraeSpaceTypes: state.customAshraeSpaceTypes.filter((st) => st.id !== id),
+        }))
+        get().saveToDatabase()
+      },
+      
+      getCustomAshraeSpaceType: (id) => {
+        return get().customAshraeSpaceTypes.find((st) => st.id === id)
+      },
+      
+      // Database ASHRAE/Zone actions
+      fetchAshraeSpaceTypes: async () => {
+        if (!isSupabaseConfigured()) {
+          console.log('Supabase not configured, using hardcoded ASHRAE space types')
+          return
+        }
+        
+        try {
+          const { data, error } = await supabase
+            .from('ashrae_space_types' as any)
+            .select('*')
+            .order('category', { ascending: true })
+            .order('display_name', { ascending: true })
+          
+          if (error) {
+            // Table might not exist yet
+            if (error.code === '42P01') {
+              console.log('ashrae_space_types table not found, using hardcoded defaults')
+              return
+            }
+            throw error
+          }
+          
+          if (data && data.length > 0) {
+            set({ dbAshraeSpaceTypes: data as DbAshraeSpaceType[], dbDataLoaded: true })
+            console.log(`Loaded ${data.length} ASHRAE space types from database`)
+          }
+        } catch (error) {
+          console.error('Failed to fetch ASHRAE space types:', error)
+        }
+      },
+      
+      fetchZoneTypeDefaults: async () => {
+        if (!isSupabaseConfigured()) {
+          console.log('Supabase not configured, using hardcoded zone defaults')
+          return
+        }
+        
+        try {
+          const { data, error } = await supabase
+            .from('zone_type_defaults' as any)
+            .select('*')
+            .order('category', { ascending: true })
+            .order('display_name', { ascending: true })
+          
+          if (error) {
+            // Table might not exist yet
+            if (error.code === '42P01') {
+              console.log('zone_type_defaults table not found, using hardcoded defaults')
+              return
+            }
+            throw error
+          }
+          
+          if (data && data.length > 0) {
+            set({ dbZoneTypeDefaults: data as DbZoneTypeDefault[], dbDataLoaded: true })
+            console.log(`Loaded ${data.length} zone type defaults from database`)
+          }
+        } catch (error) {
+          console.error('Failed to fetch zone type defaults:', error)
+        }
+      },
+      
+      saveAshraeSpaceType: async (spaceType) => {
+        if (!isSupabaseConfigured()) {
+          console.log('Supabase not configured, cannot save ASHRAE space type')
+          return
+        }
+        
+        try {
+          const { error } = await supabase
+            .from('ashrae_space_types' as any)
+            .upsert(spaceType as any, { onConflict: 'id' })
+          
+          if (error) throw error
+          
+          // Refresh from database
+          await get().fetchAshraeSpaceTypes()
+        } catch (error) {
+          console.error('Failed to save ASHRAE space type:', error)
+          throw error
+        }
+      },
+      
+      saveZoneTypeDefault: async (zoneDefault) => {
+        if (!isSupabaseConfigured()) {
+          console.log('Supabase not configured, cannot save zone type default')
+          return
+        }
+        
+        try {
+          const { error } = await supabase
+            .from('zone_type_defaults' as any)
+            .upsert(zoneDefault as any, { onConflict: 'id' })
+          
+          if (error) throw error
+          
+          // Refresh from database
+          await get().fetchZoneTypeDefaults()
+        } catch (error) {
+          console.error('Failed to save zone type default:', error)
+          throw error
+        }
+      },
+      
+      deleteDbAshraeSpaceType: async (id) => {
+        if (!isSupabaseConfigured()) return
+        
+        try {
+          const { error } = await supabase
+            .from('ashrae_space_types' as any)
+            .delete()
+            .eq('id', id)
+          
+          if (error) throw error
+          
+          // Refresh from database
+          await get().fetchAshraeSpaceTypes()
+        } catch (error) {
+          console.error('Failed to delete ASHRAE space type:', error)
+          throw error
+        }
+      },
+      
+      deleteDbZoneTypeDefault: async (id) => {
+        if (!isSupabaseConfigured()) return
+        
+        try {
+          const { error } = await supabase
+            .from('zone_type_defaults' as any)
+            .delete()
+            .eq('id', id)
+          
+          if (error) throw error
+          
+          // Refresh from database
+          await get().fetchZoneTypeDefaults()
+        } catch (error) {
+          console.error('Failed to delete zone type default:', error)
+          throw error
+        }
+      },
+      
+      getDbAshraeSpaceType: (id) => {
+        return get().dbAshraeSpaceTypes.find((st) => st.id === id)
+      },
+      
+      getDbZoneTypeDefault: (id) => {
+        return get().dbZoneTypeDefaults.find((zd) => zd.id === id)
+      },
+      
+      // Unified getters - DATABASE ONLY (no hardcoded fallback)
+      getAllAshraeSpaceTypes: () => {
+        const { dbAshraeSpaceTypes, dbDataLoaded } = get()
+        
+        // Return database data
+        if (dbDataLoaded && dbAshraeSpaceTypes.length > 0) {
+          return dbAshraeSpaceTypes
+        }
+        
+        // NO FALLBACK - warn and return empty array
+        console.warn('⚠️ ASHRAE space types not loaded from database! Run the seed SQL in Supabase.')
+        return []
+      },
+      
+      getAshraeSpaceType: (id) => {
+        const allTypes = get().getAllAshraeSpaceTypes()
+        return allTypes.find((st) => st.id === id)
+      },
+      
+      getAshraeCategories: () => {
+        const allTypes = get().getAllAshraeSpaceTypes()
+        const categories = new Set(allTypes.map(st => st.category))
+        return Array.from(categories).sort()
+      },
+      
+      getAshraeSpaceTypesByCategory: (category) => {
+        const allTypes = get().getAllAshraeSpaceTypes()
+        return allTypes.filter(st => st.category === category)
+      },
+      
+      getAshrae62SpaceTypes: () => {
+        const allTypes = get().getAllAshraeSpaceTypes()
+        return allTypes.filter(st => st.standard === 'ashrae62')
+      },
+      
+      getAshrae170SpaceTypes: () => {
+        const allTypes = get().getAllAshraeSpaceTypes()
+        return allTypes.filter(st => st.standard === 'ashrae170')
+      },
+      
+      calculateDefaultOccupancy: (spaceTypeId, areaSf) => {
+        const spaceType = get().getAshraeSpaceType(spaceTypeId)
+        if (!spaceType || !spaceType.default_occupancy) return 0
+        return Math.ceil((areaSf / 1000) * spaceType.default_occupancy)
+      },
+      
+      isUsingDatabase: () => {
+        const { dbAshraeSpaceTypes, dbDataLoaded } = get()
+        return dbDataLoaded && dbAshraeSpaceTypes.length > 0
       },
       
       updateElectricalSettings: (updates) => {
@@ -413,7 +765,12 @@ export const useSettingsStore = create<SettingsState>()(
 
 // Initialize settings from database on app load and subscribe to changes
 export const initializeSettings = async () => {
-  await useSettingsStore.getState().fetchFromDatabase()
+  // Fetch all settings in parallel
+  await Promise.all([
+    useSettingsStore.getState().fetchFromDatabase(),
+    useSettingsStore.getState().fetchAshraeSpaceTypes(),
+    useSettingsStore.getState().fetchZoneTypeDefaults(),
+  ])
   
   // Subscribe to realtime changes if Supabase is configured
   if (isSupabaseConfigured() && !settingsChannel) {

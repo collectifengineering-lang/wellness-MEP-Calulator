@@ -1,10 +1,6 @@
-import { useState } from 'react'
 import { useProjectStore } from '../../store/useProjectStore'
-import type { CalculationResults, MechanicalElectricalSettings } from '../../types'
-import { gasHeatingEfficiencyPresets } from '../../data/defaults'
-
-const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || ''
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
+import type { CalculationResults, MechanicalElectricalSettings, HVACSystemType } from '../../types'
+import { gasHeatingEfficiencyPresets, HVAC_SYSTEM_CONFIGS, getHVACSystemConfig } from '../../data/defaults'
 
 interface MechanicalLoadsProps {
   results: CalculationResults
@@ -12,7 +8,6 @@ interface MechanicalLoadsProps {
 
 export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
   const { currentProject, zones, updateMechanicalSettings } = useProjectStore()
-  const [isGenerating, setIsGenerating] = useState(false)
   
   // Debug: Log what we're receiving
   console.log('⚡ MechanicalLoads rendering:')
@@ -94,6 +89,86 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
       </div>
       
       <div className="p-6 space-y-6">
+        {/* HVAC System Type Selector */}
+        <div className="bg-gradient-to-r from-cyan-900/30 to-surface-900 rounded-lg p-4 border border-cyan-500/30">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h4 className="text-sm font-semibold text-cyan-400 flex items-center gap-2">
+                🏢 HVAC System Type
+              </h4>
+              <p className="text-xs text-surface-400 mt-1">
+                Select the primary HVAC system - this affects electrical loads and report narratives
+              </p>
+            </div>
+          </div>
+          
+          {/* System Type Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+            {(Object.keys(HVAC_SYSTEM_CONFIGS) as HVACSystemType[]).filter(t => t !== 'custom').map(systemType => {
+              const config = HVAC_SYSTEM_CONFIGS[systemType]
+              const isSelected = (settings.hvacSystemType || 'vrf_erv') === systemType
+              return (
+                <button
+                  key={systemType}
+                  onClick={() => {
+                    // Update system type and apply its default conversion factors
+                    const newConfig = getHVACSystemConfig(systemType)
+                    updateMechanicalSettings({
+                      hvacSystemType: systemType,
+                      coolingKvaPerTon: newConfig.coolingKvaPerTon,
+                      heatingKvaPerMbh: newConfig.heatingKvaPerMbh,
+                      fanHpPer1000Cfm: newConfig.ventilationType === 'doas' ? 0.4 : 0.6,
+                      heatingElectricPercent: newConfig.hasEnergyRecovery ? 0.10 : 0.25,
+                      heatingFuelType: newConfig.supportsGasHeat ? 'gas' : 'electric',
+                    })
+                  }}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    isSelected 
+                      ? 'bg-cyan-600/20 border-cyan-500 ring-1 ring-cyan-500' 
+                      : 'bg-surface-800 border-surface-600 hover:border-surface-500'
+                  }`}
+                >
+                  <div className={`text-sm font-medium ${isSelected ? 'text-cyan-400' : 'text-white'}`}>
+                    {config.name}
+                  </div>
+                  <div className="text-xs text-surface-400 mt-1 line-clamp-2">
+                    {config.coolingKvaPerTon} kVA/ton
+                    {config.hasEnergyRecovery && ' • ERV'}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+          
+          {/* Selected System Info */}
+          {settings.hvacSystemType && (
+            <div className="bg-surface-900/50 rounded-lg p-3 text-xs">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <span className="text-surface-300 font-medium">
+                    {HVAC_SYSTEM_CONFIGS[settings.hvacSystemType || 'vrf_erv'].name}:
+                  </span>
+                  <span className="text-surface-400 ml-2">
+                    {HVAC_SYSTEM_CONFIGS[settings.hvacSystemType || 'vrf_erv'].description}
+                  </span>
+                </div>
+                <div className="flex gap-4 text-surface-400">
+                  <div>
+                    <span className="text-surface-500">Ventilation:</span>{' '}
+                    <span className="text-white">{HVAC_SYSTEM_CONFIGS[settings.hvacSystemType || 'vrf_erv'].ventilationType.toUpperCase()}</span>
+                  </div>
+                  <div>
+                    <span className="text-surface-500">Heat:</span>{' '}
+                    <span className="text-white">
+                      {HVAC_SYSTEM_CONFIGS[settings.hvacSystemType || 'vrf_erv'].supportsGasHeat ? 'Gas/Elec' : 'Electric'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        
         {/* Mechanical Load Line Items */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -457,121 +532,24 @@ export default function MechanicalLoads({ results }: MechanicalLoadsProps) {
           </div>
         </div>
         
-        {/* HVAC System Description for Reports */}
-        <div className="bg-gradient-to-br from-violet-900/30 to-surface-900 rounded-lg p-4 border border-violet-500/30">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h4 className="text-sm font-semibold text-violet-400 flex items-center gap-2">
-                📝 HVAC System Description (for Reports)
-              </h4>
-              <p className="text-xs text-surface-400 mt-1">
-                This text will appear in the Mechanical section of the PDF report.
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-surface-400">RTU/AHU:</label>
-                <input
-                  type="number"
-                  value={settings.rtuCount ?? hvac.rtuCount}
-                  onChange={(e) => handleUpdate('rtuCount', e.target.value ? Number(e.target.value) : hvac.rtuCount)}
-                  placeholder={String(hvac.rtuCount)}
-                  min={1}
-                  className="w-14 px-2 py-1 bg-surface-900 border border-surface-600 rounded text-white text-center text-sm"
-                />
-              </div>
-              <button
-                onClick={async () => {
-                  setIsGenerating(true)
-                  try {
-                    // Build equipment data for the prompt
-                    const equipmentData = `
-Cooling: ${hvac.totalTons} Tons (${Math.round((currentProject?.targetSF || 0) / hvac.totalTons)} SF/Ton)
-Heating: ${hvac.totalMBH.toLocaleString()} MBH (${isGasHeating ? 'Gas RTU/Boiler' : 'Electric'})
-RTU/AHU Count: ${settings.rtuCount ?? hvac.rtuCount} units
-Ventilation (OA): ${hvac.totalVentCFM.toLocaleString()} CFM
-Exhaust: ${hvac.totalExhaustCFM.toLocaleString()} CFM
-${hvac.dehumidLbHr > 0 ? `Pool Dehumidification: ${hvac.dehumidLbHr} lb/hr` : ''}
-${hvac.poolChillerTons > 0 ? `Pool Chiller: ${hvac.poolChillerTons} tons` : ''}
-Zone Types: ${zones.map(z => z.type).filter((v, i, a) => a.indexOf(v) === i).join(', ')}
-`.trim()
-
-                    if (!ANTHROPIC_API_KEY) {
-                      // Generate a default template if no API key
-                      const defaultNarrative = `The HVAC system will consist of approximately (${settings.rtuCount ?? hvac.rtuCount}) packaged rooftop units providing ${hvac.totalTons} tons of cooling and ${hvac.totalMBH.toLocaleString()} MBH of ${isGasHeating ? 'gas' : 'electric'} heating. Fresh air ventilation of ${hvac.totalVentCFM.toLocaleString()} CFM will be provided per ASHRAE 62.1 requirements. Exhaust systems totaling ${hvac.totalExhaustCFM.toLocaleString()} CFM will serve locker rooms, restrooms, and specialty areas.${hvac.dehumidLbHr > 0 ? ` Pool areas will be served by dedicated dehumidification units rated for ${hvac.dehumidLbHr} lb/hr moisture removal with heat recovery.` : ''}${hvac.poolChillerTons > 0 ? ` A ${hvac.poolChillerTons}-ton pool water chiller will maintain pool water temperatures.` : ''}`
-                      handleUpdate('hvacSystemDescription', defaultNarrative)
-                    } else {
-                      const response = await fetch(ANTHROPIC_API_URL, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                          'x-api-key': ANTHROPIC_API_KEY,
-                          'anthropic-version': '2023-06-01',
-                          'anthropic-dangerous-direct-browser-access': 'true',
-                        },
-                        body: JSON.stringify({
-                          model: 'claude-sonnet-4-20250514',
-                          max_tokens: 500,
-                          messages: [{
-                            role: 'user',
-                            content: `Write a concise 2-3 sentence professional engineering narrative for the HVAC systems section of an MEP concept report. 
-Use this equipment data:
-${equipmentData}
-
-Be specific about equipment types (RTUs, split systems, dehumidification units). 
-Reference ASHRAE standards. Keep it under 100 words. Do not use bullet points - write as prose paragraphs.`
-                          }]
-                        })
-                      })
-                      
-                      if (response.ok) {
-                        const data = await response.json()
-                        const narrative = data.content?.[0]?.text || ''
-                        handleUpdate('hvacSystemDescription', narrative)
-                      }
-                    }
-                  } catch (error) {
-                    console.error('Error generating narrative:', error)
-                  }
-                  setIsGenerating(false)
-                }}
-                disabled={isGenerating}
-                className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-800 text-white text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors"
-              >
-                {isGenerating ? (
-                  <>
-                    <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    AI Generate
-                  </>
-                )}
-              </button>
-            </div>
+        {/* RTU/AHU Count Override */}
+        <div className="bg-surface-900/50 rounded-lg p-3 flex items-center justify-between">
+          <div>
+            <span className="text-sm text-surface-300">RTU/AHU Count Override</span>
+            <p className="text-xs text-surface-500">Used in calculations and report narratives</p>
           </div>
-          <textarea
-            value={settings.hvacSystemDescription ?? ''}
-            onChange={(e) => handleUpdate('hvacSystemDescription', e.target.value)}
-            placeholder="Click 'AI Generate' to create a narrative based on your equipment data, or type your own description..."
-            rows={4}
-            className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm placeholder-surface-500 resize-y"
-          />
-          {settings.hvacSystemDescription && (
-            <button
-              onClick={() => handleUpdate('hvacSystemDescription', '')}
-              className="mt-2 text-xs text-surface-400 hover:text-surface-300 underline"
-            >
-              Clear description
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-surface-400">Units:</label>
+            <input
+              type="number"
+              value={settings.rtuCount ?? hvac.rtuCount}
+              onChange={(e) => handleUpdate('rtuCount', e.target.value ? Number(e.target.value) : hvac.rtuCount)}
+              placeholder={String(hvac.rtuCount)}
+              min={1}
+              className="w-16 px-2 py-1.5 bg-surface-800 border border-surface-600 rounded text-white text-center text-sm"
+            />
+            <span className="text-xs text-surface-500">(Auto: {hvac.rtuCount})</span>
+          </div>
         </div>
         
         {/* Info */}

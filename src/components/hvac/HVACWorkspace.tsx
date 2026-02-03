@@ -6,14 +6,13 @@ import ProjectSettingsPanel from './ProjectSettingsPanel'
 import HVACSpaceCanvas from './spaces/HVACSpaceCanvas'
 import ZoneSystemTree from './organization/ZoneSystemTree'
 import VentilationSummary from './results/VentilationSummary'
-import Ductulator from './calculators/Ductulator'
-import PoolDehumidification from './calculators/PoolDehumidification'
+import ProjectCalculatorsTab from './calculators/ProjectCalculatorsTab'
 import HVACResults from './results/HVACResults'
 import { useHVACStore, defaultHVACProjectSettings } from '../../store/useHVACStore'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import type { HVACProject, HVACSpace, HVACZone, HVACSystem, HVACProjectSettings } from '../../store/useHVACStore'
 
-type TabType = 'settings' | 'spaces' | 'organization' | 'ventilation' | 'pool' | 'calculators' | 'results'
+type TabType = 'settings' | 'spaces' | 'organization' | 'ventilation' | 'calculators' | 'results'
 
 export default function HVACWorkspace() {
   const { projectId } = useParams()
@@ -151,8 +150,7 @@ export default function HVACWorkspace() {
     { id: 'spaces', label: '🏠 Spaces', description: 'Add & edit spaces' },
     { id: 'organization', label: '🔗 Zones & Systems', description: 'Organize hierarchy' },
     { id: 'ventilation', label: '💨 Ventilation', description: 'ASHRAE 62.1' },
-    { id: 'pool', label: '🏊 Pool Dehum', description: 'Natatorium loads' },
-    { id: 'calculators', label: '🧮 Calculators', description: 'Ductulator & more' },
+    { id: 'calculators', label: '🧮 Calculators', description: 'Pool, Hydronic, Ducts' },
     { id: 'results', label: '📊 Results', description: 'Reports & export' },
   ]
 
@@ -223,8 +221,7 @@ export default function HVACWorkspace() {
         {activeTab === 'spaces' && <HVACSpaceCanvas />}
         {activeTab === 'organization' && <ZoneSystemTree />}
         {activeTab === 'ventilation' && <VentilationSummary />}
-        {activeTab === 'pool' && <PoolDehumidification />}
-        {activeTab === 'calculators' && <Ductulator />}
+        {activeTab === 'calculators' && <ProjectCalculatorsTab projectId={currentProject.id} locationId={currentProject.settings?.locationId} />}
         {activeTab === 'results' && <HVACResults />}
       </main>
     </div>
@@ -270,6 +267,16 @@ function dbSpaceToSpace(db: Record<string, unknown>): HVACSpace {
     zoneId: db.zone_id as string | undefined,
     notes: db.notes as string | undefined,
     sortOrder: (db.sort_order as number) || 0,
+    // Ventilation overrides
+    rpOverride: db.rp_override as number | undefined,
+    raOverride: db.ra_override as number | undefined,
+    // ACH-based ventilation
+    ventilationAch: db.ventilation_ach as number | undefined,
+    exhaustAch: db.exhaust_ach as number | undefined,
+    supplyAch: db.supply_ach as number | undefined,
+    // Fan tags
+    exhaustFanTag: db.exhaust_fan_tag as string | undefined,
+    supplyFanTag: db.supply_fan_tag as string | undefined,
   }
 }
 
@@ -285,6 +292,16 @@ function spaceToDbSpace(space: HVACSpace): Record<string, unknown> {
     zone_id: space.zoneId,
     notes: space.notes,
     sort_order: space.sortOrder,
+    // Ventilation overrides
+    rp_override: space.rpOverride,
+    ra_override: space.raOverride,
+    // ACH-based ventilation
+    ventilation_ach: space.ventilationAch,
+    exhaust_ach: space.exhaustAch,
+    supply_ach: space.supplyAch,
+    // Fan tags
+    exhaust_fan_tag: space.exhaustFanTag,
+    supply_fan_tag: space.supplyFanTag,
   }
 }
 
