@@ -78,6 +78,11 @@ interface PsychrometricState {
   getCurrentSystem: () => PsychrometricSystem | undefined
   getCurrentPoints: () => PsychrometricPoint[]
   getBarometricPressure: (systemId: string) => number
+  
+  // Point chaining helpers
+  getPointUsageCount: (pointId: string) => number
+  getProcessesUsingPoint: (pointId: string) => PsychrometricProcess[]
+  isPointShared: (pointId: string) => boolean
 }
 
 // =========================================== 
@@ -781,6 +786,27 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
     const system = get().systems.find(s => s.id === systemId)
     if (!system) return 14.696
     return barometricPressureAtAltitude(system.altitudeFt)
+  },
+  
+  // Point chaining helpers
+  getPointUsageCount: (pointId) => {
+    const processes = get().processes
+    let count = 0
+    processes.forEach(p => {
+      if (p.startPointId === pointId) count++
+      if (p.endPointId === pointId) count++
+    })
+    return count
+  },
+  
+  getProcessesUsingPoint: (pointId) => {
+    return get().processes.filter(p => 
+      p.startPointId === pointId || p.endPointId === pointId
+    )
+  },
+  
+  isPointShared: (pointId) => {
+    return get().getPointUsageCount(pointId) > 1
   },
 }))
 

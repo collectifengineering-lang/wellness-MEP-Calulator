@@ -69,10 +69,10 @@ export default function HVACHome() {
     
     if (isSupabaseConfigured() && user) {
       try {
+        // Load ALL projects (shared workspace - all users can see all projects)
         const { data, error } = await supabase
           .from('hvac_projects')
-          .select('id, name, created_at, updated_at, settings')
-          .eq('user_id', user.id)
+          .select('id, name, created_at, updated_at, settings, user_id')
           .order('updated_at', { ascending: false })
         
         if (error) throw error

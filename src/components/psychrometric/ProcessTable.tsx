@@ -1,6 +1,6 @@
 /**
  * ProcessTable Component
- * Display and manage HVAC processes with real-time load calculations
+ * Display and manage HVAC processes with chain visualization and load calculations
  */
 
 import { useMemo } from 'react'
@@ -53,7 +53,41 @@ export default function ProcessTable({
   onSelectProcess,
   selectedProcessId,
 }: ProcessTableProps) {
-  const { updateProcess, deleteProcess } = usePsychrometricStore()
+  const { updateProcess, deleteProcess, isPointShared } = usePsychrometricStore()
+  
+  // Detect process chains (where one process ends at the same point another starts)
+  const chainInfo = useMemo(() => {
+    const chains: { processId: string; chainedFrom: string | null; chainedTo: string | null }[] = []
+    
+    processes.forEach((process, idx) => {
+      let chainedFrom: string | null = null
+      let chainedTo: string | null = null
+      
+      // Check if this process's start point is the end point of a previous process
+      if (process.startPointId) {
+        const prevProcess = processes.find((p, i) => 
+          i < idx && p.endPointId === process.startPointId
+        )
+        if (prevProcess) {
+          chainedFrom = prevProcess.id
+        }
+      }
+      
+      // Check if this process's end point is the start point of a later process
+      if (process.endPointId) {
+        const nextProcess = processes.find((p, i) => 
+          i > idx && p.startPointId === process.endPointId
+        )
+        if (nextProcess) {
+          chainedTo = nextProcess.id
+        }
+      }
+      
+      chains.push({ processId: process.id, chainedFrom, chainedTo })
+    })
+    
+    return chains
+  }, [processes])
   
   // Calculate results for each process
   const processResults = useMemo(() => {
@@ -106,6 +140,12 @@ export default function ProcessTable({
     return point?.pointLabel || '—'
   }
   
+  // Check if point is shared
+  const pointIsShared = (pointId: string | null) => {
+    if (!pointId) return false
+    return isPointShared(pointId)
+  }
+  
   if (processes.length === 0) {
     return (
       <div className="bg-gray-800/30 rounded-lg p-6 text-center">
@@ -125,7 +165,13 @@ export default function ProcessTable({
           📊 Process Summary
         </h3>
         <p className="text-xs text-gray-400 mt-1">
-          Click a row to highlight on chart • Edit CFM directly in the table
+          {processes.length} process{processes.length > 1 ? 'es' : ''} 
+          {chainInfo.filter(c => c.chainedFrom || c.chainedTo).length > 0 && (
+            <span className="text-cyan-400 ml-2">
+              • ⛓️ {chainInfo.filter(c => c.chainedFrom).length} chained
+            </span>
+          )}
+          <span className="ml-4">Click a row to highlight • Edit CFM in table</span>
         </p>
       </div>
       
@@ -134,6 +180,7 @@ export default function ProcessTable({
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-900/50 text-gray-400 text-xs uppercase tracking-wider">
+              <th className="px-2 py-2 text-center w-8">#</th>
               <th className="px-3 py-2 text-left">Process</th>
               <th className="px-3 py-2 text-left">Type</th>
               <th className="px-3 py-2 text-center">Start</th>
@@ -149,11 +196,16 @@ export default function ProcessTable({
             </tr>
           </thead>
           <tbody>
-            {processResults.map(({ process, startPoint, endPoint, result }) => {
+            {processResults.map(({ process, startPoint, endPoint, result }, idx) => {
               const info = PROCESS_INFO[process.processType] || PROCESS_INFO.custom
               const isSelected = selectedProcessId === process.id
               const isHeating = result && result.sensibleLoadBtuh > 0
               const isCooling = result && result.sensibleLoadBtuh < 0
+              const chain = chainInfo[idx]
+              const hasChainIn = !!chain?.chainedFrom
+              const hasChainOut = !!chain?.chainedTo
+              const startShared = pointIsShared(process.startPointId)
+              const endShared = pointIsShared(process.endPointId)
               
               return (
                 <tr
@@ -165,6 +217,14 @@ export default function ProcessTable({
                       : 'hover:bg-gray-800/50'
                   }`}
                 >
+                  {/* Chain indicator column */}
+                  <td className="px-2 py-2 text-center">
+                    <div className="flex flex-col items-center">
+                      {hasChainIn && <span className="text-cyan-400 text-xs">⛓️</span>}
+                      <span className="text-gray-500 text-xs font-medium">{idx + 1}</span>
+                      {hasChainOut && <span className="text-cyan-400 text-xs">⛓️</span>}
+                    </div>
+                  </td>
                   <td className="px-3 py-2">
                     <div className="font-medium text-white">{process.name}</div>
                   </td>
@@ -175,18 +235,28 @@ export default function ProcessTable({
                     </div>
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <span className="text-cyan-400">{getPointLabel(process.startPointId)}</span>
+                    <div className="flex items-center justify-center gap-1">
+                      {startShared && <span className="text-amber-400 text-xs" title="Shared point">🔗</span>}
+                      <span className={startShared ? 'text-amber-400' : 'text-cyan-400'}>
+                        {getPointLabel(process.startPointId)}
+                      </span>
+                    </div>
                     {startPoint && (
                       <div className="text-xs text-gray-500">
-                        {startPoint.dryBulbF.toFixed(0)}°F
+                        {startPoint.dryBulbF.toFixed(0)}°F / {startPoint.wetBulbF.toFixed(0)}°F WB
                       </div>
                     )}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <span className="text-red-400">{getPointLabel(process.endPointId)}</span>
+                    <div className="flex items-center justify-center gap-1">
+                      {endShared && <span className="text-amber-400 text-xs" title="Shared point">🔗</span>}
+                      <span className={endShared ? 'text-amber-400' : 'text-red-400'}>
+                        {getPointLabel(process.endPointId)}
+                      </span>
+                    </div>
                     {endPoint && (
                       <div className="text-xs text-gray-500">
-                        {endPoint.dryBulbF.toFixed(0)}°F
+                        {endPoint.dryBulbF.toFixed(0)}°F / {endPoint.wetBulbF.toFixed(0)}°F WB
                       </div>
                     )}
                   </td>
@@ -244,9 +314,9 @@ export default function ProcessTable({
                     {result ? (
                       <span className={`font-medium ${
                         result.moistureLbHr > 0 
-                          ? 'text-violet-400' // Humidification (adding moisture)
+                          ? 'text-violet-400' 
                           : result.moistureLbHr < 0 
-                            ? 'text-cyan-400' // Dehumidification (removing moisture)
+                            ? 'text-cyan-400' 
                             : 'text-gray-400'
                       }`}>
                         {result.moistureLbHr > 0 ? '+' : ''}
@@ -285,7 +355,7 @@ export default function ProcessTable({
           {/* Totals Row */}
           <tfoot>
             <tr className="bg-gray-900/70 border-t-2 border-gray-600 font-medium">
-              <td colSpan={5} className="px-3 py-2 text-right text-gray-400">
+              <td colSpan={6} className="px-3 py-2 text-right text-gray-400">
                 TOTALS:
               </td>
               <td className="px-3 py-2 text-right text-white">
@@ -322,16 +392,22 @@ export default function ProcessTable({
       <div className="px-4 py-3 bg-gray-900/30 border-t border-gray-800 text-xs text-gray-500">
         <div className="flex items-center gap-4 flex-wrap">
           <span>
-            <span className="text-red-400">Red</span> = Heating (+ load)
+            <span className="text-cyan-400">⛓️</span> = Chained process
           </span>
           <span>
-            <span className="text-blue-400">Blue</span> = Cooling (− load)
+            <span className="text-amber-400">🔗</span> = Shared point
           </span>
           <span>
-            <span className="text-violet-400">Violet</span> = Humidification (+lb/hr)
+            <span className="text-red-400">Red</span> = Heating
           </span>
           <span>
-            <span className="text-cyan-400">Cyan</span> = Dehumidification (−lb/hr)
+            <span className="text-blue-400">Blue</span> = Cooling
+          </span>
+          <span>
+            <span className="text-violet-400">Violet</span> = Humidify
+          </span>
+          <span>
+            <span className="text-cyan-400">Cyan</span> = Dehumidify
           </span>
           <span className="ml-auto">
             SHR = Sensible Heat Ratio

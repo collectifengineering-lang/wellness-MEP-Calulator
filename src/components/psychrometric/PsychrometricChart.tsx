@@ -516,29 +516,34 @@ export default function PsychrometricChart({
                 {point.pointLabel}
               </text>
               
-              {/* Hover info */}
-              {isHovered && !isDragged && (
+              {/* Hover info - show during hover OR drag */}
+              {(isHovered || isDragged) && (
                 <g>
                   <rect
                     x={svgCoords.x + 12}
-                    y={svgCoords.y - 40}
-                    width={150}
-                    height={75}
+                    y={svgCoords.y - 50}
+                    width={160}
+                    height={90}
                     fill="#1f2937"
-                    stroke={color}
-                    strokeWidth={1}
+                    stroke={isDragged ? '#f59e0b' : color}
+                    strokeWidth={isDragged ? 2 : 1}
                     rx={4}
                   />
-                  <text x={svgCoords.x + 18} y={svgCoords.y - 25} fill="white" fontSize="10">
+                  {isDragged && (
+                    <text x={svgCoords.x + 18} y={svgCoords.y - 35} fill="#f59e0b" fontSize="9" fontWeight="bold">
+                      DRAGGING - Values updating...
+                    </text>
+                  )}
+                  <text x={svgCoords.x + 18} y={svgCoords.y - 20} fill="white" fontSize="10">
                     DB: {result.dryBulbF.toFixed(1)}°F
                   </text>
-                  <text x={svgCoords.x + 18} y={svgCoords.y - 10} fill="white" fontSize="10">
+                  <text x={svgCoords.x + 18} y={svgCoords.y - 5} fill="white" fontSize="10">
                     WB: {result.wetBulbF.toFixed(1)}°F
                   </text>
-                  <text x={svgCoords.x + 18} y={svgCoords.y + 5} fill="white" fontSize="10">
+                  <text x={svgCoords.x + 18} y={svgCoords.y + 10} fill="white" fontSize="10">
                     RH: {result.relativeHumidity.toFixed(1)}%
                   </text>
-                  <text x={svgCoords.x + 18} y={svgCoords.y + 20} fill="#9ca3af" fontSize="9">
+                  <text x={svgCoords.x + 18} y={svgCoords.y + 25} fill="#9ca3af" fontSize="9">
                     W: {result.humidityRatioGrains.toFixed(1)} gr/lb
                   </text>
                 </g>

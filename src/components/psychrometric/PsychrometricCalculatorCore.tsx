@@ -259,9 +259,9 @@ export default function PsychrometricCalculatorCore({
     if (!currentSystem) return
     
     if (format === 'excel') {
-      exportPsychrometricToExcel(currentSystem, systemPoints, calculatedPoints)
+      exportPsychrometricToExcel(currentSystem, systemPoints, calculatedPoints, systemProcesses)
     } else {
-      exportPsychrometricToPdf(currentSystem, systemPoints, calculatedPoints)
+      exportPsychrometricToPdf(currentSystem, systemPoints, calculatedPoints, systemProcesses)
     }
   }
   
@@ -516,7 +516,12 @@ export default function PsychrometricCalculatorCore({
                     <ProcessBuilder
                       systemId={currentSystem.id}
                       points={systemPoints}
+                      processes={systemProcesses}
                       calculatedPoints={calculatedPoints}
+                      onSetPointOnChart={(pointType) => {
+                        // TODO: Enable chart click mode to set this point
+                        console.log('Set point on chart:', pointType)
+                      }}
                     />
                   </div>
                 )}

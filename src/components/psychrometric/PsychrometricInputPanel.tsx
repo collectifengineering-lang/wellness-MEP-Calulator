@@ -140,12 +140,21 @@ function SinglePointMode({
         )}
         
         {point.inputMode === 'db_w' && (
-          <InputField
-            label="Humidity Ratio"
-            value={point.humidityRatioGrains || 77}
-            onChange={(v) => handleValueChange('humidityRatioGrains', v)}
-            unit="gr/lb"
-          />
+          <>
+            <InputField
+              label="Humidity Ratio"
+              value={point.humidityRatioGrains || 77}
+              onChange={(v) => handleValueChange('humidityRatioGrains', v)}
+              unit="gr/lb"
+            />
+            {/* Show calculated wet bulb when in db_w mode */}
+            {result && (
+              <div className="flex items-center gap-3 bg-gray-800/50 rounded px-3 py-2">
+                <span className="text-surface-400 text-sm w-32">Wet Bulb (calc)</span>
+                <span className="text-cyan-400 font-medium">{result.wetBulbF.toFixed(1)}°F</span>
+              </div>
+            )}
+          </>
         )}
       </div>
       
@@ -155,7 +164,7 @@ function SinglePointMode({
           <h4 className="text-sm font-medium text-cyan-400 mb-2">Calculated Properties</h4>
           <div className="grid grid-cols-2 gap-2 text-sm">
             <OutputValue label="Dry Bulb" value={`${result.dryBulbF.toFixed(2)}°F`} />
-            <OutputValue label="Wet Bulb" value={`${result.wetBulbF.toFixed(2)}°F`} />
+            <OutputValue label="Wet Bulb" value={`${result.wetBulbF.toFixed(2)}°F`} highlight />
             <OutputValue label="Dew Point" value={`${result.dewPointF.toFixed(2)}°F`} />
             <OutputValue label="RH" value={`${result.relativeHumidity.toFixed(1)}%`} />
             <OutputValue label="Humidity Ratio" value={`${result.humidityRatioGrains.toFixed(2)} gr/lb`} />
@@ -557,11 +566,11 @@ function InputField({
   )
 }
 
-function OutputValue({ label, value }: { label: string; value: string }) {
+function OutputValue({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="flex justify-between">
       <span className="text-surface-400">{label}:</span>
-      <span className="text-white">{value}</span>
+      <span className={highlight ? 'text-cyan-400 font-medium' : 'text-white'}>{value}</span>
     </div>
   )
 }
