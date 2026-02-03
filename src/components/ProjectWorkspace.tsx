@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom'
 import UserMenu from './auth/UserMenu'
 import ZoneCanvas from './builder/ZoneCanvas'
 import PoolRoomTab from './pool-design/PoolRoomTab'
-import { HydronicTab } from './hydronic/HydronicTab'
 import CentralPlantTab from './central-plant/CentralPlantTab'
 import ResultsTab from './results/ResultsTab'
 import ProjectInfoTab from './project-info/ProjectInfoTab'
@@ -13,7 +12,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { useCalculations } from '../hooks/useCalculations'
 import { getDefaultDHWSettings, getDefaultElectricalSettings, getDefaultResultAdjustments, getDefaultMechanicalSettings } from '../data/defaults'
 
-type TabType = 'info' | 'builder' | 'pool' | 'hydronic' | 'central' | 'results'
+type TabType = 'info' | 'builder' | 'pool' | 'central' | 'results'
 
 export default function ProjectWorkspace() {
   const { projectId } = useParams()
@@ -527,7 +526,6 @@ export default function ProjectWorkspace() {
                 { id: 'info', label: '📋 Info' },
                 { id: 'builder', label: 'Zone Builder' },
                 { id: 'pool', label: '🏊 Pool Room' },
-                { id: 'hydronic', label: '💧 Hydronic' },
                 { id: 'central', label: 'Central Plant' },
                 { id: 'results', label: 'Results' },
               ].map(tab => (
@@ -596,9 +594,6 @@ export default function ProjectWorkspace() {
         )}
         {activeTab === 'pool' && (
           <PoolRoomTab />
-        )}
-        {activeTab === 'hydronic' && projectId && (
-          <HydronicTab projectId={projectId} />
         )}
         {activeTab === 'central' && (
           <CentralPlantTab calculations={calculations} />
