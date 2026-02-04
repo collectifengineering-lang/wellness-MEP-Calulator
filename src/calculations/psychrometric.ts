@@ -644,3 +644,83 @@ export function generateConstantWbLine(
   
   return points
 }
+
+/**
+ * Get saturation humidity ratio at a given dry bulb temperature
+ * This represents the maximum possible humidity ratio at that temperature
+ */
+export function getSaturationHumidityRatio(
+  dryBulbF: number,
+  barometricPressurePsia: number
+): number {
+  const Pws = getSaturationPressure(dryBulbF)
+  const Ws = humidityRatioFromVaporPressure(Pws, barometricPressurePsia)
+  return lbToGrains(Ws)
+}
+
+/**
+ * Check if a point is physically valid (RH <= 100%)
+ * Returns true if the point is at or below saturation
+ */
+export function isPointValid(
+  dryBulbF: number,
+  humidityRatioGrains: number,
+  barometricPressurePsia: number
+): boolean {
+  const saturationW = getSaturationHumidityRatio(dryBulbF, barometricPressurePsia)
+  return humidityRatioGrains <= saturationW * 1.001 // Small tolerance for floating point
+}
+
+/**
+ * Clamp a humidity ratio to valid range (at or below saturation)
+ * Returns the clamped humidity ratio
+ */
+export function clampToSaturation(
+  dryBulbF: number,
+  humidityRatioGrains: number,
+  barometricPressurePsia: number
+): number {
+  const saturationW = getSaturationHumidityRatio(dryBulbF, barometricPressurePsia)
+  return Math.min(humidityRatioGrains, saturationW)
+}
+
+/**
+ * Calculate the point on a line between two points at a given ratio
+ * Used for constraining mixed air point movement
+ */
+export function pointOnLine(
+  point1: { dryBulbF: number; humidityRatioGrains: number },
+  point2: { dryBulbF: number; humidityRatioGrains: number },
+  ratio: number // 0 = point1, 1 = point2
+): { dryBulbF: number; humidityRatioGrains: number } {
+  return {
+    dryBulbF: point1.dryBulbF + ratio * (point2.dryBulbF - point1.dryBulbF),
+    humidityRatioGrains: point1.humidityRatioGrains + ratio * (point2.humidityRatioGrains - point1.humidityRatioGrains),
+  }
+}
+
+/**
+ * Find the closest point on a line to a given point
+ * Used for constraining mixed air point to OA-RA line
+ */
+export function closestPointOnLine(
+  lineStart: { dryBulbF: number; humidityRatioGrains: number },
+  lineEnd: { dryBulbF: number; humidityRatioGrains: number },
+  point: { dryBulbF: number; humidityRatioGrains: number }
+): { dryBulbF: number; humidityRatioGrains: number; ratio: number } {
+  const dx = lineEnd.dryBulbF - lineStart.dryBulbF
+  const dy = lineEnd.humidityRatioGrains - lineStart.humidityRatioGrains
+  
+  // Project point onto line
+  const t = ((point.dryBulbF - lineStart.dryBulbF) * dx + (point.humidityRatioGrains - lineStart.humidityRatioGrains) * dy) / 
+            (dx * dx + dy * dy)
+  
+  // Clamp t to [0, 1] to keep point on segment
+  const clampedT = Math.max(0, Math.min(1, t))
+  
+  return {
+    dryBulbF: lineStart.dryBulbF + clampedT * dx,
+    humidityRatioGrains: lineStart.humidityRatioGrains + clampedT * dy,
+    ratio: clampedT,
+  }
+}

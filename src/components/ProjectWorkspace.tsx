@@ -160,7 +160,40 @@ export default function ProjectWorkspace() {
               exhaustCfm: z.exhaust_cfm as number | undefined,
             } as import('../types').Zone
           })
-          setZones(loadedZones)
+          
+          // CRITICAL: Calculate ventilation for zones that don't have values stored
+          // This ensures ventilation is calculated on project load, not just when editing zones
+          const { ensureZonesHaveVentilation } = await import('../calculations/ventilation')
+          const zonesWithVentilation = ensureZonesHaveVentilation(loadedZones)
+          
+          // Check if any zones got calculated values
+          const zonesNeedingSave = zonesWithVentilation.filter((z, i) => 
+            z.ventilationCfm !== loadedZones[i].ventilationCfm || 
+            z.exhaustCfm !== loadedZones[i].exhaustCfm
+          )
+          
+          if (zonesNeedingSave.length > 0) {
+            console.log(`📊 Calculated ventilation for ${zonesNeedingSave.length} zones on load - saving to DB`)
+            
+            // IMMEDIATELY save the calculated values to DB (don't wait for auto-save)
+            for (const zone of zonesNeedingSave) {
+              const { error } = await supabase
+                .from('zones')
+                .update({
+                  ventilation_cfm: zone.ventilationCfm,
+                  exhaust_cfm: zone.exhaustCfm,
+                  updated_at: new Date().toISOString()
+                } as never)
+                .eq('id', zone.id)
+              
+              if (error) {
+                console.error(`Failed to save ventilation for zone ${zone.name}:`, error)
+              }
+            }
+            console.log(`✅ Saved ventilation values for ${zonesNeedingSave.length} zones`)
+          }
+          
+          setZones(zonesWithVentilation)
         }
         
         // Mark loading complete AFTER both project and zones are loaded

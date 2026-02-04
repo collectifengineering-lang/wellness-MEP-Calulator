@@ -85,15 +85,28 @@ export interface DbAshraeSpaceType {
   name: string
   display_name: string
   standard: 'ashrae62' | 'ashrae170' | 'custom'
-  rp?: number
-  ra?: number
-  default_occupancy?: number
-  air_class?: number
+  
+  // Ventilation mode: determines which fields to use
+  ventilation_mode?: 'cfm_rates' | 'ach' | 'ach_healthcare'
+  
+  // ASHRAE 62.1 CFM-based ventilation
+  rp?: number                    // CFM per person
+  ra?: number                    // CFM per SF
+  default_occupancy?: number     // People per 1000 SF
+  air_class?: number             // 1, 2, or 3
+  
+  // ACH-based ventilation (for wellness spaces like saunas)
+  ventilation_ach?: number       // Total ventilation in ACH
+  exhaust_ach?: number           // Exhaust in ACH
+  
+  // ASHRAE 170 Healthcare (ach_healthcare mode)
   min_total_ach?: number
   min_oa_ach?: number
   pressure_relationship?: string
   all_air_exhaust?: boolean
   recirculated?: boolean
+  
+  // Exhaust Requirements (ASHRAE 62.1 Table 6-4)
   exhaust_cfm_sf?: number
   exhaust_cfm_unit?: number
   exhaust_unit_type?: string
@@ -144,6 +157,7 @@ interface SettingsState {
   dbAshraeSpaceTypes: DbAshraeSpaceType[]
   dbZoneTypeDefaults: DbZoneTypeDefault[]
   dbDataLoaded: boolean
+  ashraeLoadAttempted: boolean
   
   // Global calculation settings
   electrical: ElectricalSettings
@@ -268,6 +282,7 @@ export const useSettingsStore = create<SettingsState>()(
       dbAshraeSpaceTypes: [],
       dbZoneTypeDefaults: [],
       dbDataLoaded: false,
+      ashraeLoadAttempted: false,
       
       // Global settings with defaults
       electrical: defaultElectrical,
@@ -374,33 +389,42 @@ export const useSettingsStore = create<SettingsState>()(
       
       // Database ASHRAE/Zone actions
       fetchAshraeSpaceTypes: async () => {
+        console.log('[ASHRAE] fetchAshraeSpaceTypes: Starting...')
+        set({ ashraeLoadAttempted: true })
+        
         if (!isSupabaseConfigured()) {
-          console.log('Supabase not configured, using hardcoded ASHRAE space types')
+          console.log('[ASHRAE] Supabase not configured, using hardcoded ASHRAE space types')
           return
         }
         
         try {
+          console.log('[ASHRAE] Querying ashrae_space_types table...')
           const { data, error } = await supabase
             .from('ashrae_space_types' as any)
             .select('*')
             .order('category', { ascending: true })
             .order('display_name', { ascending: true })
           
+          console.log('[ASHRAE] Query result:', { dataCount: data?.length || 0, error })
+          
           if (error) {
             // Table might not exist yet
             if (error.code === '42P01') {
-              console.log('ashrae_space_types table not found, using hardcoded defaults')
+              console.log('[ASHRAE] Table not found, using hardcoded defaults')
               return
             }
+            console.error('[ASHRAE] Query error:', error)
             throw error
           }
           
           if (data && data.length > 0) {
             set({ dbAshraeSpaceTypes: data as DbAshraeSpaceType[], dbDataLoaded: true })
-            console.log(`Loaded ${data.length} ASHRAE space types from database`)
+            console.log(`[ASHRAE] ✅ Loaded ${data.length} ASHRAE space types from database`)
+          } else {
+            console.warn('[ASHRAE] ⚠️ Query returned empty results - check RLS policies!')
           }
         } catch (error) {
-          console.error('Failed to fetch ASHRAE space types:', error)
+          console.error('[ASHRAE] ❌ Failed to fetch ASHRAE space types:', error)
         }
       },
       
@@ -525,14 +549,19 @@ export const useSettingsStore = create<SettingsState>()(
       
       // Unified getters - DATABASE ONLY (no hardcoded fallback)
       getAllAshraeSpaceTypes: () => {
-        const { dbAshraeSpaceTypes, dbDataLoaded } = get()
+        const { dbAshraeSpaceTypes, dbDataLoaded, ashraeLoadAttempted } = get()
         
-        // Return database data
+        // Return database data if loaded
         if (dbDataLoaded && dbAshraeSpaceTypes.length > 0) {
           return dbAshraeSpaceTypes
         }
         
-        // NO FALLBACK - warn and return empty array
+        // Don't warn if fetch hasn't been attempted yet - normal during app startup
+        if (!ashraeLoadAttempted) {
+          return []
+        }
+        
+        // Only warn if load was attempted but no data - means seed SQL wasn't run
         console.warn('⚠️ ASHRAE space types not loaded from database! Run the seed SQL in Supabase.')
         return []
       },

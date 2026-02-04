@@ -11,7 +11,7 @@ import {
   stateToChartCoords,
 } from '../../calculations/psychrometric'
 import { DEFAULT_CHART_CONFIG } from '../../data/psychrometricConstants'
-import type { StatePointResult, PsychrometricPoint, ProcessType } from '../../types/psychrometric'
+import type { StatePointResult, PsychrometricPoint, ProcessType, CalculationMode } from '../../types/psychrometric'
 
 interface PointWithResult {
   point: PsychrometricPoint
@@ -42,9 +42,15 @@ interface PsychrometricChartProps {
   processLines?: ProcessLine[]
   barometricPressure: number
   helpMode?: boolean
+  mode?: CalculationMode  // Current calculation mode - determines context menu options
+  nextProcessPointLabel?: string  // For process mode: the next sequential point label (e.g., "C", "D")
+  isFirstProcess?: boolean  // For process mode: whether this is the first process (need both A and B)
+  pickingPointLabel?: string | null  // For process mode: currently picking this point from chart
   onPlacePoint?: (label: string, coords: { dryBulbF: number; humidityRatioGrains: number }) => void
   onDragPoint?: (pointId: string, coords: { dryBulbF: number; humidityRatioGrains: number }) => void
+  onDeletePoint?: (pointId: string) => void  // Delete a point
   onStartProcess?: (processType: ProcessType, startCoords: { dryBulbF: number; humidityRatioGrains: number }) => void
+  onChartClick?: (coords: { dryBulbF: number; humidityRatioGrains: number }) => void
 }
 
 const CHART_CONFIG = {
@@ -52,17 +58,29 @@ const CHART_CONFIG = {
   padding: { top: 30, right: 60, bottom: 50, left: 60 },
 }
 
-// Point colors for different labels
+// Point colors for different labels - Sequential points for process mode
 const POINT_COLORS: Record<string, string> = {
+  // OA/RA Mixing points
+  OA: '#06b6d4',  // cyan - outdoor air
+  RA: '#f59e0b',  // amber - return air
+  MA: '#22c55e',  // green - mixed air
+  SA: '#3b82f6',  // blue - supply air
+  // Sequential points
   A: '#22c55e', // green
   B: '#3b82f6', // blue
+  C: '#8b5cf6', // violet
+  D: '#ec4899', // pink
+  E: '#f97316', // orange
+  F: '#14b8a6', // teal
+  G: '#ef4444', // red
+  H: '#06b6d4', // cyan
+  I: '#a855f7', // purple
+  J: '#eab308', // yellow
+  K: '#84cc16', // lime
+  L: '#f43f5e', // rose
   Mixed: '#f59e0b', // amber
-  Entering: '#06b6d4', // cyan
-  Leaving: '#ef4444', // red
-  '1': '#8b5cf6', // violet
-  '2': '#ec4899', // pink
-  '3': '#14b8a6', // teal
-  '4': '#f97316', // orange
+  Entering: '#06b6d4', // cyan (legacy)
+  Leaving: '#ef4444', // red (legacy)
   default: '#a855f7', // purple
 }
 
@@ -75,6 +93,8 @@ const PROCESS_COLORS: Record<ProcessType, string> = {
   dx_dehumidification: '#06b6d4', // cyan
   desiccant_dehumidification: '#f59e0b', // amber
   mixing: '#22c55e', // green
+  oa_ra_mixing: '#22c55e', // green
+  space_load: '#f59e0b', // amber
   custom: '#9ca3af', // gray
 }
 
@@ -92,9 +112,19 @@ export default function PsychrometricChart({
   processLines = [],
   barometricPressure,
   helpMode = false,
+  mode = 'single',
+  // nextProcessPointLabel and isFirstProcess were used for old context menu - now deprecated
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  nextProcessPointLabel: _nextProcessPointLabel = 'A',
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  isFirstProcess: _isFirstProcess = true,
+  pickingPointLabel = null,
   onPlacePoint,
   onDragPoint,
+  onDeletePoint,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onStartProcess,
+  onChartClick,
 }: PsychrometricChartProps) {
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -243,8 +273,8 @@ export default function PsychrometricChart({
       onDragPoint(draggedPoint, { dryBulbF, humidityRatioGrains })
     }
     
-    // Update tooltip
-    if (isInChartArea(pos.x, pos.y)) {
+    // Update tooltip - BUT suppress when hovering over a point (point has its own tooltip)
+    if (isInChartArea(pos.x, pos.y) && !hoveredPoint) {
       const { dryBulbF, humidityRatioGrains } = fromSvgCoords(pos.x, pos.y)
       if (!svgRef.current) return
       const rect = svgRef.current.getBoundingClientRect()
@@ -288,11 +318,29 @@ export default function PsychrometricChart({
       ref={containerRef}
       className="relative w-full h-full flex items-center justify-center bg-gray-800 rounded-lg overflow-hidden"
     >
+      {/* Picking mode indicator */}
+      {pickingPointLabel && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 bg-cyan-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 animate-pulse">
+          <span className="text-lg">📍</span>
+          <span className="font-medium">Click on chart to place Point {pickingPointLabel}</span>
+        </div>
+      )}
+      
       <svg
         ref={svgRef}
         viewBox={`0 0 ${width} ${height}`}
         className="max-w-full max-h-full"
-        style={{ cursor: draggedPoint ? 'grabbing' : 'crosshair' }}
+        style={{ cursor: pickingPointLabel ? 'crosshair' : (draggedPoint ? 'grabbing' : 'crosshair') }}
+        onClick={(e) => {
+          // Handle click for picking mode (ProcessBuilder)
+          if (pickingPointLabel && onChartClick) {
+            const pos = getMousePosition(e)
+            if (pos && isInChartArea(pos.x, pos.y)) {
+              const { dryBulbF, humidityRatioGrains } = fromSvgCoords(pos.x, pos.y)
+              onChartClick({ dryBulbF, humidityRatioGrains })
+            }
+          }
+        }}
         onContextMenu={handleContextMenu}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -523,7 +571,7 @@ export default function PsychrometricChart({
                     x={svgCoords.x + 12}
                     y={svgCoords.y - 50}
                     width={160}
-                    height={90}
+                    height={105}
                     fill="#1f2937"
                     stroke={isDragged ? '#f59e0b' : color}
                     strokeWidth={isDragged ? 2 : 1}
@@ -546,47 +594,100 @@ export default function PsychrometricChart({
                   <text x={svgCoords.x + 18} y={svgCoords.y + 25} fill="#9ca3af" fontSize="9">
                     W: {result.humidityRatioGrains.toFixed(1)} gr/lb
                   </text>
+                  {/* Delete button */}
+                  {onDeletePoint && (
+                    <g 
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDeletePoint(point.id)
+                      }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <rect
+                        x={svgCoords.x + 18}
+                        y={svgCoords.y + 32}
+                        width={60}
+                        height={16}
+                        fill="#ef4444"
+                        rx={3}
+                      />
+                      <text x={svgCoords.x + 30} y={svgCoords.y + 44} fill="white" fontSize="9" fontWeight="bold">
+                        🗑️ Delete
+                      </text>
+                    </g>
+                  )}
                 </g>
               )}
             </g>
           )
         })}
         
-        {/* Mixing/Process Lines between labeled points */}
+        {/* Mode-specific lines between points */}
         {(() => {
-          const pointA = points.find(p => p.point.pointLabel === 'A')
-          const pointB = points.find(p => p.point.pointLabel === 'B')
-          const mixedPoint = points.find(p => p.point.pointLabel === 'Mixed')
-          const entering = points.find(p => p.point.pointLabel === 'Entering')
-          const leaving = points.find(p => p.point.pointLabel === 'Leaving')
-          
-          // Mixing mode - draw lines from A and B to Mixed
-          if (mixedPoint?.result && pointA?.result && pointB?.result) {
-            const mixedCoords = toSvgCoords(stateToChartCoords(mixedPoint.result, CHART_CONFIG).x, stateToChartCoords(mixedPoint.result, CHART_CONFIG).y)
-            const aCoords = toSvgCoords(stateToChartCoords(pointA.result, CHART_CONFIG).x, stateToChartCoords(pointA.result, CHART_CONFIG).y)
-            const bCoords = toSvgCoords(stateToChartCoords(pointB.result, CHART_CONFIG).x, stateToChartCoords(pointB.result, CHART_CONFIG).y)
+          // MIXING MODE - draw lines from A and B to Mixed
+          if (mode === 'mixing') {
+            const pointA = points.find(p => p.point.pointLabel === 'A')
+            const pointB = points.find(p => p.point.pointLabel === 'B')
+            const mixedPoint = points.find(p => p.point.pointLabel === 'Mixed')
             
-            return (
-              <>
-                <line x1={aCoords.x} y1={aCoords.y} x2={mixedCoords.x} y2={mixedCoords.y} stroke="#22c55e" strokeWidth={2} strokeDasharray="5,5" />
-                <line x1={bCoords.x} y1={bCoords.y} x2={mixedCoords.x} y2={mixedCoords.y} stroke="#3b82f6" strokeWidth={2} strokeDasharray="5,5" />
-              </>
-            )
+            if (mixedPoint?.result && pointA?.result && pointB?.result) {
+              const mixedCoords = toSvgCoords(stateToChartCoords(mixedPoint.result, CHART_CONFIG).x, stateToChartCoords(mixedPoint.result, CHART_CONFIG).y)
+              const aCoords = toSvgCoords(stateToChartCoords(pointA.result, CHART_CONFIG).x, stateToChartCoords(pointA.result, CHART_CONFIG).y)
+              const bCoords = toSvgCoords(stateToChartCoords(pointB.result, CHART_CONFIG).x, stateToChartCoords(pointB.result, CHART_CONFIG).y)
+              
+              return (
+                <>
+                  <line x1={aCoords.x} y1={aCoords.y} x2={mixedCoords.x} y2={mixedCoords.y} stroke="#22c55e" strokeWidth={2} strokeDasharray="5,5" />
+                  <line x1={bCoords.x} y1={bCoords.y} x2={mixedCoords.x} y2={mixedCoords.y} stroke="#3b82f6" strokeWidth={2} strokeDasharray="5,5" />
+                </>
+              )
+            }
           }
           
-          // HVAC Process mode - draw line from Entering to Leaving
-          if (entering?.result && leaving?.result) {
-            const enterCoords = toSvgCoords(stateToChartCoords(entering.result, CHART_CONFIG).x, stateToChartCoords(entering.result, CHART_CONFIG).y)
-            const leaveCoords = toSvgCoords(stateToChartCoords(leaving.result, CHART_CONFIG).x, stateToChartCoords(leaving.result, CHART_CONFIG).y)
+          // PROCESS MODE - draw sequential lines A→B→C→D... with arrows
+          if (mode === 'process') {
+            const sequentialPoints = points
+              .filter(p => /^[A-Z]$/.test(p.point.pointLabel) && p.result)
+              .sort((a, b) => a.point.pointLabel.localeCompare(b.point.pointLabel))
             
-            return (
-              <line 
-                x1={enterCoords.x} y1={enterCoords.y} 
-                x2={leaveCoords.x} y2={leaveCoords.y} 
-                stroke="#f59e0b" strokeWidth={2} strokeDasharray="5,5" 
-                markerEnd="url(#arrowhead)"
-              />
-            )
+            if (sequentialPoints.length >= 2) {
+              const lines: JSX.Element[] = []
+              
+              for (let i = 0; i < sequentialPoints.length - 1; i++) {
+                const startPoint = sequentialPoints[i]
+                const endPoint = sequentialPoints[i + 1]
+                
+                if (!startPoint.result || !endPoint.result) continue
+                
+                const startCoords = toSvgCoords(
+                  stateToChartCoords(startPoint.result, CHART_CONFIG).x,
+                  stateToChartCoords(startPoint.result, CHART_CONFIG).y
+                )
+                const endCoords = toSvgCoords(
+                  stateToChartCoords(endPoint.result, CHART_CONFIG).x,
+                  stateToChartCoords(endPoint.result, CHART_CONFIG).y
+                )
+                
+                // Get color based on process type (or use gradient based on points)
+                const color = POINT_COLORS[startPoint.point.pointLabel] || '#f59e0b'
+                
+                lines.push(
+                  <line
+                    key={`line-${startPoint.point.pointLabel}-${endPoint.point.pointLabel}`}
+                    x1={startCoords.x}
+                    y1={startCoords.y}
+                    x2={endCoords.x}
+                    y2={endCoords.y}
+                    stroke={color}
+                    strokeWidth={2}
+                    markerEnd="url(#arrowhead)"
+                    opacity={0.8}
+                  />
+                )
+              }
+              
+              return <>{lines}</>
+            }
           }
           
           return null
@@ -686,7 +787,7 @@ export default function PsychrometricChart({
         </div>
       )}
       
-      {/* Context Menu */}
+      {/* Context Menu - Mode-Specific */}
       {contextMenu.show && (
         <div
           className="fixed bg-gray-900 border border-gray-600 rounded-lg shadow-xl py-2 z-50 min-w-[200px]"
@@ -697,81 +798,51 @@ export default function PsychrometricChart({
             {contextMenu.dryBulbF.toFixed(1)}°F DB, {contextMenu.humidityRatioGrains.toFixed(1)} gr/lb
           </div>
           
-          <div className="px-2 py-1 text-xs text-gray-500 uppercase tracking-wide">Place Point</div>
-          <button
-            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
-            onClick={() => handleContextMenuAction('place_A')}
-          >
-            <span className="w-3 h-3 rounded-full bg-green-500"></span>
-            Set Point A
-          </button>
-          <button
-            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
-            onClick={() => handleContextMenuAction('place_B')}
-          >
-            <span className="w-3 h-3 rounded-full bg-blue-500"></span>
-            Set Point B
-          </button>
-          <button
-            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
-            onClick={() => handleContextMenuAction('place_Entering')}
-          >
-            <span className="w-3 h-3 rounded-full bg-cyan-500"></span>
-            Set Entering Air
-          </button>
-          <button
-            className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
-            onClick={() => handleContextMenuAction('place_Leaving')}
-          >
-            <span className="w-3 h-3 rounded-full bg-red-500"></span>
-            Set Leaving Air
-          </button>
+          {/* SINGLE POINT MODE - Only Point A */}
+          {mode === 'single' && (
+            <>
+              <div className="px-2 py-1 text-xs text-gray-500 uppercase tracking-wide">Single Point</div>
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
+                onClick={() => handleContextMenuAction('place_A')}
+              >
+                <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                Set Point A
+              </button>
+            </>
+          )}
           
-          <div className="border-t border-gray-700 mt-1 pt-1">
-            <div className="px-2 py-1 text-xs text-gray-500 uppercase tracking-wide">Start Process From Here</div>
-            <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
-              onClick={() => handleContextMenuAction('process_sensible_heating')}
-            >
-              <span className="text-red-400">🔥</span>
-              Sensible Heating
-            </button>
-            <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
-              onClick={() => handleContextMenuAction('process_sensible_cooling')}
-            >
-              <span className="text-blue-400">❄️</span>
-              Sensible Cooling
-            </button>
-            <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
-              onClick={() => handleContextMenuAction('process_evaporative_cooling')}
-            >
-              <span className="text-cyan-400">💧</span>
-              Evaporative Cooling
-            </button>
-            <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
-              onClick={() => handleContextMenuAction('process_dx_dehumidification')}
-            >
-              <span className="text-cyan-400">🧊</span>
-              DX Dehumidification
-            </button>
-            <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
-              onClick={() => handleContextMenuAction('process_steam_humidification')}
-            >
-              <span className="text-violet-400">♨️</span>
-              Steam Humidification
-            </button>
-            <button
-              className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
-              onClick={() => handleContextMenuAction('process_desiccant_dehumidification')}
-            >
-              <span className="text-amber-400">🌀</span>
-              Desiccant Dehumidification
-            </button>
-          </div>
+          {/* MIXING MODE - Point A and Point B only */}
+          {mode === 'mixing' && (
+            <>
+              <div className="px-2 py-1 text-xs text-gray-500 uppercase tracking-wide">Mixing Points</div>
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
+                onClick={() => handleContextMenuAction('place_A')}
+              >
+                <span className="w-3 h-3 rounded-full bg-green-500"></span>
+                Set Point A (Airstream 1)
+              </button>
+              <button
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-800 flex items-center gap-2"
+                onClick={() => handleContextMenuAction('place_B')}
+              >
+                <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+                Set Point B (Airstream 2)
+              </button>
+            </>
+          )}
+          
+          {/* PROCESS MODE - No free point placement */}
+          {mode === 'process' && (
+            <>
+              <div className="px-2 py-1 text-xs text-gray-500 uppercase tracking-wide">Process Mode</div>
+              <div className="px-3 py-2 text-sm text-gray-400">
+                <p className="mb-1">Points are created through the process builder panel →</p>
+                <p className="text-xs text-gray-500">Select a process type, then use "Pick on Chart" buttons</p>
+              </div>
+            </>
+          )}
         </div>
       )}
       

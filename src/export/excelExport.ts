@@ -12,7 +12,7 @@ export function exportToExcelFile(
 
   // Sheet 1: Project Summary
   const summaryData = [
-    ['WELLNESS FACILITY MEP CALCULATOR - PROJECT SUMMARY'],
+    ['COLLECTIF GOAT 🐐 - MEP PROJECT SUMMARY'],
     [],
     ['Project Information'],
     ['Project Name', project.name],

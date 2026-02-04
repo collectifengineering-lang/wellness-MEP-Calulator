@@ -195,28 +195,14 @@ export default function ASHRAEDefaultsEditor() {
                 <th className="text-left px-4 py-3 text-xs font-medium text-surface-400 uppercase">Category</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-cyan-400 uppercase" title="Ventilation">Rp</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-cyan-400 uppercase" title="Ventilation">Ra</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-green-400 uppercase" title="Ventilation ACH">V-ACH</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-green-400 uppercase" title="Exhaust ACH">E-ACH</th>
                 <th className="text-right px-4 py-3 text-xs font-medium text-red-400 uppercase" title="Exhaust CFM/SF">EXH/SF</th>
-                <th className="text-right px-4 py-3 text-xs font-medium text-red-400 uppercase" title="Exhaust CFM/Unit">EXH/Unit</th>
-                <th className="text-center px-4 py-3 text-xs font-medium text-surface-400 uppercase">Air Class</th>
+                <th className="text-center px-4 py-3 text-xs font-medium text-surface-400 uppercase">Mode</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-700">
-              {filteredAshrae62.map(st => {
-                // Build exhaust per unit display
-                let exhaustUnitDisplay = ''
-                if (st.exhaust_cfm_unit) {
-                  const unitLabel = st.exhaust_unit_type === 'toilet' ? '/WC' : 
-                                   st.exhaust_unit_type === 'shower' ? '/shwr' : 
-                                   st.exhaust_unit_type === 'kitchen' ? '/kit' :
-                                   st.exhaust_unit_type === 'room' ? '/rm' : '/unit'
-                  if (st.exhaust_cfm_min && st.exhaust_cfm_max && st.exhaust_cfm_min !== st.exhaust_cfm_max) {
-                    exhaustUnitDisplay = `${st.exhaust_cfm_min}-${st.exhaust_cfm_max}${unitLabel}`
-                  } else {
-                    exhaustUnitDisplay = `${st.exhaust_cfm_unit}${unitLabel}`
-                  }
-                }
-                
-                return (
+              {filteredAshrae62.map(st => (
                   <tr key={st.id} className="hover:bg-surface-700/50 group">
                     <td className="px-4 py-3 text-sm text-white">
                       <div className="flex items-center justify-between">
@@ -235,26 +221,33 @@ export default function ASHRAEDefaultsEditor() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-surface-400">{st.category}</td>
-                    <td className="px-4 py-3 text-sm text-cyan-400 text-right font-mono">{st.rp || '-'}</td>
-                    <td className="px-4 py-3 text-sm text-cyan-400 text-right font-mono">{st.ra || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-cyan-400 text-right font-mono">
+                      {st.ventilation_mode === 'ach' ? <span className="text-surface-500">-</span> : (st.rp || '-')}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-cyan-400 text-right font-mono">
+                      {st.ventilation_mode === 'ach' ? <span className="text-surface-500">-</span> : (st.ra || '-')}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-green-400 text-right font-mono font-semibold">
+                      {st.ventilation_ach || '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-green-400 text-right font-mono font-semibold">
+                      {st.exhaust_ach || '-'}
+                    </td>
                     <td className="px-4 py-3 text-sm text-red-400 text-right font-mono">
                       {st.exhaust_cfm_sf ? st.exhaust_cfm_sf : '-'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-red-400 text-right font-mono">
-                      {exhaustUnitDisplay || '-'}
-                    </td>
                     <td className="px-4 py-3 text-sm text-center">
                       <span className={`px-2 py-0.5 rounded text-xs ${
-                        st.air_class === 1 ? 'bg-green-900/30 text-green-400' :
-                        st.air_class === 2 ? 'bg-amber-900/30 text-amber-400' :
-                        'bg-red-900/30 text-red-400'
+                        st.ventilation_mode === 'ach' ? 'bg-green-900/30 text-green-400' :
+                        st.ventilation_mode === 'ach_healthcare' ? 'bg-purple-900/30 text-purple-400' :
+                        'bg-surface-700 text-surface-300'
                       }`}>
-                        {st.air_class}
+                        {st.ventilation_mode === 'ach' ? 'ACH' :
+                         st.ventilation_mode === 'ach_healthcare' ? '170' : 'CFM'}
                       </span>
                     </td>
                   </tr>
-                )
-              })}
+              ))}
             </tbody>
           </table>
           {filteredAshrae62.length === 0 && (
@@ -792,43 +785,111 @@ function DbAshraeEditModal({ spaceType, onClose, onSave, onDelete, isSaving }: D
             
             {!isHealthcare && (
               <>
+                {/* Ventilation Mode Selector */}
                 <div className="border-t border-surface-700 pt-4 mt-4">
-                  <h4 className="text-sm font-medium text-cyan-400 mb-3">Ventilation (ASHRAE 62.1)</h4>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs text-surface-400 mb-1">Rp (CFM/person)</label>
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={formData.rp ?? ''}
-                        onChange={(e) => setFormData({ ...formData, rp: parseFloat(e.target.value) || undefined })}
-                        className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-surface-400 mb-1">Ra (CFM/SF)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={formData.ra ?? ''}
-                        onChange={(e) => setFormData({ ...formData, ra: parseFloat(e.target.value) || undefined })}
-                        className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-surface-400 mb-1">Air Class</label>
-                      <select
-                        value={formData.air_class ?? 1}
-                        onChange={(e) => setFormData({ ...formData, air_class: parseInt(e.target.value) })}
-                        className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
-                      >
-                        <option value={1}>1</option>
-                        <option value={2}>2</option>
-                        <option value={3}>3</option>
-                      </select>
-                    </div>
+                  <h4 className="text-sm font-medium text-surface-300 mb-3">Ventilation Mode</h4>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, ventilation_mode: 'cfm_rates' })}
+                      className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                        formData.ventilation_mode !== 'ach'
+                          ? 'bg-cyan-600 text-white'
+                          : 'bg-surface-700 text-surface-300 hover:bg-surface-600'
+                      }`}
+                    >
+                      CFM Rates (62.1)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, ventilation_mode: 'ach' })}
+                      className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                        formData.ventilation_mode === 'ach'
+                          ? 'bg-green-600 text-white'
+                          : 'bg-surface-700 text-surface-300 hover:bg-surface-600'
+                      }`}
+                    >
+                      ACH-Based
+                    </button>
                   </div>
                 </div>
+                
+                {/* ACH-Based Ventilation (for wellness spaces) */}
+                {formData.ventilation_mode === 'ach' && (
+                  <div className="bg-green-900/20 rounded-lg border border-green-500/30 p-4 mt-4">
+                    <h4 className="text-sm font-medium text-green-400 mb-3">🌿 ACH-Based Ventilation (Wellness)</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs text-green-300 mb-1">Ventilation ACH</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={formData.ventilation_ach ?? ''}
+                          onChange={(e) => setFormData({ ...formData, ventilation_ach: parseFloat(e.target.value) || undefined })}
+                          className="w-full px-3 py-2 bg-green-900/30 border border-green-500/50 rounded-lg text-white text-sm"
+                          placeholder="e.g., 6"
+                        />
+                        <p className="text-xs text-green-400/70 mt-1">Air changes per hour for ventilation</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-green-300 mb-1">Exhaust ACH</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={formData.exhaust_ach ?? ''}
+                          onChange={(e) => setFormData({ ...formData, exhaust_ach: parseFloat(e.target.value) || undefined })}
+                          className="w-full px-3 py-2 bg-green-900/30 border border-green-500/50 rounded-lg text-white text-sm"
+                          placeholder="e.g., 6"
+                        />
+                        <p className="text-xs text-green-400/70 mt-1">Air changes per hour for exhaust</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-green-400/60 mt-3">
+                      💡 Recommended: Saunas 6 ACH, Steam Rooms 6-8 ACH, Hammams 8+ ACH
+                    </p>
+                  </div>
+                )}
+                
+                {/* CFM-Based Ventilation (ASHRAE 62.1) */}
+                {formData.ventilation_mode !== 'ach' && (
+                  <div className="border-t border-surface-700 pt-4 mt-4">
+                    <h4 className="text-sm font-medium text-cyan-400 mb-3">Ventilation (ASHRAE 62.1)</h4>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs text-surface-400 mb-1">Rp (CFM/person)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={formData.rp ?? ''}
+                          onChange={(e) => setFormData({ ...formData, rp: parseFloat(e.target.value) || undefined })}
+                          className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-surface-400 mb-1">Ra (CFM/SF)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={formData.ra ?? ''}
+                          onChange={(e) => setFormData({ ...formData, ra: parseFloat(e.target.value) || undefined })}
+                          className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-surface-400 mb-1">Air Class</label>
+                        <select
+                          value={formData.air_class ?? 1}
+                          onChange={(e) => setFormData({ ...formData, air_class: parseInt(e.target.value) })}
+                          className="w-full px-3 py-2 bg-surface-900 border border-surface-600 rounded-lg text-white text-sm"
+                        >
+                          <option value={1}>1</option>
+                          <option value={2}>2</option>
+                          <option value={3}>3</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 
                 <div className="border-t border-surface-700 pt-4 mt-4">
                   <h4 className="text-sm font-medium text-red-400 mb-3">Exhaust Requirements</h4>

@@ -24,6 +24,8 @@ const PROCESS_NAMES: Record<ProcessType, string> = {
   dx_dehumidification: 'DX Dehumidification',
   desiccant_dehumidification: 'Desiccant Dehumidification',
   mixing: 'Air Mixing',
+  oa_ra_mixing: 'OA/RA Mixing',
+  space_load: 'Space Load',
   custom: 'Custom Process',
 }
 
@@ -129,6 +131,8 @@ export function exportPsychrometricToExcel(
     const processHeader = [
       '#',
       'Process Name',
+      'Label',
+      'Description',
       'Type',
       'Start Point',
       'Start DB (°F)',
@@ -175,6 +179,8 @@ export function exportPsychrometricToExcel(
       processData.push([
         idx + 1,
         process.name,
+        process.label || '',
+        process.description || '',
         PROCESS_NAMES[process.processType] || process.processType,
         startPt?.pointLabel || '—',
         startPoint?.dryBulbF.toFixed(1) || '—',
@@ -206,6 +212,8 @@ export function exportPsychrometricToExcel(
     processData.push([
       '',
       'TOTALS',
+      '',
+      '',
       '',
       '',
       '',

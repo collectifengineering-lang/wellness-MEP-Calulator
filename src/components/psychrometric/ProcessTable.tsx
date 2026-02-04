@@ -6,13 +6,25 @@
 import { useMemo } from 'react'
 import { usePsychrometricStore } from '../../store/usePsychrometricStore'
 import { calculateProcess } from '../../calculations/psychrometric'
-import type { PsychrometricProcess, PsychrometricPoint, StatePointResult, ProcessType } from '../../types/psychrometric'
+import type { PsychrometricProcess, PsychrometricPoint, StatePointResult, ProcessType, EquipmentType } from '../../types/psychrometric'
+
+// Equipment type display info
+const EQUIPMENT_OPTIONS: { id: EquipmentType | ''; icon: string; name: string }[] = [
+  { id: '', icon: '—', name: 'None' },
+  { id: 'cooling_coil', icon: '❄️', name: 'Cooling Coil' },
+  { id: 'heating_coil', icon: '🔥', name: 'Heating Coil' },
+  { id: 'humidifier', icon: '💦', name: 'Humidifier' },
+  { id: 'dehumidifier', icon: '🧊', name: 'Dehumidifier' },
+  { id: 'energy_recovery', icon: '♻️', name: 'Energy Recovery' },
+  { id: 'other', icon: '⚙️', name: 'Other' },
+]
 
 interface ProcessTableProps {
   processes: PsychrometricProcess[]
   points: PsychrometricPoint[]
   calculatedPoints: Record<string, StatePointResult>
   onSelectProcess?: (processId: string) => void
+  onEditProcess?: (processId: string) => void
   selectedProcessId?: string | null
 }
 
@@ -25,6 +37,8 @@ const PROCESS_INFO: Record<ProcessType, { icon: string; color: string; name: str
   dx_dehumidification: { icon: '🧊', color: '#06b6d4', name: 'DX Dehumidification' },
   desiccant_dehumidification: { icon: '🌀', color: '#f59e0b', name: 'Desiccant Dehum' },
   mixing: { icon: '🔄', color: '#22c55e', name: 'Mixing' },
+  oa_ra_mixing: { icon: '🌬️', color: '#22c55e', name: 'OA/RA Mixing' },
+  space_load: { icon: '🏢', color: '#f59e0b', name: 'Space Load' },
   custom: { icon: '✏️', color: '#9ca3af', name: 'Custom' },
 }
 
@@ -51,6 +65,7 @@ export default function ProcessTable({
   points,
   calculatedPoints,
   onSelectProcess,
+  onEditProcess,
   selectedProcessId,
 }: ProcessTableProps) {
   const { updateProcess, deleteProcess, isPointShared } = usePsychrometricStore()
@@ -92,15 +107,34 @@ export default function ProcessTable({
   // Calculate results for each process
   const processResults = useMemo(() => {
     return processes.map(process => {
-      const startPoint = process.startPointId 
+      let startPoint = process.startPointId 
         ? calculatedPoints[process.startPointId] 
         : null
-      const endPoint = process.endPointId 
+      let endPoint = process.endPointId 
         ? calculatedPoints[process.endPointId] 
         : null
       
       let result = null
-      if (startPoint && endPoint && process.cfm > 0) {
+      let isVentilationLoad = false
+      
+      // For OA/RA Mixing, calculate ventilation load as RA → MA (what OA adds)
+      if (process.processType === 'oa_ra_mixing') {
+        const raPoint = process.raPointId ? calculatedPoints[process.raPointId] : null
+        const maPoint = process.mixedPointId ? calculatedPoints[process.mixedPointId] : null
+        
+        if (raPoint && maPoint && process.cfm > 0) {
+          try {
+            // Ventilation load = difference between RA and MA at total CFM
+            result = calculateProcess(raPoint, maPoint, process.cfm)
+            isVentilationLoad = true
+            // Use RA as "start" and MA as "end" for display
+            startPoint = raPoint
+            endPoint = maPoint
+          } catch (e) {
+            console.warn('Failed to calculate ventilation load:', e)
+          }
+        }
+      } else if (startPoint && endPoint && process.cfm > 0) {
         try {
           result = calculateProcess(startPoint, endPoint, process.cfm)
         } catch (e) {
@@ -113,6 +147,7 @@ export default function ProcessTable({
         startPoint,
         endPoint,
         result,
+        isVentilationLoad,
       }
     })
   }, [processes, calculatedPoints])
@@ -181,8 +216,10 @@ export default function ProcessTable({
           <thead>
             <tr className="bg-gray-900/50 text-gray-400 text-xs uppercase tracking-wider">
               <th className="px-2 py-2 text-center w-8">#</th>
-              <th className="px-3 py-2 text-left">Process</th>
+              <th className="px-3 py-2 text-left">Process / Label</th>
+              <th className="px-3 py-2 text-left">Description</th>
               <th className="px-3 py-2 text-left">Type</th>
+              <th className="px-3 py-2 text-center" title="Equipment for HVAC sizing">Equipment</th>
               <th className="px-3 py-2 text-center">Start</th>
               <th className="px-3 py-2 text-center">End</th>
               <th className="px-3 py-2 text-right">CFM</th>
@@ -192,11 +229,11 @@ export default function ProcessTable({
               <th className="px-3 py-2 text-right">Tons</th>
               <th className="px-3 py-2 text-right" title="Moisture Added/Removed">Moisture</th>
               <th className="px-3 py-2 text-center">SHR</th>
-              <th className="px-3 py-2 text-center w-12"></th>
+              <th className="px-3 py-2 text-center w-20">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {processResults.map(({ process, startPoint, endPoint, result }, idx) => {
+            {processResults.map(({ process, startPoint, endPoint, result, isVentilationLoad }, idx) => {
               const info = PROCESS_INFO[process.processType] || PROCESS_INFO.custom
               const isSelected = selectedProcessId === process.id
               const isHeating = result && result.sensibleLoadBtuh > 0
@@ -227,18 +264,72 @@ export default function ProcessTable({
                   </td>
                   <td className="px-3 py-2">
                     <div className="font-medium text-white">{process.name}</div>
+                    {/* Editable label for exports */}
+                    <input
+                      type="text"
+                      value={process.label || ''}
+                      onChange={(e) => {
+                        e.stopPropagation()
+                        updateProcess(process.id, { label: e.target.value })
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      placeholder="Label..."
+                      className="w-full bg-transparent border-0 text-xs text-cyan-400 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-cyan-500 rounded px-0 py-0.5 mt-0.5"
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    {/* Editable description for exports */}
+                    <input
+                      type="text"
+                      value={process.description || ''}
+                      onChange={(e) => {
+                        e.stopPropagation()
+                        updateProcess(process.id, { description: e.target.value })
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      placeholder="Description..."
+                      className="w-full bg-transparent border-0 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-cyan-500 rounded px-0 py-0.5"
+                    />
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1.5">
                       <span>{info.icon}</span>
                       <span className="text-gray-300 text-xs">{info.name}</span>
                     </div>
+                    {isVentilationLoad && (
+                      <div className="mt-1">
+                        <span className="text-[10px] px-1.5 py-0.5 bg-emerald-900/50 text-emerald-400 rounded border border-emerald-700/50" title="Load calculated from Return Air to Mixed Air">
+                          🌬️ Ventilation Load
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    {/* Equipment Type dropdown */}
+                    <select
+                      value={process.equipmentType || ''}
+                      onChange={(e) => {
+                        e.stopPropagation()
+                        updateProcess(process.id, { 
+                          equipmentType: (e.target.value as EquipmentType) || null 
+                        })
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="bg-gray-800 border border-gray-700 rounded px-1 py-0.5 text-xs w-full"
+                      title="Identify as HVAC equipment for system sizing"
+                    >
+                      {EQUIPMENT_OPTIONS.map(opt => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.icon} {opt.name}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-3 py-2 text-center">
                     <div className="flex items-center justify-center gap-1">
                       {startShared && <span className="text-amber-400 text-xs" title="Shared point">🔗</span>}
                       <span className={startShared ? 'text-amber-400' : 'text-cyan-400'}>
-                        {getPointLabel(process.startPointId)}
+                        {isVentilationLoad ? 'RA' : getPointLabel(process.startPointId)}
                       </span>
                     </div>
                     {startPoint && (
@@ -251,7 +342,7 @@ export default function ProcessTable({
                     <div className="flex items-center justify-center gap-1">
                       {endShared && <span className="text-amber-400 text-xs" title="Shared point">🔗</span>}
                       <span className={endShared ? 'text-amber-400' : 'text-red-400'}>
-                        {getPointLabel(process.endPointId)}
+                        {isVentilationLoad ? 'MA' : getPointLabel(process.endPointId)}
                       </span>
                     </div>
                     {endPoint && (
@@ -336,16 +427,30 @@ export default function ProcessTable({
                     )}
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        deleteProcess(process.id)
-                      }}
-                      className="text-red-500 hover:text-red-400 p-1"
-                      title="Delete process"
-                    >
-                      ✕
-                    </button>
+                    <div className="flex items-center gap-1 justify-center">
+                      {onEditProcess && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onEditProcess(process.id)
+                          }}
+                          className="text-amber-500 hover:text-amber-400 p-1"
+                          title="Edit process"
+                        >
+                          ✏️
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          deleteProcess(process.id)
+                        }}
+                        className="text-red-500 hover:text-red-400 p-1"
+                        title="Delete process"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )
@@ -355,7 +460,7 @@ export default function ProcessTable({
           {/* Totals Row */}
           <tfoot>
             <tr className="bg-gray-900/70 border-t-2 border-gray-600 font-medium">
-              <td colSpan={6} className="px-3 py-2 text-right text-gray-400">
+              <td colSpan={8} className="px-3 py-2 text-right text-gray-400">
                 TOTALS:
               </td>
               <td className="px-3 py-2 text-right text-white">

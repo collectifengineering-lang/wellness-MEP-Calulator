@@ -29,6 +29,7 @@ interface CreateSystemOptions {
   personalCalcId?: string | null
   name?: string
   altitudeFt?: number
+  systemCfm?: number
 }
 
 interface PsychrometricState {
@@ -46,7 +47,12 @@ interface PsychrometricState {
   isSaving: boolean
   error: string | null
   
+  // Track fetch attempts to prevent auto-create race conditions
+  lastFetchedProjectId: string | null
+  lastFetchedPersonalCalcId: string | null
+  
   // Actions - Systems
+  clearError: () => void
   createSystem: (options: CreateSystemOptions) => Promise<PsychrometricSystem>
   updateSystem: (systemId: string, updates: Partial<PsychrometricSystem>) => Promise<void>
   deleteSystem: (systemId: string) => Promise<void>
@@ -83,6 +89,10 @@ interface PsychrometricState {
   getPointUsageCount: (pointId: string) => number
   getProcessesUsingPoint: (pointId: string) => PsychrometricProcess[]
   isPointShared: (pointId: string) => boolean
+  
+  // Sequential point naming helper
+  getNextPointLabel: (systemId: string) => string
+  getLastProcessEndPoint: (systemId: string) => PsychrometricPoint | null
 }
 
 // =========================================== 
@@ -98,15 +108,36 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
   isLoading: false,
   isSaving: false,
   error: null,
+  lastFetchedProjectId: null,
+  lastFetchedPersonalCalcId: null,
+  
+  // =========================================== 
+  // ERROR HANDLING
+  // =========================================== 
+  clearError: () => {
+    set({ error: null })
+  },
   
   // =========================================== 
   // SYSTEM ACTIONS
   // =========================================== 
   createSystem: async (options) => {
-    const { projectId = null, personalCalcId = null, name = 'Psychrometric Analysis', altitudeFt = 0 } = options
+    // Clear any previous errors
+    set({ error: null })
+    
+    const { projectId = null, personalCalcId = null, name = 'Psychrometric Analysis', altitudeFt = 0, systemCfm = 10000 } = options
     const id = uuidv4()
     const now = new Date()
     const userId = useAuthStore.getState().user?.id
+    
+    console.log('[PSYCH] ========================================')
+    console.log('[PSYCH] createSystem: STARTING')
+    console.log('[PSYCH] System ID:', id)
+    console.log('[PSYCH] Project ID:', projectId)
+    console.log('[PSYCH] Personal Calc ID:', personalCalcId)
+    console.log('[PSYCH] User ID:', userId)
+    console.log('[PSYCH] Name:', name)
+    console.log('[PSYCH] ========================================')
     
     const newSystem: PsychrometricSystem = {
       id,
@@ -114,6 +145,7 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
       personalCalcId,
       userId,
       name,
+      systemCfm,
       altitudeFt,
       barometricPressurePsia: barometricPressureAtAltitude(altitudeFt),
       tempUnit: 'F',
@@ -128,13 +160,15 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
       systems: [...state.systems, newSystem],
       currentSystemId: id,
     }))
+    console.log('[PSYCH] Added to local state')
     
     // Save to database
     if (isSupabaseConfigured() && userId) {
+      console.log('[PSYCH] Saving to Supabase...')
       try {
         set({ isSaving: true })
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { error } = await (supabase as any)
+        const { data, error } = await (supabase as any)
           .from('psychrometric_systems')
           .insert({
             id,
@@ -142,26 +176,40 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
             personal_calc_id: personalCalcId,
             user_id: userId,
             name,
+            system_cfm: systemCfm,
             altitude_ft: altitudeFt,
             barometric_pressure_psia: newSystem.barometricPressurePsia,
             temp_unit: newSystem.tempUnit,
             humidity_unit: newSystem.humidityUnit,
             notes: newSystem.notes,
           })
+          .select()
         
-        if (error) throw error
-      } catch (error) {
-        console.error('Failed to save psychrometric system:', error)
-        set({ error: 'Failed to save system' })
+        if (error) {
+          console.error('[PSYCH] INSERT ERROR:', error)
+          throw error
+        }
+        console.log('[PSYCH] ✅ Successfully saved to database!')
+        console.log('[PSYCH] Response data:', data)
+        console.log('[PSYCH] ========================================')
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        console.error('[PSYCH] ❌ SAVE FAILED:', errorMessage, error)
+        set({ error: `Failed to save system: ${errorMessage}` })
       } finally {
         set({ isSaving: false })
       }
+    } else {
+      console.warn('[PSYCH] Not saving to DB - Supabase not configured or no userId')
     }
     
     return newSystem
   },
   
   updateSystem: async (systemId, updates) => {
+    // Clear any previous errors
+    set({ error: null })
+    
     // Update local state
     set(state => ({
       systems: state.systems.map(s =>
@@ -182,6 +230,7 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
         
         const dbUpdates: Record<string, unknown> = { updated_at: new Date().toISOString() }
         if (updates.name !== undefined) dbUpdates.name = updates.name
+        if (updates.systemCfm !== undefined) dbUpdates.system_cfm = updates.systemCfm
         if (updates.altitudeFt !== undefined) {
           dbUpdates.altitude_ft = updates.altitudeFt
           dbUpdates.barometric_pressure_psia = barometricPressureAtAltitude(updates.altitudeFt)
@@ -245,6 +294,8 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
     const now = new Date()
     const existingPoints = get().points.filter(p => p.systemId === systemId)
     
+    console.log('[PSYCH] addPoint:', { id, systemId, label, pointType })
+    
     const newPoint: PsychrometricPoint = {
       id,
       systemId,
@@ -274,6 +325,7 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
     // Save to database
     if (isSupabaseConfigured()) {
       try {
+        console.log('[PSYCH] Saving point to DB:', { id, label })
         const { error } = await (supabase as any)
           .from('psychrometric_points')
           .insert({
@@ -288,9 +340,13 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
             sort_order: newPoint.sortOrder,
           } as any)
         
-        if (error) throw error
+        if (error) {
+          console.error('[PSYCH] Point save error:', error)
+          throw error
+        }
+        console.log('[PSYCH] Point saved successfully:', id)
       } catch (error) {
-        console.error('Failed to save psychrometric point:', error)
+        console.error('[PSYCH] Failed to save psychrometric point:', error)
       }
     }
     
@@ -407,6 +463,8 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
     const now = new Date()
     const existingProcesses = get().processes.filter(p => p.systemId === systemId)
     
+    console.log('[PSYCH] addProcess:', { id, systemId, name, processType })
+    
     const newProcess: PsychrometricProcess = {
       id,
       systemId,
@@ -427,6 +485,7 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
     // Save to database
     if (isSupabaseConfigured()) {
       try {
+        console.log('[PSYCH] Saving process to DB:', { id, name, processType })
         const { error } = await (supabase as any)
           .from('psychrometric_processes')
           .insert({
@@ -438,9 +497,13 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
             sort_order: newProcess.sortOrder,
           } as any)
         
-        if (error) throw error
+        if (error) {
+          console.error('[PSYCH] Process save error:', error)
+          throw error
+        }
+        console.log('[PSYCH] Process saved successfully:', id)
       } catch (error) {
-        console.error('Failed to save psychrometric process:', error)
+        console.error('[PSYCH] Failed to save psychrometric process:', error)
       }
     }
     
@@ -472,6 +535,8 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
         if (updates.latentLoadBtuh !== undefined) dbUpdates.latent_load_btuh = updates.latentLoadBtuh
         if (updates.totalLoadTons !== undefined) dbUpdates.total_load_tons = updates.totalLoadTons
         if (updates.moistureLbHr !== undefined) dbUpdates.moisture_lb_hr = updates.moistureLbHr
+        if (updates.label !== undefined) dbUpdates.label = updates.label
+        if (updates.description !== undefined) dbUpdates.description = updates.description
         if (updates.notes !== undefined) dbUpdates.notes = updates.notes
         
         const { error } = await (supabase as any)
@@ -487,20 +552,64 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
   },
   
   deleteProcess: async (processId) => {
-    // Remove from local state
+    const state = get()
+    const processToDelete = state.processes.find(p => p.id === processId)
+    if (!processToDelete) return
+    
+    const systemId = processToDelete.systemId
+    
+    // Get point IDs used by this process
+    const processPointIds = [
+      processToDelete.startPointId,
+      processToDelete.endPointId,
+      processToDelete.pointAId,
+      processToDelete.pointBId,
+      processToDelete.mixedPointId,
+    ].filter(Boolean) as string[]
+    
+    // Find which points are used by OTHER processes in this system
+    const otherProcesses = state.processes.filter(p => p.id !== processId && p.systemId === systemId)
+    const pointsUsedByOtherProcesses = new Set<string>()
+    otherProcesses.forEach(p => {
+      if (p.startPointId) pointsUsedByOtherProcesses.add(p.startPointId)
+      if (p.endPointId) pointsUsedByOtherProcesses.add(p.endPointId)
+      if (p.pointAId) pointsUsedByOtherProcesses.add(p.pointAId)
+      if (p.pointBId) pointsUsedByOtherProcesses.add(p.pointBId)
+      if (p.mixedPointId) pointsUsedByOtherProcesses.add(p.mixedPointId)
+    })
+    
+    // Find orphaned points (used by deleted process but not by any other process)
+    const orphanedPointIds = processPointIds.filter(id => !pointsUsedByOtherProcesses.has(id))
+    
+    // Remove process and orphaned points from local state
     set(state => ({
       processes: state.processes.filter(p => p.id !== processId),
+      points: state.points.filter(p => !orphanedPointIds.includes(p.id)),
+      calculatedPoints: Object.fromEntries(
+        Object.entries(state.calculatedPoints).filter(([k]) => !orphanedPointIds.includes(k))
+      ),
     }))
     
     // Delete from database
     if (isSupabaseConfigured()) {
       try {
-        const { error } = await (supabase as any)
+        // Delete process
+        const { error: processError } = await (supabase as any)
           .from('psychrometric_processes')
           .delete()
           .eq('id', processId)
         
-        if (error) throw error
+        if (processError) throw processError
+        
+        // Delete orphaned points
+        if (orphanedPointIds.length > 0) {
+          const { error: pointsError } = await (supabase as any)
+            .from('psychrometric_points')
+            .delete()
+            .in('id', orphanedPointIds)
+          
+          if (pointsError) throw pointsError
+        }
       } catch (error) {
         console.error('Failed to delete psychrometric process:', error)
       }
@@ -511,49 +620,89 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
   // DATA FETCHING
   // =========================================== 
   fetchSystemsForProject: async (projectId) => {
-    if (!isSupabaseConfigured()) return
+    if (!isSupabaseConfigured()) {
+      console.warn('[PSYCH] Supabase not configured - skipping fetch')
+      return
+    }
+    
+    const userId = useAuthStore.getState().user?.id
+    console.log('[PSYCH] ========================================')
+    console.log('[PSYCH] fetchSystemsForProject: STARTING')
+    console.log('[PSYCH] Project ID:', projectId)
+    console.log('[PSYCH] User ID:', userId)
+    console.log('[PSYCH] ========================================')
     
     set({ isLoading: true, error: null })
     
     try {
+      // Query systems for this project
+      console.log('[PSYCH] Querying psychrometric_systems where project_id =', projectId)
       const { data: systemsData, error: systemsError } = await (supabase as any)
         .from('psychrometric_systems')
         .select('*')
         .eq('project_id', projectId)
         .order('created_at', { ascending: true })
       
-      if (systemsError) throw systemsError
+      console.log('[PSYCH] Systems query result:', { 
+        count: systemsData?.length || 0, 
+        error: systemsError,
+        data: systemsData
+      })
       
+      if (systemsError) {
+        console.error('[PSYCH] Systems query error:', systemsError)
+        throw systemsError
+      }
+      
+      // Mark that we've fetched for this project (even if empty)
       if (!systemsData || systemsData.length === 0) {
-        set({ isLoading: false })
+        console.log('[PSYCH] No systems found for project', projectId)
+        console.log('[PSYCH] This could mean: 1) New project, 2) RLS blocking, 3) Data deleted')
+        set({ 
+          isLoading: false, 
+          lastFetchedProjectId: projectId,
+        })
         return
       }
       
       const systems = (systemsData as any[]).map(mapDbToSystem)
       const systemIds = systems.map(s => s.id)
+      console.log('[PSYCH] Mapped systems:', systems.map(s => ({ id: s.id, name: s.name })))
       
       // Fetch points
+      console.log('[PSYCH] Querying points for system_ids:', systemIds)
       const { data: pointsData, error: pointsError } = await (supabase as any)
         .from('psychrometric_points')
         .select('*')
         .in('system_id', systemIds)
         .order('sort_order', { ascending: true })
       
-      if (pointsError) throw pointsError
+      if (pointsError) {
+        console.error('[PSYCH] Points query error:', pointsError)
+        throw pointsError
+      }
       
       const points = (pointsData as any[] || []).map(mapDbToPoint)
+      console.log('[PSYCH] Found', points.length, 'points')
       
       // Fetch processes
+      console.log('[PSYCH] Querying processes for system_ids:', systemIds)
       const { data: processesData, error: processesError } = await (supabase as any)
         .from('psychrometric_processes')
         .select('*')
         .in('system_id', systemIds)
         .order('sort_order', { ascending: true })
       
-      if (processesError) throw processesError
+      if (processesError) {
+        console.error('[PSYCH] Processes query error:', processesError)
+        throw processesError
+      }
       
       const processes = (processesData as any[] || []).map(mapDbToProcess)
+      console.log('[PSYCH] Found', processes.length, 'processes')
       
+      // Update state
+      console.log('[PSYCH] Updating local state with fetched data...')
       set(state => ({
         systems: [
           ...state.systems.filter(s => s.projectId !== projectId),
@@ -568,63 +717,105 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
           ...processes,
         ],
         isLoading: false,
+        lastFetchedProjectId: projectId,
       }))
+      
+      console.log('[PSYCH] State updated successfully!')
+      console.log('[PSYCH] ========================================')
       
       // Calculate all points
       points.forEach(p => get().calculatePointState(p.id))
     } catch (error) {
-      console.error('Failed to fetch psychrometric systems:', error)
-      set({ error: 'Failed to load systems', isLoading: false })
+      console.error('[PSYCH] FETCH FAILED:', error)
+      set({ 
+        error: 'Failed to load systems', 
+        isLoading: false,
+        lastFetchedProjectId: projectId,
+      })
     }
   },
   
   fetchSystemsForPersonalCalc: async (personalCalcId) => {
-    if (!isSupabaseConfigured()) return
+    if (!isSupabaseConfigured()) {
+      console.warn('[PSYCH] Supabase not configured - skipping fetch')
+      return
+    }
+    
+    const userId = useAuthStore.getState().user?.id
+    console.log('[PSYCH] ========================================')
+    console.log('[PSYCH] fetchSystemsForPersonalCalc: STARTING')
+    console.log('[PSYCH] Personal Calc ID:', personalCalcId)
+    console.log('[PSYCH] User ID:', userId)
+    console.log('[PSYCH] ========================================')
     
     set({ isLoading: true, error: null })
     
     try {
+      console.log('[PSYCH] Querying psychrometric_systems where personal_calc_id =', personalCalcId)
       const { data: systemsData, error: systemsError } = await (supabase as any)
         .from('psychrometric_systems')
         .select('*')
         .eq('personal_calc_id', personalCalcId)
         .order('created_at', { ascending: true })
       
-      if (systemsError) throw systemsError
+      console.log('[PSYCH] Systems query result:', { 
+        count: systemsData?.length || 0, 
+        error: systemsError,
+        data: systemsData
+      })
+      
+      if (systemsError) {
+        console.error('[PSYCH] Systems query error:', systemsError)
+        throw systemsError
+      }
       
       if (!systemsData || systemsData.length === 0) {
+        console.log('[PSYCH] No systems found for personal calc', personalCalcId)
         set(state => ({
           systems: state.systems.filter(s => s.personalCalcId !== personalCalcId),
           isLoading: false,
+          lastFetchedPersonalCalcId: personalCalcId,
         }))
         return
       }
       
       const systems = (systemsData as any[]).map(mapDbToSystem)
       const systemIds = systems.map(s => s.id)
+      console.log('[PSYCH] Mapped systems:', systems.map(s => ({ id: s.id, name: s.name })))
       
       // Fetch points
+      console.log('[PSYCH] Querying points for system_ids:', systemIds)
       const { data: pointsData, error: pointsError } = await (supabase as any)
         .from('psychrometric_points')
         .select('*')
         .in('system_id', systemIds)
         .order('sort_order', { ascending: true })
       
-      if (pointsError) throw pointsError
+      if (pointsError) {
+        console.error('[PSYCH] Points query error:', pointsError)
+        throw pointsError
+      }
       
       const points = (pointsData as any[] || []).map(mapDbToPoint)
+      console.log('[PSYCH] Found', points.length, 'points')
       
       // Fetch processes
+      console.log('[PSYCH] Querying processes for system_ids:', systemIds)
       const { data: processesData, error: processesError } = await (supabase as any)
         .from('psychrometric_processes')
         .select('*')
         .in('system_id', systemIds)
         .order('sort_order', { ascending: true })
       
-      if (processesError) throw processesError
+      if (processesError) {
+        console.error('[PSYCH] Processes query error:', processesError)
+        throw processesError
+      }
       
       const processes = (processesData as any[] || []).map(mapDbToProcess)
+      console.log('[PSYCH] Found', processes.length, 'processes')
       
+      console.log('[PSYCH] Updating local state with fetched data...')
       set(state => ({
         systems: [
           ...state.systems.filter(s => s.personalCalcId !== personalCalcId),
@@ -639,13 +830,21 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
           ...processes,
         ],
         isLoading: false,
+        lastFetchedPersonalCalcId: personalCalcId,
       }))
+      
+      console.log('[PSYCH] State updated successfully!')
+      console.log('[PSYCH] ========================================')
       
       // Calculate all points
       points.forEach(p => get().calculatePointState(p.id))
     } catch (error) {
-      console.error('Failed to fetch psychrometric systems:', error)
-      set({ error: 'Failed to load systems', isLoading: false })
+      console.error('[PSYCH] FETCH FAILED:', error)
+      set({ 
+        error: 'Failed to load systems', 
+        isLoading: false,
+        lastFetchedPersonalCalcId: personalCalcId,
+      })
     }
   },
   
@@ -808,6 +1007,36 @@ export const usePsychrometricStore = create<PsychrometricState>((set, get) => ({
   isPointShared: (pointId) => {
     return get().getPointUsageCount(pointId) > 1
   },
+  
+  // Get next available sequential point label (A, B, C, D...)
+  getNextPointLabel: (systemId) => {
+    const points = get().points.filter(p => p.systemId === systemId)
+    const existingLabels = points
+      .map(p => p.pointLabel)
+      .filter(label => /^[A-Z]$/.test(label))
+    
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    for (let i = 0; i < alphabet.length; i++) {
+      if (!existingLabels.includes(alphabet[i])) {
+        return alphabet[i]
+      }
+    }
+    return 'A' // Fallback
+  },
+  
+  // Get the end point of the last process in the system (for chaining)
+  getLastProcessEndPoint: (systemId) => {
+    const processes = get().processes
+      .filter(p => p.systemId === systemId)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+    
+    if (processes.length === 0) return null
+    
+    const lastProcess = processes[processes.length - 1]
+    if (!lastProcess.endPointId) return null
+    
+    return get().points.find(p => p.id === lastProcess.endPointId) || null
+  },
 }))
 
 // =========================================== 
@@ -820,6 +1049,7 @@ function mapDbToSystem(data: any): PsychrometricSystem {
     personalCalcId: data.personal_calc_id,
     userId: data.user_id,
     name: data.name,
+    systemCfm: data.system_cfm || 10000,
     altitudeFt: data.altitude_ft || 0,
     barometricPressurePsia: data.barometric_pressure_psia,
     tempUnit: data.temp_unit as TempUnit || 'F',
@@ -871,6 +1101,8 @@ function mapDbToProcess(data: any): PsychrometricProcess {
     totalLoadTons: data.total_load_tons,
     moistureLbHr: data.moisture_lb_hr,
     sortOrder: data.sort_order || 0,
+    label: data.label,
+    description: data.description,
     notes: data.notes,
     createdAt: new Date(data.created_at),
     updatedAt: data.updated_at ? new Date(data.updated_at) : undefined,

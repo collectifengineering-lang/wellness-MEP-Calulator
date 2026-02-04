@@ -172,6 +172,18 @@ export function calculateSpaceVentilation(
   const spaceTypeId = space.ashraeSpaceType || space.spaceType || 'office_space'
   const spaceType = getSpaceType(spaceTypeId)
   
+  // Calculate room volume for ACH conversions
+  const volumeCf = space.areaSf * space.ceilingHeightFt
+  
+  // ============================================
+  // Determine ventilation mode
+  // Priority: space override > space type database > default CFM rates
+  // ============================================
+  
+  // Check if space type uses ACH-based ventilation from database
+  const useAchFromDatabase = spaceType?.ventilationMode === 'ach' && 
+    (spaceType.ventilationAch || spaceType.exhaustAch)
+  
   // Get ventilation rates - use overrides if set, otherwise ASHRAE defaults
   const Rp = space.rpOverride ?? spaceType?.Rp ?? 5
   const Ra = space.raOverride ?? spaceType?.Ra ?? 0.06
@@ -180,9 +192,6 @@ export function calculateSpaceVentilation(
   const occupancy = space.occupancyOverride ?? 
     calculateDefaultOccupancy(spaceTypeId, space.areaSf)
   
-  // Calculate room volume for ACH conversions
-  const volumeCf = space.areaSf * space.ceilingHeightFt
-  
   // ============================================
   // ASHRAE 62.1 Ventilation Calculation
   // ============================================
@@ -190,9 +199,12 @@ export function calculateSpaceVentilation(
   // Breathing zone outdoor airflow: Vbz = Rp × Pz + Ra × Az
   const Vbz_ashrae = (Rp * occupancy) + (Ra * space.areaSf)
   
-  // ACH-based ventilation (if set)
-  const Vbz_ach = space.ventilationAch 
-    ? (space.ventilationAch * volumeCf) / 60 
+  // ACH-based ventilation - from space override OR from space type database
+  const ventilationAchToUse = space.ventilationAch ?? 
+    (useAchFromDatabase ? spaceType?.ventilationAch : undefined)
+  
+  const Vbz_ach = ventilationAchToUse 
+    ? (ventilationAchToUse * volumeCf) / 60 
     : 0
   
   // Use MAX of ASHRAE calculated vs ACH-derived
@@ -200,6 +212,9 @@ export function calculateSpaceVentilation(
   
   // Zone outdoor airflow: Voz = Vbz / Ez
   const Voz = Vbz / ez
+  
+  // Track which ACH was used (for display)
+  const ventilationAchUsed = Vbz_ach > Vbz_ashrae ? ventilationAchToUse : undefined
   
   // ============================================
   // Exhaust Calculation
@@ -216,13 +231,19 @@ export function calculateSpaceVentilation(
     }
   }
   
-  // ACH-based exhaust (if set)
-  const exhaustCfm_ach = space.exhaustAch 
-    ? (space.exhaustAch * volumeCf) / 60 
+  // ACH-based exhaust - from space override OR from space type database
+  const exhaustAchToUse = space.exhaustAch ?? 
+    (useAchFromDatabase ? spaceType?.exhaustAch : undefined)
+  
+  const exhaustCfm_ach = exhaustAchToUse 
+    ? (exhaustAchToUse * volumeCf) / 60 
     : 0
   
   // Use MAX of ASHRAE calculated vs ACH-derived
   const exhaustCfm = Math.max(exhaustCfm_ashrae, exhaustCfm_ach)
+  
+  // Track which ACH was used (for display)
+  const exhaustAchUsed = exhaustCfm_ach > exhaustCfm_ashrae ? exhaustAchToUse : undefined
   
   // ============================================
   // Supply Air Calculation
@@ -254,10 +275,10 @@ export function calculateSpaceVentilation(
     exhaustCfm: Math.round(exhaustCfm),
     coolingLoadBtuh: 0, // Calculated at system level
     heatingLoadBtuh: 0,
-    // Extended results for ACH tracking
+    // Extended results for ACH tracking (shows which ACH was actually used)
     supplyCfm: Math.round(supplyCfm),
-    ventilationAchUsed: space.ventilationAch,
-    exhaustAchUsed: space.exhaustAch,
+    ventilationAchUsed,  // From space override or database
+    exhaustAchUsed,      // From space override or database
     supplyAchUsed: space.supplyAch,
   } as SpaceVentilationResult
 }
@@ -583,4 +604,218 @@ export function estimateDiversityFactor(
   if (zoneCount <= 5) return 0.85
   if (zoneCount <= 10) return 0.75
   return 0.65
+}
+
+// ============================================
+// CONCEPT MEP ZONE VENTILATION CALCULATIONS
+// For use in ProjectWorkspace (not HVAC projects)
+// ============================================
+
+import type { Zone } from '../types'
+import { useSettingsStore, type DbAshraeSpaceType } from '../store/useSettingsStore'
+import { getZoneDefaults } from '../data/zoneDefaults'
+
+export interface ConceptMepVentilationResult {
+  ventilationCfm: number
+  exhaustCfm: number
+  calculated: boolean
+}
+
+/**
+ * Estimate fixture count for exhaust calculation in Concept MEP zones
+ */
+function estimateConceptFixtureCount(zone: Zone, unitType: string): number {
+  const fixtures = zone.fixtures || {}
+
+  switch (unitType) {
+    case 'shower': {
+      let count = 0
+      for (const [id, val] of Object.entries(fixtures)) {
+        if (id.toLowerCase().includes('shower')) {
+          count += val as number
+        }
+      }
+      return count || Math.max(1, Math.ceil(zone.sf / 150))
+    }
+    case 'toilet':
+    case 'urinal': {
+      let count = 0
+      for (const [id, val] of Object.entries(fixtures)) {
+        const idLower = id.toLowerCase()
+        if (idLower.includes('toilet') || idLower.includes('wc') || idLower.includes('urinal')) {
+          count += val as number
+        }
+      }
+      return count || Math.max(1, Math.ceil(zone.sf / 200))
+    }
+    case 'kitchen':
+      return 1
+    case 'room':
+      return 1
+    default:
+      return 1
+  }
+}
+
+/**
+ * Calculate exhaust CFM for Concept MEP zone based on ASHRAE space type
+ */
+function calculateConceptExhaustCfm(
+  spaceType: DbAshraeSpaceType | null,
+  zone: Zone,
+  ceilingHeight: number
+): number {
+  // ASHRAE 170 healthcare - all air exhaust
+  if (spaceType?.standard === 'ashrae170' && spaceType.all_air_exhaust) {
+    const volumeCf = zone.sf * ceilingHeight
+    return (spaceType.min_total_ach || 0) * volumeCf / 60
+  }
+
+  if (spaceType) {
+    let exhaustCfm = 0
+
+    // Area-based exhaust (CFM/SF)
+    if (spaceType.exhaust_cfm_sf) {
+      exhaustCfm += spaceType.exhaust_cfm_sf * zone.sf
+    }
+
+    // Fixture-based exhaust (CFM/unit)
+    if (spaceType.exhaust_cfm_unit && spaceType.exhaust_unit_type) {
+      const fixtureCount = estimateConceptFixtureCount(zone, spaceType.exhaust_unit_type)
+      const rate = spaceType.exhaust_cfm_min || spaceType.exhaust_cfm_unit
+      const fixtureExhaust = fixtureCount * rate
+
+      if (spaceType.exhaust_min_per_room) {
+        exhaustCfm += Math.max(spaceType.exhaust_min_per_room, fixtureExhaust)
+      } else {
+        exhaustCfm += fixtureExhaust
+      }
+    }
+
+    if (exhaustCfm > 0) return exhaustCfm
+  }
+
+  // Fallback to rate-based from zone
+  return zone.rates.exhaust_cfm_sf * zone.sf
+}
+
+/**
+ * Calculate ventilation for a Concept MEP zone
+ * Called at project load time to ensure persistence
+ * 
+ * Uses MAX of:
+ * - ACH-based CFM (if space type uses ACH mode or ASHRAE 170)
+ * - ASHRAE 62.1 CFM rates (Rp * occupants + Ra * area)
+ * - Zone fallback rates
+ */
+export function calculateConceptZoneVentilation(zone: Zone): ConceptMepVentilationResult {
+  // If zone has override flag AND values set, use stored values
+  if (zone.ventilationOverride && zone.ventilationCfm !== undefined && zone.exhaustCfm !== undefined) {
+    return {
+      ventilationCfm: zone.ventilationCfm,
+      exhaustCfm: zone.exhaustCfm,
+      calculated: false
+    }
+  }
+
+  // Get zone type defaults for fallback space type
+  const zoneTypeDefaults = getZoneDefaults(zone.type)
+
+  // Determine space type to use
+  const spaceTypeId = zone.ventilationSpaceType ?? 
+    zoneTypeDefaults.defaultVentilationSpaceType ?? 
+    'office'
+
+  // Get all ASHRAE space types from settings store
+  const allSpaceTypes = useSettingsStore.getState().getAllAshraeSpaceTypes()
+  const spaceType = allSpaceTypes.find(st => st.id === spaceTypeId) || null
+
+  const ceilingHeight = zone.ceilingHeightFt ?? 10
+  const volumeCf = zone.sf * ceilingHeight
+
+  // ============================================
+  // Calculate ventilation using MAX of all methods
+  // ============================================
+  
+  let ventilationCfm = zone.ventilationCfm
+
+  if (ventilationCfm === undefined) {
+    // Method 1: ACH-based (for wellness spaces with ventilation_mode = 'ach')
+    let ventilationCfm_ach = 0
+    if (spaceType?.ventilation_mode === 'ach' && spaceType.ventilation_ach) {
+      ventilationCfm_ach = (spaceType.ventilation_ach * volumeCf) / 60
+    }
+    
+    // Method 2: ASHRAE 170 healthcare ACH
+    let ventilationCfm_170 = 0
+    if (spaceType?.standard === 'ashrae170' && spaceType.min_oa_ach) {
+      ventilationCfm_170 = (spaceType.min_oa_ach * volumeCf) / 60
+    }
+    
+    // Method 3: ASHRAE 62.1 Rp/Ra rates
+    let ventilationCfm_62 = 0
+    if (spaceType && (spaceType.rp || spaceType.ra)) {
+      const defaultOccupancy = Math.ceil((zone.sf / 1000) * (spaceType.default_occupancy || 0))
+      const occupants = zone.occupants ?? defaultOccupancy
+      ventilationCfm_62 = ((spaceType.rp || 0) * occupants) + ((spaceType.ra || 0) * zone.sf)
+    }
+    
+    // Method 4: Zone fallback rates
+    const ventilationCfm_fallback = zone.rates.ventilation_cfm_sf * zone.sf
+    
+    // Use MAX of all methods
+    ventilationCfm = Math.max(ventilationCfm_ach, ventilationCfm_170, ventilationCfm_62, ventilationCfm_fallback)
+  }
+
+  // ============================================
+  // Calculate exhaust using MAX of all methods
+  // ============================================
+  
+  let exhaustCfm = zone.exhaustCfm
+
+  if (exhaustCfm === undefined) {
+    // Method 1: ACH-based exhaust (for wellness spaces with ventilation_mode = 'ach')
+    let exhaustCfm_ach = 0
+    if (spaceType?.ventilation_mode === 'ach' && spaceType.exhaust_ach) {
+      exhaustCfm_ach = (spaceType.exhaust_ach * volumeCf) / 60
+    }
+    
+    // Method 2: ASHRAE-calculated exhaust (area-based and fixture-based)
+    const exhaustCfm_ashrae = calculateConceptExhaustCfm(spaceType, zone, ceilingHeight)
+    
+    // Use MAX of ACH-based vs ASHRAE-calculated
+    exhaustCfm = Math.max(exhaustCfm_ach, exhaustCfm_ashrae)
+  }
+
+  return {
+    ventilationCfm: Math.round(ventilationCfm),
+    exhaustCfm: Math.round(exhaustCfm),
+    calculated: zone.ventilationCfm === undefined || zone.exhaustCfm === undefined
+  }
+}
+
+/**
+ * Ensure all Concept MEP zones have calculated ventilation values
+ * Called at project load time
+ */
+export function ensureZonesHaveVentilation(zones: Zone[]): Zone[] {
+  return zones.map(zone => {
+    // Skip if values already set
+    if (zone.ventilationCfm !== undefined && zone.exhaustCfm !== undefined) {
+      return zone
+    }
+
+    const result = calculateConceptZoneVentilation(zone)
+
+    // Only update if we actually calculated new values
+    if (result.calculated) {
+      return {
+        ...zone,
+        ventilationCfm: result.ventilationCfm,
+        exhaustCfm: result.exhaustCfm
+      }
+    }
+
+    return zone
+  })
 }

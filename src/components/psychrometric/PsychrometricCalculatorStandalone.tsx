@@ -189,11 +189,19 @@ export default function PsychrometricCalculatorStandalone() {
           </div>
         </div>
         
-        {/* Warning if not saved to project */}
+        {/* Link to Project Banner */}
         {currentCalc && (
-          <div className="mt-2 flex items-center gap-2 text-amber-400 text-xs">
-            <span>⚠️</span>
-            <span>Personal calculation - not linked to any project. Assign to a project to share with team.</span>
+          <div className="mt-3 flex items-center justify-between gap-4 px-3 py-2 bg-amber-900/30 border border-amber-700/50 rounded-lg">
+            <div className="flex items-center gap-2 text-amber-400 text-sm">
+              <span>⚠️</span>
+              <span>Not linked to any project</span>
+            </div>
+            <button
+              onClick={() => setShowProjectPicker(true)}
+              className="flex items-center gap-1.5 px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white text-sm rounded transition-colors"
+            >
+              🔗 Link to Project
+            </button>
           </div>
         )}
       </div>

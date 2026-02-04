@@ -15,10 +15,15 @@ export interface ASHRAE62SpaceType {
   category: string
   name: string
   displayName: string
+  // Ventilation mode: determines which rates to use
+  ventilationMode?: 'cfm_rates' | 'ach' | 'ach_healthcare'
   // People outdoor air rate (CFM per person)
   Rp: number
   // Area outdoor air rate (CFM per sq ft)
   Ra: number
+  // ACH-based ventilation (for wellness spaces like saunas)
+  ventilationAch?: number
+  exhaustAch?: number
   // Default occupant density (people per 1000 sq ft)
   defaultOccupancy: number
   // Air class (1 = low contaminants, 2 = moderate, 3 = high)
@@ -124,8 +129,11 @@ export function getAshrae62SpaceTypes(): ASHRAE62SpaceType[] {
     category: db.category,
     name: db.name,
     displayName: db.display_name,
+    ventilationMode: db.ventilation_mode as 'cfm_rates' | 'ach' | 'ach_healthcare' | undefined,
     Rp: db.rp ?? 0,
     Ra: db.ra ?? 0,
+    ventilationAch: db.ventilation_ach,
+    exhaustAch: db.exhaust_ach,
     defaultOccupancy: db.default_occupancy ?? 0,
     airClass: (db.air_class ?? 1) as 1 | 2 | 3,
     notes: db.notes,

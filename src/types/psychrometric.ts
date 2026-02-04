@@ -34,7 +34,18 @@ export type ProcessType =
   | 'dx_dehumidification'
   | 'desiccant_dehumidification'
   | 'mixing'
+  | 'oa_ra_mixing'  // Outdoor Air + Return Air mixing (usually first process)
+  | 'space_load'    // Space heating/cooling load process
   | 'custom'
+
+// Equipment types for HVAC system sizing integration
+export type EquipmentType = 
+  | 'cooling_coil'
+  | 'heating_coil'
+  | 'humidifier'
+  | 'dehumidifier'
+  | 'energy_recovery'
+  | 'other'
 
 // =========================================== 
 // PSYCHROMETRIC SYSTEM
@@ -46,6 +57,9 @@ export interface PsychrometricSystem {
   personalCalcId: string | null
   userId?: string
   name: string
+  
+  // System airflow - total CFM for the system
+  systemCfm: number
   
   // Atmospheric conditions
   altitudeFt: number
@@ -111,12 +125,18 @@ export interface PsychrometricProcess {
   startPointId: string | null
   endPointId: string | null
   
-  // Points for mixing processes
+  // Points for mixing processes (legacy)
   pointAId?: string | null
   pointBId?: string | null
   mixedPointId?: string | null
   
-  // Flow rate
+  // OA/RA Mixing specific fields
+  oaPointId?: string | null  // Outdoor air point
+  raPointId?: string | null  // Return air point
+  oaCfm?: number             // Outdoor air CFM
+  raCfm?: number             // Return air CFM
+  
+  // Flow rate (total for this process)
   cfm: number
   
   // Calculated loads
@@ -127,7 +147,15 @@ export interface PsychrometricProcess {
   moistureLbHr?: number
   
   sortOrder: number
-  notes?: string
+  
+  // Labels and descriptions for exports
+  label?: string       // Short label (e.g., "Preheat Coil", "Cooling Coil")
+  description?: string // Longer description (e.g., "Steam preheat for outside air")
+  notes?: string       // Additional notes
+  
+  // Equipment identification for HVAC system sizing
+  equipmentType?: EquipmentType | null
+  
   createdAt: Date
   updatedAt?: Date
 }

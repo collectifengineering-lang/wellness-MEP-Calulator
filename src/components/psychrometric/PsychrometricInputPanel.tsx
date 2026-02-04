@@ -286,6 +286,11 @@ function AirstreamInputs({
   result: StatePointResult | null
   onUpdate: (updates: Partial<PsychrometricPoint>) => void
 }) {
+  // When inputMode is 'db_w' (placed via chart), show calculated WB from result
+  // Otherwise show the stored wetBulbF which user can edit
+  const isChartPlaced = point.inputMode === 'db_w'
+  const displayWB = isChartPlaced && result ? result.wetBulbF : (point.wetBulbF || 58)
+  
   return (
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
@@ -295,12 +300,23 @@ function AirstreamInputs({
           onChange={(v) => onUpdate({ dryBulbF: v })}
           compact
         />
-        <InputField
-          label="WB (°F)"
-          value={point.wetBulbF || 58}
-          onChange={(v) => onUpdate({ wetBulbF: v })}
-          compact
-        />
+        {isChartPlaced ? (
+          // Read-only WB when point was placed on chart (calculated from DB + W)
+          <div>
+            <label className="text-xs text-surface-400 mb-1 block">WB (°F)</label>
+            <div className="bg-gray-800/50 border border-gray-700 rounded px-2 py-1 text-sm text-cyan-400">
+              {displayWB.toFixed(1)}
+              <span className="text-xs text-surface-500 ml-1">(calc)</span>
+            </div>
+          </div>
+        ) : (
+          <InputField
+            label="WB (°F)"
+            value={displayWB}
+            onChange={(v) => onUpdate({ wetBulbF: v })}
+            compact
+          />
+        )}
       </div>
       <InputField
         label="SCFM"

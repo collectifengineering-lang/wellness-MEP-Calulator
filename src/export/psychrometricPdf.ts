@@ -29,6 +29,8 @@ const PROCESS_NAMES: Record<ProcessType, string> = {
   dx_dehumidification: 'DX Dehumidification',
   desiccant_dehumidification: 'Desiccant Dehum.',
   mixing: 'Air Mixing',
+  oa_ra_mixing: 'OA/RA Mixing',
+  space_load: 'Space Load',
   custom: 'Custom',
 }
 
@@ -191,7 +193,8 @@ function buildProcessesSection(
   // Build process table
   const headers: TableCell[] = [
     { text: '#', style: 'tableHeader', alignment: 'center' },
-    { text: 'Process Name', style: 'tableHeader' },
+    { text: 'Process / Label', style: 'tableHeader' },
+    { text: 'Description', style: 'tableHeader' },
     { text: 'Type', style: 'tableHeader' },
     { text: 'Start', style: 'tableHeader', alignment: 'center' },
     { text: 'End', style: 'tableHeader', alignment: 'center' },
@@ -235,7 +238,11 @@ function buildProcessesSection(
     
     body.push([
       { text: isChained ? `⛓ ${idx + 1}` : `${idx + 1}`, alignment: 'center', color: isChained ? '#06b6d4' : undefined },
-      { text: process.name },
+      { 
+        text: process.label ? `${process.name}\n${process.label}` : process.name, 
+        fontSize: process.label ? 9 : 10 
+      },
+      { text: process.description || '', fontSize: 8, color: '#666666' },
       { text: PROCESS_NAMES[process.processType] || process.processType, fontSize: 9 },
       { 
         text: startPt ? `${startPt.pointLabel}\n${startPoint?.dryBulbF.toFixed(0)}°F` : '—', 
@@ -275,7 +282,8 @@ function buildProcessesSection(
   
   // Add totals row
   body.push([
-    { text: '', colSpan: 5 },
+    { text: '', colSpan: 6 },
+    {},
     {},
     {},
     {},
@@ -297,7 +305,7 @@ function buildProcessesSection(
   content.push({
     table: {
       headerRows: 1,
-      widths: ['auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
+      widths: ['auto', 'auto', '*', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
       body,
     },
     layout: 'lightHorizontalLines',

@@ -1,6 +1,8 @@
-# Wellness Facility MEP Calculator
+# Collectif GOAT 2 🐐
 
-A professional web application for estimating utility loads in wellness facilities (bathhouses, spas, hybrid gym/spa concepts). Built for COLLECTIF Engineering PLLC.
+A professional MEP engineering toolkit for wellness facilities (bathhouses, spas, hybrid gym/spa concepts). Built for COLLECTIF Engineering PLLC.
+
+The **Greatest Of All Tools** for MEP concept design, HVAC calculations, psychrometrics, and system sizing.
 
 ## Features
 
