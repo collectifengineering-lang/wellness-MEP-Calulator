@@ -59,10 +59,12 @@ export async function exportToPDF(
       { text: 'Air Conditioning / Heating:', style: 'subHeader' },
       {
         ul: [
-          `Estimated Cooling Capacity: ${results.hvac.totalTons} Tons`,
-          `Estimated Heating Capacity: ${results.hvac.totalMBH.toLocaleString()} MBH`,
+          `Space Cooling: ${results.hvac.totalTons} Tons (${Math.round(totalSF / results.hvac.totalTons)} SF/Ton)`,
+          ...(results.hvac.poolChillerTons > 0 ? [`Pool Chiller: ${results.hvac.poolChillerTons} Tons`] : []),
+          ...(results.hvac.dehumidLbHr > 0 ? [`Dehumidification: ${results.hvac.dehumidLbHr} lb/hr (~${results.hvac.dehumidTons || Math.round(results.hvac.dehumidLbHr * 0.2)} Tons)`] : []),
+          ...(results.hvac.totalPlantTons && results.hvac.totalPlantTons !== results.hvac.totalTons ? [`Total Plant Cooling: ${results.hvac.totalPlantTons} Tons (${Math.round(totalSF / results.hvac.totalPlantTons)} SF/Ton overall)`] : []),
+          `Heating: ${results.hvac.totalMBH.toLocaleString()} MBH`,
           `Recommended zoning: ~${results.hvac.rtuCount} RTUs/units for ${zones.length} program areas`,
-          ...(results.hvac.dehumidLbHr > 0 ? [`Pool dehumidification: ${results.hvac.dehumidLbHr} lb/hr`] : []),
         ],
         style: 'list',
       },

@@ -123,7 +123,7 @@ export async function exportConceptPDF(
               { text: 'GAS', style: 'summaryHeader', fillColor: '#fce8e8' },
             ],
             [
-              { text: `${results.hvac.totalTons} Tons\n${results.hvac.totalMBH.toLocaleString()} MBH`, style: 'summaryValue', fillColor: '#f4fafd' },
+              { text: `${results.hvac.totalPlantTons || results.hvac.totalTons} Tons\n${Math.round(totalSF / (results.hvac.totalPlantTons || results.hvac.totalTons))} SF/Ton`, style: 'summaryValue', fillColor: '#f4fafd' },
               { text: `${results.electrical.totalKVA.toLocaleString()} kVA\n${results.electrical.recommendedService}`, style: 'summaryValue', fillColor: '#fffdf4' },
               { text: `${results.plumbing.peakGPM} GPM\n${results.plumbing.totalWSFU} WSFU`, style: 'summaryValue', fillColor: '#f4fdf8' },
               { text: `${results.gas.totalCFH.toLocaleString()} CFH\n${results.gas.totalMBH.toLocaleString()} MBH`, style: 'summaryValue', fillColor: '#fdf4f4' },
@@ -143,9 +143,11 @@ export async function exportConceptPDF(
               { text: 'Air Conditioning / Heating:', style: 'subHeader' },
               { 
                 ul: [
-                  `Cooling: ${results.hvac.totalTons} Tons (${Math.round(totalSF / results.hvac.totalTons)} SF/Ton)`,
+                  `Space Cooling: ${results.hvac.totalTons} Tons (${Math.round(totalSF / results.hvac.totalTons)} SF/Ton)`,
+                  ...(results.hvac.poolChillerTons > 0 ? [`Pool Chiller: ${results.hvac.poolChillerTons} Tons`] : []),
+                  ...(results.hvac.dehumidLbHr > 0 ? [`Dehumidification: ${results.hvac.dehumidLbHr} lb/hr (~${results.hvac.dehumidTons || Math.round(results.hvac.dehumidLbHr * 0.2)} Tons)`] : []),
+                  ...(results.hvac.totalPlantTons && results.hvac.totalPlantTons !== results.hvac.totalTons ? [`Total Plant Cooling: ${results.hvac.totalPlantTons} Tons (${Math.round(totalSF / results.hvac.totalPlantTons)} SF/Ton overall)`] : []),
                   `Heating: ${results.hvac.totalMBH.toLocaleString()} MBH`,
-                  ...(results.hvac.dehumidLbHr > 0 ? [`Dehumidification: ${results.hvac.dehumidLbHr} lb/hr`] : []),
                 ],
                 style: 'list',
               },
@@ -607,7 +609,10 @@ export async function exportConceptWord(
 
         // 1. Mechanical
         new Paragraph({ text: '1. Mechanical (HVAC)', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 100 } }),
-        new Paragraph({ text: `Cooling: ${results.hvac.totalTons} Tons (${Math.round(totalSF / results.hvac.totalTons)} SF/Ton)` }),
+        new Paragraph({ text: `Space Cooling: ${results.hvac.totalTons} Tons (${Math.round(totalSF / results.hvac.totalTons)} SF/Ton)` }),
+        ...(results.hvac.poolChillerTons > 0 ? [new Paragraph({ text: `Pool Chiller: ${results.hvac.poolChillerTons} Tons` })] : []),
+        ...(results.hvac.dehumidLbHr > 0 ? [new Paragraph({ text: `Dehumidification: ${results.hvac.dehumidLbHr} lb/hr (~${results.hvac.dehumidTons || Math.round(results.hvac.dehumidLbHr * 0.2)} Tons)` })] : []),
+        ...(results.hvac.totalPlantTons && results.hvac.totalPlantTons !== results.hvac.totalTons ? [new Paragraph({ text: `Total Plant Cooling: ${results.hvac.totalPlantTons} Tons (${Math.round(totalSF / results.hvac.totalPlantTons)} SF/Ton overall)` })] : []),
         new Paragraph({ text: `Heating: ${results.hvac.totalMBH.toLocaleString()} MBH` }),
         new Paragraph({ text: `RTU/AHU Count: ~${results.hvac.rtuCount} units` }),
         new Paragraph({ text: `Fresh Air: ${results.hvac.totalVentCFM.toLocaleString()} CFM  •  Exhaust: ${results.hvac.totalExhaustCFM.toLocaleString()} CFM` }),
