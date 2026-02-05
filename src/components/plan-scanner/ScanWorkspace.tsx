@@ -4,7 +4,7 @@ import { Logo } from '../shared/Logo'
 import UserMenu from '../auth/UserMenu'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useScannerStore, ExtractedSpace, ScanDrawing } from '../../store/useScannerStore'
-import { analyzeDrawing, calculateScale, detectSpaceBoundaries, formatFloorPrefix, type DetectedRegion } from '../../lib/planAnalyzer'
+import { analyzeDrawing, calculateScale, detectSpaceBoundaries, formatFloorPrefix, readTagFromRegion, type DetectedRegion } from '../../lib/planAnalyzer'
 import { extractZonesFromPDF, type ExtractedZone } from '../../lib/xai'
 import { v4 as uuidv4 } from 'uuid'
 import ExportModal from './ExportModal'
@@ -46,7 +46,21 @@ export default function ScanWorkspace() {
   const [uploadedPdfPageCount, setUploadedPdfPageCount] = useState(0)
   
   // Drawing mode for space boundaries
-  const [drawingMode, setDrawingMode] = useState<'none' | 'rectangle' | 'polygon'>('none')
+  const [drawingMode, setDrawingMode] = useState<'none' | 'rectangle' | 'polygon' | 'tagReader'>('none')
+  
+  // Tag Reader mode state
+  const [tagBoxSize, setTagBoxSize] = useState({ width: 150, height: 80 }) // Default tag box size in pixels (at display scale)
+  const [showTagModal, setShowTagModal] = useState(false)
+  const [tagModalData, setTagModalData] = useState<{
+    croppedImageUrl: string
+    clickX: number  // percentage
+    clickY: number  // percentage
+    aiResult: { roomName: string | null; roomNumber: string | null; squareFeet: number | null; confidence: string } | null
+    isLoading: boolean
+  } | null>(null)
+  const [tagEditName, setTagEditName] = useState('')
+  const [tagEditSF, setTagEditSF] = useState('')
+  const [tagEditFloor, setTagEditFloor] = useState('')
   
   // Store regions as PERCENTAGES (0-100) so they scale with image display
   // Supports both rectangles and polygons
@@ -80,6 +94,7 @@ export default function ScanWorkspace() {
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null)
   const [showRegionNameModal, setShowRegionNameModal] = useState(false)
   const [newRegionName, setNewRegionName] = useState('')
+  const [readingTagRegionId, setReadingTagRegionId] = useState<string | null>(null) // Track which region is being AI-read
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   const imageContainerRef = useRef<HTMLDivElement>(null)
   
@@ -457,15 +472,110 @@ export default function ScanWorkspace() {
     }
   }
 
-  const handleImageClick = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
-    if (!calibrationMode || !imageRef.current) return
+  const handleImageClick = useCallback(async (e: React.MouseEvent<HTMLImageElement>) => {
+    if (!imageRef.current) return
     
     const rect = imageRef.current.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
     
-    addCalibrationPoint({ x, y })
-  }, [calibrationMode, addCalibrationPoint])
+    // Calibration mode
+    if (calibrationMode) {
+      addCalibrationPoint({ x, y })
+      return
+    }
+    
+    // Tag Reader mode - click to read a tag
+    if (drawingMode === 'tagReader') {
+      const imgDisplayWidth = rect.width
+      const imgDisplayHeight = rect.height
+      const imgNaturalWidth = imageRef.current.naturalWidth
+      const imgNaturalHeight = imageRef.current.naturalHeight
+      
+      // Convert click position to percentage
+      const clickXPercent = (x / imgDisplayWidth) * 100
+      const clickYPercent = (y / imgDisplayHeight) * 100
+      
+      // Calculate crop box in natural image pixels (centered on click)
+      // Scale the tag box size from display to natural resolution
+      const scaleRatio = imgNaturalWidth / imgDisplayWidth
+      const cropWidthNatural = tagBoxSize.width * scaleRatio
+      const cropHeightNatural = tagBoxSize.height * scaleRatio
+      
+      const clickXNatural = (clickXPercent / 100) * imgNaturalWidth
+      const clickYNatural = (clickYPercent / 100) * imgNaturalHeight
+      
+      // Center the box on the click point
+      let cropX = Math.floor(clickXNatural - cropWidthNatural / 2)
+      let cropY = Math.floor(clickYNatural - cropHeightNatural / 2)
+      
+      // Clamp to image bounds
+      cropX = Math.max(0, Math.min(cropX, imgNaturalWidth - cropWidthNatural))
+      cropY = Math.max(0, Math.min(cropY, imgNaturalHeight - cropHeightNatural))
+      
+      const cropWidth = Math.min(cropWidthNatural, imgNaturalWidth - cropX)
+      const cropHeight = Math.min(cropHeightNatural, imgNaturalHeight - cropY)
+      
+      console.log(`[Tag Reader] Click at ${clickXPercent.toFixed(1)}%, ${clickYPercent.toFixed(1)}%`)
+      console.log(`[Tag Reader] Cropping ${cropWidth}x${cropHeight} at ${cropX},${cropY} from ${imgNaturalWidth}x${imgNaturalHeight}`)
+      
+      // Create canvas to crop the image
+      const canvas = document.createElement('canvas')
+      canvas.width = cropWidth
+      canvas.height = cropHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      
+      ctx.drawImage(
+        imageRef.current,
+        cropX, cropY, cropWidth, cropHeight,
+        0, 0, cropWidth, cropHeight
+      )
+      
+      const croppedImageUrl = canvas.toDataURL('image/png')
+      
+      // Open modal with loading state
+      setTagModalData({
+        croppedImageUrl,
+        clickX: clickXPercent,
+        clickY: clickYPercent,
+        aiResult: null,
+        isLoading: true
+      })
+      setTagEditName('')
+      setTagEditSF('')
+      setTagEditFloor(currentScan?.extractedSpaces[0]?.floor || '1')
+      setShowTagModal(true)
+      
+      // Send to AI for reading
+      try {
+        const result = await readTagFromRegion(croppedImageUrl)
+        console.log('[Tag Reader] AI Result:', result)
+        
+        setTagModalData(prev => prev ? {
+          ...prev,
+          aiResult: result,
+          isLoading: false
+        } : null)
+        
+        // Pre-fill the edit fields with AI result
+        if (result.roomName) {
+          const roomNumber = result.roomNumber ? ` ${result.roomNumber}` : ''
+          setTagEditName(`${result.roomName}${roomNumber}`)
+        }
+        if (result.squareFeet) {
+          setTagEditSF(String(result.squareFeet))
+        }
+      } catch (error) {
+        console.error('[Tag Reader] AI Error:', error)
+        setTagModalData(prev => prev ? {
+          ...prev,
+          aiResult: { roomName: null, roomNumber: null, squareFeet: null, confidence: 'low' },
+          isLoading: false
+        } : null)
+      }
+    }
+  }, [calibrationMode, addCalibrationPoint, drawingMode, tagBoxSize, currentScan?.extractedSpaces])
   
   // ============================================
   // Area Calculation Helpers (must be before callbacks that use them)
@@ -759,6 +869,136 @@ export default function ScanWorkspace() {
     // Switch to spaces tab to edit
     setActiveTab('spaces')
     setSelectedSpaceId(newSpace.id)
+  }
+
+  // Read Tag from a drawn region using AI (high-res crop)
+  const handleReadTag = async (region: typeof drawnRegions[0]) => {
+    if (!imageRef.current || !renderedImageUrl) return
+    
+    setReadingTagRegionId(region.id)
+    
+    try {
+      // Get region bounds (in percentages)
+      let xPercent: number, yPercent: number, widthPercent: number, heightPercent: number
+      
+      if (region.type === 'polygon' && region.points) {
+        const bounds = getPolygonBounds(region.points)
+        if (!bounds) throw new Error('Could not calculate polygon bounds')
+        xPercent = bounds.xPercent
+        yPercent = bounds.yPercent
+        widthPercent = bounds.widthPercent
+        heightPercent = bounds.heightPercent
+      } else {
+        xPercent = region.xPercent || 0
+        yPercent = region.yPercent || 0
+        widthPercent = region.widthPercent || 0
+        heightPercent = region.heightPercent || 0
+      }
+      
+      // Convert percentages to actual pixels on the FULL resolution image
+      const imgNaturalWidth = imageRef.current.naturalWidth
+      const imgNaturalHeight = imageRef.current.naturalHeight
+      
+      const cropX = Math.floor((xPercent / 100) * imgNaturalWidth)
+      const cropY = Math.floor((yPercent / 100) * imgNaturalHeight)
+      const cropWidth = Math.floor((widthPercent / 100) * imgNaturalWidth)
+      const cropHeight = Math.floor((heightPercent / 100) * imgNaturalHeight)
+      
+      // Add padding around the tag (20% on each side) to capture context
+      const padding = 0.2
+      const paddedX = Math.max(0, Math.floor(cropX - cropWidth * padding))
+      const paddedY = Math.max(0, Math.floor(cropY - cropHeight * padding))
+      const paddedWidth = Math.min(imgNaturalWidth - paddedX, Math.floor(cropWidth * (1 + 2 * padding)))
+      const paddedHeight = Math.min(imgNaturalHeight - paddedY, Math.floor(cropHeight * (1 + 2 * padding)))
+      
+      console.log(`[Read Tag] Cropping region: ${paddedX},${paddedY} ${paddedWidth}x${paddedHeight} from ${imgNaturalWidth}x${imgNaturalHeight}`)
+      
+      // Create a canvas to crop the image
+      const canvas = document.createElement('canvas')
+      canvas.width = paddedWidth
+      canvas.height = paddedHeight
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('Could not get canvas context')
+      
+      // Draw the cropped region
+      ctx.drawImage(
+        imageRef.current,
+        paddedX, paddedY, paddedWidth, paddedHeight,  // Source rect
+        0, 0, paddedWidth, paddedHeight                // Dest rect
+      )
+      
+      // Get base64 of cropped region
+      const croppedBase64 = canvas.toDataURL('image/png')
+      
+      // Send to AI for reading
+      const result = await readTagFromRegion(croppedBase64)
+      
+      console.log('[Read Tag] AI Result:', result)
+      
+      if (result.roomName) {
+        // Update the region with the read values
+        setDrawnRegions(prev => prev.map(r => {
+          if (r.id === region.id) {
+            const roomNumber = result.roomNumber ? ` ${result.roomNumber}` : ''
+            return {
+              ...r,
+              name: `${result.roomName}${roomNumber}`,
+              areaSF: result.squareFeet || r.areaSF,
+              confidenceSource: result.squareFeet ? 'explicit' as const : r.confidenceSource
+            }
+          }
+          return r
+        }))
+        
+        alert(`✅ Tag Read!\n\nRoom: ${result.roomName}${result.roomNumber ? ` (${result.roomNumber})` : ''}\nSF: ${result.squareFeet ? result.squareFeet + ' SF' : 'Not found'}\nConfidence: ${result.confidence}`)
+      } else {
+        alert('❌ Could not read tag. Try:\n• Drawing a tighter box around just the tag\n• Making sure the tag text is clearly visible\n• Drawing a larger selection if text is small')
+      }
+    } catch (error) {
+      console.error('[Read Tag] Error:', error)
+      alert(`Error reading tag: ${error}`)
+    } finally {
+      setReadingTagRegionId(null)
+    }
+  }
+
+  // Confirm tag from modal and add as extracted space
+  const handleConfirmTag = () => {
+    if (!currentScan || !tagModalData || !tagEditName.trim()) return
+    
+    const sf = parseInt(tagEditSF) || 0
+    const floor = tagEditFloor.trim() || '1'
+    
+    // Create new extracted space
+    const newSpace: ExtractedSpace = {
+      id: uuidv4(),
+      name: tagEditName.trim(),
+      sf,
+      floor,
+      fixtures: {},
+      equipment: [],
+      confidence: tagModalData.aiResult?.confidence === 'high' ? 90 : 70,
+      // Store approximate bounding box based on click position and tag box size
+      boundingBox: {
+        xPercent: Math.max(0, tagModalData.clickX - 2),
+        yPercent: Math.max(0, tagModalData.clickY - 1.5),
+        widthPercent: 4,
+        heightPercent: 3
+      },
+      pageNumber: selectedDrawing?.pageNumber,
+      drawingId: selectedDrawing?.id,
+      userCreated: false,
+      confidenceSource: sf > 0 ? 'ai_explicit' : 'ai_estimated'
+    }
+    
+    setExtractedSpaces(currentScan.id, [...currentScan.extractedSpaces, newSpace])
+    
+    // Close modal
+    setShowTagModal(false)
+    setTagModalData(null)
+    
+    // Stay in tag reader mode for next tag
+    // Don't switch tabs - let user continue clicking tags
   }
 
   const handleAnalyzeAllDrawings = async () => {
@@ -1300,6 +1540,24 @@ export default function ScanWorkspace() {
                       ⬡ Draw Poly
                     </button>
                     
+                    {/* Tag Reader Mode - Click to read room tags */}
+                    <button
+                      onClick={() => {
+                        setDrawingMode(drawingMode === 'tagReader' ? 'none' : 'tagReader')
+                        setCalibrationMode(false)
+                        setCurrentDrawing(null)
+                        setCurrentPolygon([])
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 ${
+                        drawingMode === 'tagReader'
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600'
+                      }`}
+                      title="Click on room tags to read them with AI"
+                    >
+                      🏷️ Read Tags
+                    </button>
+                    
                     <button
                       onClick={() => setShowScaleModal(true)}
                       className="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 bg-surface-700 text-surface-300 hover:text-white hover:bg-surface-600"
@@ -1523,6 +1781,148 @@ export default function ScanWorkspace() {
                 </div>
               )}
 
+              {/* Tag Reader Modal - Shows cropped tag image + AI result + editable fields */}
+              {showTagModal && tagModalData && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-surface-800 border border-amber-500/50 rounded-xl p-6 shadow-2xl max-w-md w-full">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                        🏷️ Read Room Tag
+                      </h3>
+                      <button 
+                        onClick={() => {
+                          setShowTagModal(false)
+                          setTagModalData(null)
+                        }}
+                        className="text-surface-400 hover:text-white"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    
+                    {/* Cropped Image Preview */}
+                    <div className="mb-4 p-2 bg-surface-900 rounded-lg border border-surface-700">
+                      <img 
+                        src={tagModalData.croppedImageUrl} 
+                        alt="Cropped tag" 
+                        className="max-w-full h-auto mx-auto"
+                        style={{ maxHeight: '150px' }}
+                      />
+                    </div>
+                    
+                    {/* Tag Box Size Adjuster */}
+                    <div className="mb-4 p-3 bg-surface-700/50 rounded-lg">
+                      <label className="text-xs text-surface-400 block mb-2">
+                        Tag Box Size (adjust if tags are larger/smaller)
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-surface-500">W:</span>
+                          <input
+                            type="number"
+                            value={tagBoxSize.width}
+                            onChange={(e) => setTagBoxSize(prev => ({ ...prev, width: parseInt(e.target.value) || 100 }))}
+                            className="w-16 px-2 py-1 bg-surface-700 border border-surface-600 rounded text-white text-sm"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-surface-500">H:</span>
+                          <input
+                            type="number"
+                            value={tagBoxSize.height}
+                            onChange={(e) => setTagBoxSize(prev => ({ ...prev, height: parseInt(e.target.value) || 60 }))}
+                            className="w-16 px-2 py-1 bg-surface-700 border border-surface-600 rounded text-white text-sm"
+                          />
+                        </div>
+                        <span className="text-xs text-surface-500">px</span>
+                      </div>
+                    </div>
+                    
+                    {/* AI Status */}
+                    {tagModalData.isLoading && (
+                      <div className="mb-4 text-center text-amber-400 text-sm">
+                        🔍 AI is reading the tag...
+                      </div>
+                    )}
+                    
+                    {/* AI Result Badge */}
+                    {!tagModalData.isLoading && tagModalData.aiResult && (
+                      <div className={`mb-4 p-2 rounded-lg text-sm ${
+                        tagModalData.aiResult.roomName 
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      }`}>
+                        {tagModalData.aiResult.roomName 
+                          ? `✓ AI detected: ${tagModalData.aiResult.roomName}${tagModalData.aiResult.squareFeet ? ` (${tagModalData.aiResult.squareFeet} SF)` : ''}`
+                          : '⚠️ AI could not read tag clearly. Enter manually below.'
+                        }
+                      </div>
+                    )}
+                    
+                    {/* Editable Fields */}
+                    <div className="space-y-3 mb-4">
+                      <div>
+                        <label className="text-xs text-surface-400 block mb-1">Room Name *</label>
+                        <input
+                          type="text"
+                          value={tagEditName}
+                          onChange={(e) => setTagEditName(e.target.value)}
+                          placeholder="e.g., Bedroom, Kitchen, Living Room"
+                          className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white placeholder-surface-500 focus:border-amber-500 focus:outline-none"
+                          autoFocus
+                        />
+                      </div>
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <label className="text-xs text-surface-400 block mb-1">Square Feet</label>
+                          <input
+                            type="number"
+                            value={tagEditSF}
+                            onChange={(e) => setTagEditSF(e.target.value)}
+                            placeholder="150"
+                            className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white placeholder-surface-500 focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
+                        <div className="w-24">
+                          <label className="text-xs text-surface-400 block mb-1">Floor</label>
+                          <input
+                            type="text"
+                            value={tagEditFloor}
+                            onChange={(e) => setTagEditFloor(e.target.value)}
+                            placeholder="1"
+                            className="w-full px-3 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white placeholder-surface-500 focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Actions */}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => {
+                          setShowTagModal(false)
+                          setTagModalData(null)
+                        }}
+                        className="flex-1 px-4 py-2 bg-surface-700 hover:bg-surface-600 text-white rounded-lg"
+                      >
+                        Skip
+                      </button>
+                      <button
+                        onClick={handleConfirmTag}
+                        disabled={!tagEditName.trim()}
+                        className="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-medium"
+                      >
+                        ➕ Add Space
+                      </button>
+                    </div>
+                    
+                    <p className="text-xs text-surface-500 mt-3 text-center">
+                      Click another tag after adding to continue. Tag box size is remembered.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Calibration Distance Input (for two-point) */}
               {showCalibrationInput && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1599,7 +1999,7 @@ export default function ScanWorkspace() {
                           ref={imageRef}
                           src={renderedImageUrl}
                           alt={selectedDrawing.fileName}
-                          className={`max-w-full h-auto ${calibrationMode ? 'cursor-crosshair' : ''} ${drawingMode !== 'none' ? 'pointer-events-none' : ''}`}
+                          className={`max-w-full h-auto ${calibrationMode || drawingMode === 'tagReader' ? 'cursor-crosshair' : ''} ${drawingMode !== 'none' && drawingMode !== 'tagReader' ? 'pointer-events-none' : ''}`}
                           onClick={handleImageClick}
                           onLoad={updateImageBounds}
                           onError={(e) => {
@@ -1696,6 +2096,23 @@ export default function ScanWorkspace() {
                           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-400 text-white rounded-full text-xs flex items-center justify-center"
                         >
                           ×
+                        </button>
+                        
+                        {/* Read Tag Button - AI reads the cropped region */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleReadTag(region)
+                          }}
+                          disabled={readingTagRegionId === region.id}
+                          className={`absolute bottom-1 left-1 px-2 py-0.5 text-white rounded text-xs ${
+                            readingTagRegionId === region.id 
+                              ? 'bg-amber-600 cursor-wait' 
+                              : 'bg-cyan-600 hover:bg-cyan-500'
+                          }`}
+                          title="AI reads the room name and SF from this tag"
+                        >
+                          {readingTagRegionId === region.id ? '🔍...' : '🔍 Read'}
                         </button>
                         
                         {/* Add as Space Button (if not analyzed) */}

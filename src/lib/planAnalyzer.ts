@@ -1344,3 +1344,175 @@ export async function detectSeatsInRegion(
 
 // Export the floor prefix formatter for use elsewhere
 export { formatFloorPrefix }
+
+// ============================================================================
+// TAG READER - For manually selected regions
+// ============================================================================
+
+const TAG_READER_PROMPT = `You are reading a ROOM TAG from an architectural floor plan.
+
+This cropped image shows a room tag/label. Extract the information you see.
+
+LOOK FOR:
+1. **Room Name**: The main text (e.g., "BEDROOM", "KITCHEN", "LIVING ROOM", "BATHROOM")
+2. **Room Number**: A number like "101", "201", "A1" (optional)
+3. **Square Footage**: A number followed by "SF", "SQFT", or "SQ FT" (e.g., "150 SF")
+
+COMMON TAG FORMATS:
+┌─────────────┐
+│  BEDROOM    │  ← Room name
+│    101      │  ← Room number  
+│  150 SF     │  ← Square footage
+└─────────────┘
+
+Or inline: "KITCHEN 200 SF"
+
+RESPOND WITH JSON ONLY:
+{
+  "roomName": "Bedroom",
+  "roomNumber": "101",
+  "squareFeet": 150,
+  "confidence": "high"
+}
+
+RULES:
+- If you can clearly read the name, set confidence to "high"
+- If you're unsure or guessing, set confidence to "low"
+- If no SF is visible, set squareFeet to null
+- Use null for any field you cannot read
+- DO NOT invent or guess room names - only report what you can read`
+
+export interface TagReadResult {
+  roomName: string | null
+  roomNumber: string | null
+  squareFeet: number | null
+  confidence: 'high' | 'low'
+  error?: string
+}
+
+export async function readTagFromRegion(imageBase64: string): Promise<TagReadResult> {
+  const defaultResult: TagReadResult = {
+    roomName: null,
+    roomNumber: null,
+    squareFeet: null,
+    confidence: 'low'
+  }
+
+  try {
+    // Try Claude first
+    const claudeKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+    if (claudeKey) {
+      console.log('[Tag Reader] Using Claude to read tag...')
+      
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': claudeKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 500,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: 'image/png',
+                  data: imageBase64.replace(/^data:image\/\w+;base64,/, '')
+                }
+              },
+              {
+                type: 'text',
+                text: TAG_READER_PROMPT
+              }
+            ]
+          }]
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const text = data.content?.[0]?.text || ''
+        
+        // Parse JSON from response
+        const jsonMatch = text.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          try {
+            const parsed = JSON.parse(jsonMatch[0])
+            return {
+              roomName: parsed.roomName || null,
+              roomNumber: parsed.roomNumber || null,
+              squareFeet: parsed.squareFeet || parsed.sf || null,
+              confidence: parsed.confidence === 'high' ? 'high' : 'low'
+            }
+          } catch (e) {
+            console.warn('[Tag Reader] Failed to parse JSON:', e)
+          }
+        }
+      }
+    }
+
+    // Fallback to Grok
+    const grokKey = import.meta.env.VITE_XAI_API_KEY
+    if (grokKey) {
+      console.log('[Tag Reader] Using Grok to read tag...')
+      
+      const response = await fetch('https://api.x.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${grokKey}`
+        },
+        body: JSON.stringify({
+          model: 'grok-2-vision-latest',
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'image_url',
+                image_url: {
+                  url: imageBase64.startsWith('data:') ? imageBase64 : `data:image/png;base64,${imageBase64}`
+                }
+              },
+              {
+                type: 'text',
+                text: TAG_READER_PROMPT
+              }
+            ]
+          }],
+          max_tokens: 500
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const text = data.choices?.[0]?.message?.content || ''
+        
+        const jsonMatch = text.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          try {
+            const parsed = JSON.parse(jsonMatch[0])
+            return {
+              roomName: parsed.roomName || null,
+              roomNumber: parsed.roomNumber || null,
+              squareFeet: parsed.squareFeet || parsed.sf || null,
+              confidence: parsed.confidence === 'high' ? 'high' : 'low'
+            }
+          } catch (e) {
+            console.warn('[Tag Reader] Failed to parse Grok JSON:', e)
+          }
+        }
+      }
+    }
+
+    return { ...defaultResult, error: 'No API keys available' }
+  } catch (error) {
+    console.error('[Tag Reader] Error:', error)
+    return { ...defaultResult, error: String(error) }
+  }
+}
