@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { ExtractedSpace } from '../../store/useScannerStore'
-import { useSettingsStore } from '../../store/useSettingsStore'
+import { useSettingsStore, DbZoneTypeDefault } from '../../store/useSettingsStore'
 
 interface Props {
   isOpen: boolean
@@ -12,69 +12,55 @@ interface Props {
 
 type MatchingMode = 'residential' | 'commercial'
 
-// AI prompt for zone matching
-const getMatchingPrompt = (mode: MatchingMode, spaceNames: string[]) => `
+// Build AI prompt dynamically from database zone types
+const getMatchingPrompt = (mode: MatchingMode, spaceNames: string[], zoneTypes: DbZoneTypeDefault[]) => {
+  // Filter zone types based on mode
+  const filteredTypes = zoneTypes.filter(zt => {
+    const cat = (zt.category || '').toLowerCase()
+    if (mode === 'residential') {
+      return cat.includes('residential') || cat.includes('general') || 
+             ['bedroom', 'living_room', 'kitchen_residential', 'bathroom_residential', 'dining_room', 
+              'garage', 'basement', 'home_office', 'closet', 'hallway', 'storage', 'utility_room',
+              'laundry_residential'].includes(zt.id)
+    }
+    // Commercial shows wellness, commercial, and general
+    return !cat.includes('residential') || cat.includes('general')
+  })
+  
+  const zoneTypesList = filteredTypes
+    .map(zt => `- ${zt.id}: ${zt.display_name}`)
+    .join('\n')
+
+  return `
 You are matching architectural space names to MEP zone types for ${mode === 'residential' ? 'RESIDENTIAL' : 'COMMERCIAL'} buildings.
 
-SPACES TO MATCH:
-${spaceNames.map((name, i) => `${i + 1}. "${name}"`).join('\n')}
+SPACES TO MATCH (use 0-based index):
+${spaceNames.map((name, i) => `${i}. "${name}"`).join('\n')}
 
-${mode === 'residential' ? `
-RESIDENTIAL ZONE TYPES (use these for homes, apartments, townhouses):
-- bedroom: Bedroom, Master Bedroom, Guest Room
-- living_room: Living Room, Family Room, Great Room
-- kitchen_residential: Kitchen, Kitchenette
-- bathroom_residential: Bathroom, Full Bath, Half Bath, Powder Room
-- dining_room: Dining Room
-- laundry_residential: Laundry Room
-- garage: Garage
-- basement: Basement, Cellar
-- home_office: Home Office, Study, Den
-- closet: Closet, Walk-in Closet
-- hallway: Hallway, Corridor
-- storage: Storage
-- utility_room: Utility Room, Mechanical Room
-` : `
-COMMERCIAL/WELLNESS ZONE TYPES:
-- lobby: Lobby, Reception, Entrance
-- locker_room: Locker Room, Changing Room
-- restroom: Restroom, Bathroom, Toilet
-- shower_room: Shower Room, Shower Area
-- pool_indoor: Pool, Swimming Pool, Lap Pool
-- hot_tub: Hot Tub, Spa, Jacuzzi, Whirlpool
-- sauna_electric: Sauna, Dry Sauna
-- steam_room: Steam Room, Steam Bath
-- open_gym: Gym, Fitness Center, Weight Room
-- yoga_studio: Yoga Studio, Pilates Room
-- massage_room: Massage Room, Treatment Room, Spa Treatment
-- office: Office, Manager Office
-- conference_room: Conference Room, Meeting Room
-- break_room: Break Room, Staff Room, Kitchenette
-- cafe_light_fb: Café, Juice Bar, Snack Bar
-- kitchen_commercial: Commercial Kitchen
-- laundry_commercial: Laundry Room
-- mechanical_room: Mechanical Room, MEP Room
-- storage: Storage, Equipment Storage
-- retail: Retail, Pro Shop
-`}
+AVAILABLE ZONE TYPES (use the ID before the colon):
+${zoneTypesList}
 
-Respond with JSON ONLY:
+Respond with JSON ONLY - no explanation:
 {
   "matches": [
     {"index": 0, "zoneType": "bedroom", "confidence": "high"},
-    {"index": 1, "zoneType": "living_room", "confidence": "high"}
+    {"index": 1, "zoneType": "living_room", "confidence": "medium"}
   ]
 }
 
-Rules:
-- Match each space by its index (0-based)
-- Use ONLY zone types from the list above
-- Set confidence to "high" if certain, "medium" if likely, "low" if guessing
-- If no good match, use "custom"
+MATCHING RULES:
+- "index" is the 0-based position from the spaces list above
+- "zoneType" MUST be one of the IDs listed above (the text BEFORE the colon)
+- Match EVERY space - provide a match for all ${spaceNames.length} spaces
+- For hallways/corridors/foyers, use "hallway" or "lobby"
+- For kitchens in ${mode === 'residential' ? 'homes' : 'commercial'}, use "${mode === 'residential' ? 'kitchen_residential' : 'kitchen_commercial'}"
+- For bathrooms, use "${mode === 'residential' ? 'bathroom_residential' : 'restroom'}"
+- If unsure, pick the closest match - do NOT skip any space
 `
+}
 
 export default function ZoneMatchingModal({ isOpen, onClose, spaces, onUpdateSpaces, onExport }: Props) {
-  const { dbZoneTypeDefaults, fetchZoneTypeDefaults, getDbZoneTypeDefault } = useSettingsStore()
+  const { dbZoneTypeDefaults, fetchZoneTypeDefaults } = useSettingsStore()
   
   const [matchingMode, setMatchingMode] = useState<MatchingMode>('commercial')
   const [isMatching, setIsMatching] = useState(false)
@@ -166,48 +152,76 @@ export default function ZoneMatchingModal({ isOpen, onClose, spaces, onUpdateSpa
     
     try {
       const spaceNames = groupedSpaces.map(s => s.name)
-      const prompt = getMatchingPrompt(matchingMode, spaceNames)
+      const prompt = getMatchingPrompt(matchingMode, spaceNames, dbZoneTypeDefaults)
+      
+      console.log('AI Matching prompt:', prompt)
       
       // Try Claude first
       const claudeKey = import.meta.env.VITE_ANTHROPIC_API_KEY
-      if (claudeKey) {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': claudeKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true'
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 2000,
-            messages: [{ role: 'user', content: prompt }]
-          })
+      if (!claudeKey) {
+        console.error('No Claude API key configured')
+        return
+      }
+      
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': claudeKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4000,
+          messages: [{ role: 'user', content: prompt }]
         })
-        
-        if (response.ok) {
-          const data = await response.json()
-          const text = data.content?.[0]?.text || ''
-          const jsonMatch = text.match(/\{[\s\S]*\}/)
-          
-          if (jsonMatch) {
-            const result = JSON.parse(jsonMatch[0])
-            
-            // Apply matches to spaces
-            const updated = groupedSpaces.map((space, index) => {
-              const match = result.matches?.find((m: any) => m.index === index)
-              if (match?.zoneType) {
-                return { ...space, zoneType: match.zoneType }
-              }
-              return space
-            })
-            
-            setGroupedSpaces(updated)
-            onUpdateSpaces(updated)
+      })
+      
+      if (!response.ok) {
+        console.error('AI response not ok:', response.status)
+        return
+      }
+      
+      const data = await response.json()
+      const text = data.content?.[0]?.text || ''
+      console.log('AI Response:', text)
+      
+      const jsonMatch = text.match(/\{[\s\S]*\}/)
+      
+      if (!jsonMatch) {
+        console.error('No JSON found in response')
+        return
+      }
+      
+      const result = JSON.parse(jsonMatch[0])
+      console.log('Parsed result:', result)
+      
+      if (!result.matches || !Array.isArray(result.matches)) {
+        console.error('No matches array in result')
+        return
+      }
+      
+      // Apply matches to spaces - also apply zone defaults
+      const updated = groupedSpaces.map((space, index) => {
+        const match = result.matches.find((m: any) => m.index === index)
+        if (match?.zoneType) {
+          // Verify it's a valid zone type
+          const validZoneType = dbZoneTypeDefaults.find(zt => zt.id === match.zoneType)
+          if (validZoneType) {
+            // Apply zone defaults with fixtures scaled by SF
+            const updatedSpace = applyZoneDefaultsToSpace(space, validZoneType)
+            return updatedSpace
+          } else {
+            console.warn(`Invalid zone type: ${match.zoneType} for space ${space.name}`)
           }
         }
-      }
+        return space
+      })
+      
+      setGroupedSpaces(updated)
+      onUpdateSpaces(updated)
+      
     } catch (error) {
       console.error('AI matching failed:', error)
     } finally {
@@ -215,30 +229,66 @@ export default function ZoneMatchingModal({ isOpen, onClose, spaces, onUpdateSpa
     }
   }
   
-  // Update zone type for a space
+  // Apply zone defaults to a space, scaling fixtures by SF
+  const applyZoneDefaultsToSpace = (space: ExtractedSpace, zoneDefault: DbZoneTypeDefault): ExtractedSpace => {
+    const defaultFixtures = zoneDefault.default_fixtures || {}
+    const defaultEquipment = zoneDefault.default_equipment || []
+    
+    // Scale fixtures based on SF if there's a typical SF for the zone
+    // Most defaults assume ~100 SF, so we scale proportionally
+    const baseSF = 100
+    const scaleFactor = space.sf / baseSF
+    
+    // Scale fixtures - but keep at least 1 of each
+    const scaledFixtures: Record<string, number> = {}
+    Object.entries(defaultFixtures).forEach(([fixtureId, count]) => {
+      // For small spaces, keep count as-is; for larger spaces, scale up
+      if (space.sf <= 150) {
+        scaledFixtures[fixtureId] = count as number
+      } else {
+        scaledFixtures[fixtureId] = Math.max(1, Math.round((count as number) * scaleFactor))
+      }
+    })
+    
+    return {
+      ...space,
+      zoneType: zoneDefault.id,
+      fixtures: scaledFixtures,
+      equipment: defaultEquipment
+    }
+  }
+  
+  // Update zone type for a space - also apply defaults immediately
   const handleZoneTypeChange = (spaceId: string, zoneType: string) => {
-    const updated = groupedSpaces.map(s => 
-      s.id === spaceId ? { ...s, zoneType } : s
-    )
+    const zoneDefault = dbZoneTypeDefaults.find(zt => zt.id === zoneType)
+    
+    const updated = groupedSpaces.map(s => {
+      if (s.id !== spaceId) return s
+      
+      // If we have zone defaults, apply them with scaling
+      if (zoneDefault) {
+        return applyZoneDefaultsToSpace(s, zoneDefault)
+      }
+      
+      // Otherwise just set the zone type
+      return { ...s, zoneType }
+    })
+    
     setGroupedSpaces(updated)
     onUpdateSpaces(updated)
   }
   
-  // Apply zone defaults to a space
+  // Apply zone defaults to a space (button click)
   const applyZoneDefaults = (spaceId: string) => {
     const space = groupedSpaces.find(s => s.id === spaceId)
     if (!space?.zoneType) return
     
-    const zoneDefaults = getDbZoneTypeDefault(space.zoneType)
-    if (!zoneDefaults) return
+    const zoneDefault = dbZoneTypeDefaults.find(zt => zt.id === space.zoneType)
+    if (!zoneDefault) return
     
     const updated = groupedSpaces.map(s => {
       if (s.id === spaceId) {
-        return {
-          ...s,
-          fixtures: zoneDefaults.default_fixtures || s.fixtures,
-          equipment: zoneDefaults.default_equipment || s.equipment
-        }
+        return applyZoneDefaultsToSpace(s, zoneDefault)
       }
       return s
     })
@@ -252,14 +302,10 @@ export default function ZoneMatchingModal({ isOpen, onClose, spaces, onUpdateSpa
     const updated = groupedSpaces.map(space => {
       if (!space.zoneType) return space
       
-      const zoneDefaults = getDbZoneTypeDefault(space.zoneType)
-      if (!zoneDefaults) return space
+      const zoneDefault = dbZoneTypeDefaults.find(zt => zt.id === space.zoneType)
+      if (!zoneDefault) return space
       
-      return {
-        ...space,
-        fixtures: { ...space.fixtures, ...(zoneDefaults.default_fixtures || {}) },
-        equipment: [...(space.equipment || []), ...(zoneDefaults.default_equipment || [])]
-      }
+      return applyZoneDefaultsToSpace(space, zoneDefault)
     })
     
     setGroupedSpaces(updated)
