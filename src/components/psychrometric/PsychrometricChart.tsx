@@ -693,17 +693,17 @@ export default function PsychrometricChart({
           return null
         })()}
         
-        {/* Arrow marker definition */}
+        {/* Arrow marker definition - half size */}
         <defs>
           <marker
             id="arrowhead"
-            markerWidth="10"
-            markerHeight="7"
-            refX="9"
-            refY="3.5"
+            markerWidth="5"
+            markerHeight="3.5"
+            refX="4.5"
+            refY="1.75"
             orient="auto"
           >
-            <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b" />
+            <polygon points="0 0, 5 1.75, 0 3.5" fill="#f59e0b" />
           </marker>
         </defs>
         
