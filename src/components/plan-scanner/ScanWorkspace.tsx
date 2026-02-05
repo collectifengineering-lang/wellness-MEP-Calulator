@@ -841,7 +841,7 @@ export default function ScanWorkspace() {
           areaSF,
           floor: result.floor,
           // Track confidence source for UI display
-          confidenceSource: region.textSF ? 'explicit' : 'estimated',
+          confidenceSource: (region.textSF ? 'explicit' : 'estimated') as 'explicit' | 'estimated',
         }
       })
       
