@@ -761,6 +761,8 @@ export const useSettingsStore = create<SettingsState>()(
             defaultRates: {
               lighting_w_sf: dbDefault.lighting_w_sf ?? baseDefaults.defaultRates.lighting_w_sf,
               receptacle_va_sf: dbDefault.receptacle_va_sf ?? baseDefaults.defaultRates.receptacle_va_sf,
+              ventilation_cfm_sf: baseDefaults.defaultRates.ventilation_cfm_sf,
+              exhaust_cfm_sf: baseDefaults.defaultRates.exhaust_cfm_sf,
               cooling_sf_ton: dbDefault.cooling_sf_ton ?? baseDefaults.defaultRates.cooling_sf_ton,
               heating_btuh_sf: dbDefault.heating_btuh_sf ?? baseDefaults.defaultRates.heating_btuh_sf,
             },
