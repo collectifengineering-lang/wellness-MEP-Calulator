@@ -190,14 +190,34 @@ const EXTRACTION_PROMPT = `You are extracting room data from an architectural fl
 TASK: Find EVERY room/space with a SQUARE FOOTAGE number. Be thorough - don't miss any!
 
 HOW TO READ THE DOCUMENT:
-1. Look for TABLES with room names and SF in cells
-2. Look for LABELS on floor plans: "ROOM NAME" with "X,XXX sqft" below or beside
-3. Numbers like "10,274 sqft", "482 sqft", "191 sqft" are square footage
-4. SCAN THE ENTIRE IMAGE - rooms can be in corners, small cells, anywhere
-5. Even SMALL TEXT contains valid rooms - read everything carefully
+
+1. **ARCHITECTURAL ROOM TAGS** (Most Common Method):
+   Look for CALLOUT BOXES with LEADERS/ARROWS pointing to spaces. Standard format:
+   ┌─────────────┐
+   │  ROOM NAME  │  ← e.g., "REC RM", "HALL", "GYM", "OFFICE"
+   │    C.02     │  ← Room number (e.g., "101", "C.02", "A-123")
+   │    P.T      │  ← Phase/Type indicator (ignore this line)
+   │  361 SQFT   │  ← SQUARE FOOTAGE - extract this!
+   └─────────────┘
+   The leader/arrow points FROM the tag TO the room it describes.
+
+2. **COLOR-CODED AREAS**:
+   - Rooms are often filled with distinct COLORS (pink, blue, yellow, green, etc.)
+   - Each color typically represents a different department or zone type
+   - The room tag for a colored area may be OUTSIDE the area, with a leader pointing in
+
+3. **AREA SCHEDULES / TABLES**:
+   - Look for tables with columns: Room Name, Room #, Area (SF)
+   - Tables often appear in corners or alongside the floor plan
+
+4. Look for INLINE LABELS: "ROOM NAME" with "X,XXX SF" below or beside
+5. Numbers like "10,274 sqft", "482 SF", "191 SQFT" are square footage
+6. SCAN THE ENTIRE IMAGE - room tags can be in corners, edges, anywhere
+7. Even SMALL TEXT contains valid rooms - read everything carefully
 
 IDENTIFY THE FLOOR/LEVEL:
 - Look in TITLE BLOCK (usually corners) for: "Level 3", "Level 4", "Floor 2", "L1"
+- Look in room numbers: "C.02" might mean "Level C", "3.01" might mean "Level 3"
 - Look for headers: "Level 3 - GYM & Co-Work", "Level 4 - Wellness"
 - Common formats: "L1", "Level 1", "1F", "Ground", "Roof", "B1" (basement)
 
@@ -617,10 +637,27 @@ const BOUNDARY_DETECTION_PROMPT = `You are detecting ROOM BOUNDARIES in an archi
 TASK: Identify distinct rooms/spaces and estimate their BOUNDING BOX positions as percentages of the image.
 
 HOW TO DETECT ROOMS:
-1. Look for WALLS and PARTITIONS that enclose spaces
-2. Look for ROOM LABELS/NAMES (text inside or near rooms)
-3. Identify major spaces like: Gym, Pool, Locker Room, Office, Conference Room, Lobby, etc.
-4. Skip circulation areas (corridors, stairs, elevators) unless they're labeled with SF
+
+1. **COLOR-CODED AREAS** (Very Common):
+   - Rooms are often FILLED with distinct colors (pink, blue, yellow, green, magenta, etc.)
+   - Each colored region typically represents ONE room/zone
+   - Draw the bounding box around the entire colored fill area
+
+2. **ROOM TAGS WITH LEADERS**:
+   - Look for CALLOUT BOXES pointing to spaces with arrows/leaders
+   - Standard format: Room Name, Room Number, Area (SQFT)
+   - The tag points TO the room - trace the leader to find the space boundary
+   - Example: A tag reading "REC RM / C.02 / 361 SQFT" points to a colored region
+
+3. **WALLS AND PARTITIONS**:
+   - Look for thick lines that enclose spaces
+   - Walls form the actual boundaries between rooms
+
+4. **INLINE LABELS**:
+   - Text directly inside rooms (less common in colored plans)
+
+5. Identify spaces like: Gym, Pool, Locker Room, Office, Conference Room, Lobby, Rec Room, Hall, etc.
+6. Skip circulation areas (corridors, stairs, elevators) unless they're labeled with SF
 
 FOR EACH ROOM, ESTIMATE:
 - xPercent: Left edge position as % of image width (0-100)
@@ -630,7 +667,8 @@ FOR EACH ROOM, ESTIMATE:
 
 IMPORTANT:
 - Be GENEROUS with bounding boxes - slightly larger is better than too small
-- Account for the room label to be inside the box
+- For COLOR-CODED rooms, the bounding box should cover the entire colored fill
+- Room tags may be OUTSIDE the room - follow the leader arrow to the actual space
 - Don't try to be pixel-perfect, rough estimates are fine
 - Focus on MAJOR spaces first, then smaller rooms
 
