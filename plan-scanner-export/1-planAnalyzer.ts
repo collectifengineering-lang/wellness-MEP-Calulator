@@ -905,7 +905,6 @@ FOR EACH ROOM, ESTIMATE:
 - yPercent: Top edge position as % of image height (0-100)  
 - widthPercent: Width as % of image width
 - heightPercent: Height as % of image height
-- textSF: (CRITICAL) If you see a text label like "1200 SF", "450 sqft", "361 SQFT", or similar INSIDE or attached to this region, extract the NUMBER ONLY. This is MORE ACCURATE than geometric calculation.
 
 IMPORTANT:
 - Be GENEROUS with bounding boxes - slightly larger is better than too small
@@ -913,7 +912,6 @@ IMPORTANT:
 - Room tags may be OUTSIDE the room - follow the leader arrow to the actual space
 - Don't try to be pixel-perfect, rough estimates are fine
 - Focus on MAJOR spaces first, then smaller rooms
-- ALWAYS look for and extract textSF when visible - it's the most reliable area source
 
 Respond with ONLY valid JSON:
 {
@@ -924,8 +922,7 @@ Respond with ONLY valid JSON:
       "yPercent": 10,
       "widthPercent": 40,
       "heightPercent": 35,
-      "textSF": 10274,
-      "confidence": 95
+      "confidence": 85
     },
     {
       "name": "Pool",
@@ -933,7 +930,6 @@ Respond with ONLY valid JSON:
       "yPercent": 15,
       "widthPercent": 35,
       "heightPercent": 40,
-      "textSF": 2400,
       "confidence": 90
     }
   ],
@@ -950,7 +946,6 @@ export interface DetectedRegion {
   height: number
   confidence: number
   analyzed: boolean
-  textSF?: number  // SF read from text label (more accurate than geometric calculation)
 }
 
 export interface BoundaryDetectionResult {
@@ -1121,7 +1116,6 @@ function parseBoundaryResponse(
     height: Math.round((r.heightPercent / 100) * imageHeight),
     confidence: r.confidence || 50,
     analyzed: false,
-    textSF: r.textSF || undefined,  // Pass through text-read SF (more accurate than geometry)
   }))
   
   return {

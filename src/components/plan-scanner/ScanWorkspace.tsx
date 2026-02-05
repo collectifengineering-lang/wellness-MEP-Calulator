@@ -67,6 +67,7 @@ export default function ScanWorkspace() {
     areaSF?: number       // Calculated area in square feet
     floor?: string        // Floor level prefix
     seatCount?: number    // AI-detected seat count
+    confidenceSource?: 'explicit' | 'estimated'  // SF from text label vs geometric calculation
   }>>([])
   
   // Rectangle drawing state
@@ -819,8 +820,12 @@ export default function ScanWorkspace() {
         const widthPercent = (region.width / imageWidth) * 100
         const heightPercent = (region.height / imageHeight) * 100
         
-        // Calculate area if scale is set
-        const areaSF = calculateAreaSF(widthPercent, heightPercent, imageWidth, imageHeight)
+        // Calculate geometric area as fallback (only if scale is set)
+        const geometricSF = calculateAreaSF(widthPercent, heightPercent, imageWidth, imageHeight)
+        
+        // CRITICAL FIX: Prefer text-read SF over geometric calculation
+        // Text-read SF is directly from the plan labels and is always more accurate
+        const areaSF = region.textSF ? region.textSF : geometricSF
         
         return {
           id: region.id,
@@ -835,6 +840,8 @@ export default function ScanWorkspace() {
           userCreated: false, // AI-detected
           areaSF,
           floor: result.floor,
+          // Track confidence source for UI display
+          confidenceSource: region.textSF ? 'explicit' : 'estimated',
         }
       })
       
@@ -878,6 +885,21 @@ export default function ScanWorkspace() {
 
   const handleApplyStandardScale = (pixelsPerFoot: number, label: string) => {
     if (!currentScan) return
+    
+    // CORRECTION: If we are viewing a high-res PDF render (3x scale), 
+    // we need to warn the user that standard 96 DPI scales won't work correctly.
+    const isPDF = selectedDrawing?.fileType === 'application/pdf'
+    
+    if (isPDF) {
+      const confirmed = window.confirm(
+        `⚠️ WARNING: You are applying a standard scale (${label}) to a High-Res PDF.\n\n` +
+        `Because PDFs are rendered at high resolution for AI analysis, standard print scales will likely result in MASSIVE area errors (up to 5x).\n\n` +
+        `Strongly recommended: Use "Two-Point Calibration" instead.\n\n` +
+        `Do you still want to apply this scale?`
+      )
+      if (!confirmed) return
+    }
+
     setScale(currentScan.id, pixelsPerFoot, undefined)
     updateScan(currentScan.id, { status: 'calibrating' })
     setShowScaleModal(false)
@@ -1623,7 +1645,7 @@ export default function ScanWorkspace() {
                     ))}
                     
                     {/* Drawn Rectangle Regions - positioned using percentages */}
-                    {/* User-created regions are cyan, AI-detected are orange/amber */}
+                    {/* User-created: cyan, AI with text SF: cyan, AI estimated: amber */}
                     {imageBounds && drawnRegions.filter(r => r.type === 'rectangle').map(region => (
                       <div
                         key={region.id}
@@ -1634,7 +1656,9 @@ export default function ScanWorkspace() {
                               ? 'border-emerald-500 bg-emerald-500/10' 
                               : region.userCreated
                                 ? 'border-cyan-500 bg-cyan-500/10'
-                                : 'border-amber-500 bg-amber-500/10' // AI-detected
+                                : region.confidenceSource === 'explicit'
+                                  ? 'border-cyan-500 bg-cyan-500/10'  // AI with text-read SF (high confidence)
+                                  : 'border-amber-500 bg-amber-500/10' // AI estimated (low confidence)
                         } cursor-pointer transition-colors`}
                         style={{
                           left: ((region.xPercent || 0) / 100) * imageBounds.width,
@@ -1647,16 +1671,19 @@ export default function ScanWorkspace() {
                           setSelectedRegionId(region.id)
                         }}
                       >
-                        {/* Region Label with Area */}
+                        {/* Region Label with Area - shows confidence source */}
                         <div className={`absolute -top-7 left-0 px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${
                           region.analyzed 
                             ? 'bg-emerald-600 text-white' 
                             : region.userCreated
                               ? 'bg-cyan-600 text-white'
-                              : 'bg-amber-600 text-white' // AI-detected
+                              : region.confidenceSource === 'explicit'
+                                ? 'bg-cyan-600 text-white'  // Text-read SF (high confidence)
+                                : 'bg-amber-600 text-white' // Geometric SF (low confidence)
                         }`}>
-                          {region.userCreated ? '▢' : '🤖'} {region.name}
+                          {region.userCreated ? '▢' : region.confidenceSource === 'explicit' ? '📖' : '📐'} {region.name}
                           {region.areaSF && ` • ${region.areaSF.toLocaleString()} SF`}
+                          {!region.userCreated && region.confidenceSource === 'estimated' && ' (est)'}
                           {region.analyzed && ' ✓'}
                         </div>
                         
@@ -1803,10 +1830,13 @@ export default function ScanWorkspace() {
                               ? 'bg-emerald-600 text-white' 
                               : region.userCreated
                                 ? 'bg-cyan-600 text-white'
-                                : 'bg-amber-600 text-white' // AI-detected
+                                : region.confidenceSource === 'explicit'
+                                  ? 'bg-cyan-600 text-white'  // Text-read SF (high confidence)
+                                  : 'bg-amber-600 text-white' // Geometric SF (low confidence)
                           }`}>
-                            {region.userCreated ? '⬡' : '🤖'} {region.name}
+                            {region.userCreated ? '⬡' : region.confidenceSource === 'explicit' ? '📖' : '📐'} {region.name}
                             {region.areaSF && ` • ${region.areaSF.toLocaleString()} SF`}
+                            {!region.userCreated && region.confidenceSource === 'estimated' && ' (est)'}
                             {region.analyzed && ' ✓'}
                             <button
                               onClick={(e) => {
