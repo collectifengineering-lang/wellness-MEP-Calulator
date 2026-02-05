@@ -10,6 +10,7 @@ import { extractZonesFromPDF, type ExtractedZone } from '../../lib/xai'
 import { v4 as uuidv4 } from 'uuid'
 import ExportModal from './ExportModal'
 import ZoneMatchingModal from './ZoneMatchingModal'
+import TableImportModal from './TableImportModal'
 import { NYC_FIXTURE_DATABASE, getFixtureById } from '../../data/nycFixtures'
 
 type TabType = 'drawings' | 'spaces' | 'export'
@@ -35,6 +36,7 @@ export default function ScanWorkspace() {
   const [detectingBoundaries, setDetectingBoundaries] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
   const [showZoneMatchingModal, setShowZoneMatchingModal] = useState(false)
+  const [showTableImportModal, setShowTableImportModal] = useState(false)
   const [selectedSpacesForGroup, setSelectedSpacesForGroup] = useState<Set<string>>(new Set())
   const [calibrationDistance, setCalibrationDistance] = useState<string>('')
   const [showCalibrationInput, setShowCalibrationInput] = useState(false)
@@ -2535,11 +2537,30 @@ export default function ScanWorkspace() {
                   🤖 Match Zones
                 </button>
                 <button
+                  onClick={() => setShowTableImportModal(true)}
+                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                >
+                  📋 Import Table
+                </button>
+                <button
                   onClick={handleAddSpace}
                   className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
                 >
                   <span>+</span> Add Space
                 </button>
+                {currentScan.extractedSpaces.length > 0 && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Are you sure you want to clear all ${currentScan.extractedSpaces.length} extracted spaces? This cannot be undone.`)) {
+                        setExtractedSpaces(currentScan.id, [])
+                        setSelectedSpacesForGroup(new Set())
+                      }
+                    }}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                  >
+                    🗑️ Clear All
+                  </button>
+                )}
               </div>
             </div>
 
@@ -2913,6 +2934,19 @@ export default function ScanWorkspace() {
             // TODO: Route to different export targets based on _target
             setShowExportModal(true)
           }}
+        />
+      )}
+      
+      {/* Table Import Modal */}
+      {showTableImportModal && (
+        <TableImportModal
+          isOpen={showTableImportModal}
+          onClose={() => setShowTableImportModal(false)}
+          onImport={(newSpaces) => {
+            // Add imported spaces to existing spaces
+            setExtractedSpaces(currentScan.id, [...currentScan.extractedSpaces, ...newSpaces])
+          }}
+          existingFloors={[...new Set(currentScan.extractedSpaces.map(s => s.floor).filter(Boolean) as string[])]}
         />
       )}
     </div>
