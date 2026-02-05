@@ -112,6 +112,8 @@ export default function ProjectWorkspace() {
           clientInfo: pd.client_info as import('../types').ProjectClientInfo | undefined,
           mepNarratives: pd.mep_narratives as import('../types').MEPNarratives | undefined,
           reportLogo: pd.report_logo as import('../types').ReportLogoHistory | undefined,
+          fixtureOverrides: pd.fixture_overrides as import('../types').FixtureOverride[] | undefined,
+          narrativeBackground: pd.narrative_background as import('../types').NarrativeBackground | undefined,
           electricalSettings: mergedElectrical,
           mechanicalSettings: mergedMechanical,
           dhwSettings: mergedDHW,

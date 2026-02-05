@@ -370,25 +370,32 @@ export default function VentilationSection({ zone, onUpdate }: VentilationSectio
   const lastSyncedExh = useRef<number | null>(null)
   
   useEffect(() => {
-    // Only sync if NOT in override mode (user/pool hasn't manually set values)
-    if (zone.ventilationOverride) return
+    // Sync calculated values, but respect individual override flags
+    const updates: Partial<Zone> = {}
     
-    // Round to avoid floating point comparison issues
-    const roundedVent = Math.round(calculatedVentCfm)
-    const roundedExh = Math.round(calculatedExhaustCfm)
-    
-    // Only update if values have actually changed
-    if (lastSyncedVent.current !== roundedVent || lastSyncedExh.current !== roundedExh) {
-      lastSyncedVent.current = roundedVent
-      lastSyncedExh.current = roundedExh
-      
-      // Batch the update
-      onUpdate({ 
-        ventilationCfm: roundedVent, 
-        exhaustCfm: roundedExh 
-      })
+    // Only update ventilation if NOT overridden
+    if (!zone.ventilationOverride) {
+      const roundedVent = Math.round(calculatedVentCfm)
+      if (lastSyncedVent.current !== roundedVent) {
+        lastSyncedVent.current = roundedVent
+        updates.ventilationCfm = roundedVent
+      }
     }
-  }, [calculatedVentCfm, calculatedExhaustCfm, zone.ventilationOverride])
+    
+    // Only update exhaust if NOT overridden
+    if (!zone.exhaustOverride) {
+      const roundedExh = Math.round(calculatedExhaustCfm)
+      if (lastSyncedExh.current !== roundedExh) {
+        lastSyncedExh.current = roundedExh
+        updates.exhaustCfm = roundedExh
+      }
+    }
+    
+    // Only call onUpdate if there are changes
+    if (Object.keys(updates).length > 0) {
+      onUpdate(updates)
+    }
+  }, [calculatedVentCfm, calculatedExhaustCfm, zone.ventilationOverride, zone.exhaustOverride])
   // NOTE: onUpdate intentionally NOT in deps - it's stable from parent
   
   // Convert to display units

@@ -439,5 +439,8 @@ function dbZoneToZone(db: Record<string, unknown>): import('../../types').Zone {
     // Preserve existing values as custom overrides for migration
     ventilationOverride: (db.ventilation_override as boolean) ?? shouldPreserveAsOverride,
     exhaustOverride: (db.exhaust_override as boolean) ?? shouldPreserveAsOverride,
+    // CRITICAL: Load the actual CFM values from database
+    ventilationCfm: db.ventilation_cfm as number | undefined,
+    exhaustCfm: db.exhaust_cfm as number | undefined,
   }
 }
