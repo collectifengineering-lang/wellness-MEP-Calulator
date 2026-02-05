@@ -3,6 +3,19 @@ import { getZoneDefaults } from '../data/zoneDefaults'
 import { climateFactors } from '../data/defaults'
 
 /**
+ * DEHUMIDIFICATION TO COOLING TONS CONVERSION
+ * 
+ * Conservative rule of thumb for pool dehumidifiers:
+ * - Latent heat of vaporization: ~1,061 BTU/lb
+ * - 1 ton = 12,000 BTU/hr
+ * - Base conversion: 1,061 / 12,000 = 0.088 tons per lb/hr
+ * - Adding ~35% for sensible reheat and equipment loads = 0.12 tons per lb/hr
+ * 
+ * This aligns with real equipment specs (e.g., Seresco, Dectron pool dehumidifiers)
+ */
+export const DEHUMID_TONS_PER_LB_HR = 0.12
+
+/**
  * Calculate HVAC loads from zones
  * 
  * VENTILATION/EXHAUST: Uses stored values ONLY (from VentilationSection or pool calc)
@@ -84,6 +97,13 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
   
   // Estimate RTU count (rough: 1 RTU per 10-15 tons)
   const rtuCount = Math.max(Math.ceil(totalTons / 12), 1)
+  
+  // Calculate dehumidification cooling equivalent (conservative estimate)
+  const dehumidTons = dehumidLbHr * DEHUMID_TONS_PER_LB_HR
+  
+  // Total plant cooling = space cooling (which includes pool chiller) + dehumid
+  // Note: totalTons already includes poolChillerTons from line items
+  const totalPlantTons = totalTons + dehumidTons
 
   return {
     totalTons: Math.round(totalTons * 10) / 10,
@@ -91,7 +111,9 @@ export function calculateHVAC(zones: Zone[], climate: ClimateType, contingency: 
     totalVentCFM: Math.round(totalVentCFM),
     totalExhaustCFM: Math.round(totalExhaustCFM),
     dehumidLbHr: Math.round(dehumidLbHr),
+    dehumidTons: Math.round(dehumidTons * 10) / 10,
     poolChillerTons: Math.round(poolChillerTons * 10) / 10,
+    totalPlantTons: Math.round(totalPlantTons * 10) / 10,
     rtuCount,
   }
 }

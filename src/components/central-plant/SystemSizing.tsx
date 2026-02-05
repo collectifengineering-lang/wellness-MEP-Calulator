@@ -6,11 +6,12 @@ interface SystemSizingProps {
 }
 
 export default function SystemSizing({ results }: SystemSizingProps) {
-  const { currentProject, updateProject } = useProjectStore()
+  const { currentProject, updateProject, zones } = useProjectStore()
   
   if (!currentProject) return null
 
   const { electrical, hvac, gas, plumbing } = results
+  const totalSF = zones.reduce((sum, z) => sum + z.sf, 0)
 
   return (
     <div className="bg-surface-800 rounded-xl border border-surface-700 overflow-hidden">
@@ -86,10 +87,40 @@ export default function SystemSizing({ results }: SystemSizingProps) {
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-surface-400">Cooling:</span>
+                <span className="text-surface-400">Space Cooling:</span>
                 <span className="text-cyan-400 font-mono">{hvac.totalTons} Tons</span>
               </div>
+              {hvac.poolChillerTons > 0 && (
+                <div className="flex justify-between pl-2">
+                  <span className="text-surface-500">└ Pool Chiller:</span>
+                  <span className="text-blue-400 font-mono">{hvac.poolChillerTons} Tons</span>
+                </div>
+              )}
+              {hvac.dehumidLbHr > 0 && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-surface-400">Dehumidification:</span>
+                    <span className="text-purple-400 font-mono">{hvac.dehumidLbHr} lb/hr</span>
+                  </div>
+                  <div className="flex justify-between pl-2">
+                    <span className="text-surface-500">└ Est. Cooling:</span>
+                    <span className="text-purple-300 font-mono">{hvac.dehumidTons} Tons</span>
+                  </div>
+                </>
+              )}
+              {hvac.totalPlantTons !== hvac.totalTons && (
+                <div className="flex justify-between border-t border-surface-700 pt-2 mt-2">
+                  <span className="text-surface-300 font-medium">Total Plant:</span>
+                  <span className="text-white font-mono font-medium">{hvac.totalPlantTons} Tons</span>
+                </div>
+              )}
               <div className="flex justify-between">
+                <span className="text-surface-400">SF/Ton:</span>
+                <span className="text-surface-300 font-mono">
+                  {hvac.totalPlantTons > 0 ? Math.round(totalSF / hvac.totalPlantTons).toLocaleString() : '—'} SF/Ton
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-surface-700 pt-2 mt-2">
                 <span className="text-surface-400">Heating:</span>
                 <span className="text-orange-400 font-mono">{hvac.totalMBH.toLocaleString()} MBH</span>
               </div>
@@ -105,12 +136,6 @@ export default function SystemSizing({ results }: SystemSizingProps) {
                 <span className="text-surface-400">RTUs:</span>
                 <span className="text-surface-300 font-mono">~{hvac.rtuCount}</span>
               </div>
-              {hvac.dehumidLbHr > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-surface-400">Dehumid:</span>
-                  <span className="text-blue-400 font-mono">{hvac.dehumidLbHr} lb/hr</span>
-                </div>
-              )}
             </div>
           </div>
 

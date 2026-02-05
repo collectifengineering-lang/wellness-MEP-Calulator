@@ -30,12 +30,15 @@ export default function TotalsBar({ calculations }: TotalsBarProps) {
     {
       title: 'HVAC',
       items: [
-        { label: 'Cooling', value: results.hvac.totalTons.toLocaleString(), unit: 'Tons', color: 'text-cyan-400' },
+        { label: 'Space Cooling', value: results.hvac.totalTons.toLocaleString(), unit: 'Tons', color: 'text-cyan-400' },
         results.hvac.poolChillerTons > 0 && { label: '└ Pool Chiller', value: results.hvac.poolChillerTons.toLocaleString(), unit: 'Tons', color: 'text-blue-400' },
+        results.hvac.dehumidLbHr > 0 && { label: 'Dehumid', value: results.hvac.dehumidLbHr.toString(), unit: 'lb/hr', color: 'text-purple-400' },
+        results.hvac.dehumidTons > 0 && { label: '└ Est. Cooling', value: results.hvac.dehumidTons.toLocaleString(), unit: 'Tons', color: 'text-purple-300' },
+        results.hvac.totalPlantTons !== results.hvac.totalTons && { label: 'Total Plant', value: results.hvac.totalPlantTons.toLocaleString(), unit: 'Tons', color: 'text-white', bold: true },
+        { label: 'SF/Ton', value: results.hvac.totalPlantTons > 0 ? Math.round(totalSF / results.hvac.totalPlantTons).toLocaleString() : '—', unit: 'SF/Ton', color: 'text-surface-300' },
         { label: 'Heating', value: results.hvac.totalMBH.toLocaleString(), unit: 'MBH', color: 'text-orange-400' },
         { label: 'Ventilation', value: results.hvac.totalVentCFM.toLocaleString(), unit: 'CFM', color: 'text-emerald-400' },
         { label: 'Exhaust', value: results.hvac.totalExhaustCFM.toLocaleString(), unit: 'CFM', color: 'text-amber-400' },
-        results.hvac.dehumidLbHr > 0 && { label: 'Dehumid', value: results.hvac.dehumidLbHr.toString(), unit: 'lb/hr', color: 'text-blue-400' },
       ].filter(Boolean),
     },
     {

@@ -131,6 +131,9 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
           totalVentCFM: results.hvac.totalVentCFM,
           totalExhaustCFM: results.hvac.totalExhaustCFM,
           dehumidLbHr: results.hvac.dehumidLbHr,
+          dehumidTons: results.hvac.dehumidTons,
+          poolChillerTons: results.hvac.poolChillerTons,
+          totalPlantTons: results.hvac.totalPlantTons,
           rtuCount: results.hvac.rtuCount
         },
         electrical: {
@@ -801,12 +804,22 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
               <div>
                 <h3 className="font-semibold text-gray-900 text-xs uppercase tracking-wide mb-1">Cooling / Heating</h3>
                 <ul className="space-y-0.5 text-xs">
-                  <li>Cooling: <span className="font-mono font-medium">{results.hvac.totalTons} Tons</span> ({Math.round(totalSF / results.hvac.totalTons)} SF/Ton)</li>
+                  <li>Space Cooling: <span className="font-mono font-medium">{results.hvac.totalTons} Tons</span></li>
+                  {results.hvac.poolChillerTons > 0 && (
+                    <li className="pl-2">└ Pool Chiller: <span className="font-mono">{results.hvac.poolChillerTons} Tons</span></li>
+                  )}
+                  {results.hvac.dehumidLbHr > 0 && (
+                    <>
+                      <li>Dehumidification: <span className="font-mono">{results.hvac.dehumidLbHr} lb/hr</span></li>
+                      <li className="pl-2">└ Est. Cooling: <span className="font-mono">{results.hvac.dehumidTons} Tons</span></li>
+                    </>
+                  )}
+                  {results.hvac.totalPlantTons !== results.hvac.totalTons && (
+                    <li className="font-medium">Total Plant: <span className="font-mono">{results.hvac.totalPlantTons} Tons</span></li>
+                  )}
+                  <li>SF/Ton (Total): <span className="font-mono font-medium">{results.hvac.totalPlantTons > 0 ? Math.round(totalSF / results.hvac.totalPlantTons) : '—'} SF/Ton</span></li>
                   <li>Heating: <span className="font-mono font-medium">{results.hvac.totalMBH.toLocaleString()} MBH</span></li>
                   <li>RTU/AHU Count: ~{results.hvac.rtuCount} units</li>
-                  {results.hvac.dehumidLbHr > 0 && (
-                    <li>Dehumidification: <span className="font-mono">{results.hvac.dehumidLbHr} lb/hr</span></li>
-                  )}
                 </ul>
               </div>
               <div>
@@ -1161,17 +1174,41 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
               <h3 className="text-lg font-bold text-gray-900 mb-4">HVAC Summary</h3>
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <h4 className="font-semibold text-gray-700 mb-2">Air Conditioning</h4>
+                  <h4 className="font-semibold text-gray-700 mb-2">Cooling Plant</h4>
                   <dl className="space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <dt className="text-gray-600">Total Cooling:</dt>
+                      <dt className="text-gray-600">Space Cooling:</dt>
                       <dd className="font-mono font-medium">{results.hvac.totalTons} Tons</dd>
                     </div>
+                    {results.hvac.poolChillerTons > 0 && (
+                      <div className="flex justify-between pl-2">
+                        <dt className="text-gray-500">└ Pool Chiller:</dt>
+                        <dd className="font-mono">{results.hvac.poolChillerTons} Tons</dd>
+                      </div>
+                    )}
+                    {results.hvac.dehumidLbHr > 0 && (
+                      <>
+                        <div className="flex justify-between">
+                          <dt className="text-gray-600">Dehumidification:</dt>
+                          <dd className="font-mono font-medium">{results.hvac.dehumidLbHr} lb/hr</dd>
+                        </div>
+                        <div className="flex justify-between pl-2">
+                          <dt className="text-gray-500">└ Est. Cooling:</dt>
+                          <dd className="font-mono">{results.hvac.dehumidTons} Tons</dd>
+                        </div>
+                      </>
+                    )}
+                    {results.hvac.totalPlantTons !== results.hvac.totalTons && (
+                      <div className="flex justify-between border-t border-gray-200 pt-1 mt-1">
+                        <dt className="text-gray-900 font-semibold">Total Plant:</dt>
+                        <dd className="font-mono font-bold">{results.hvac.totalPlantTons} Tons</dd>
+                      </div>
+                    )}
                     <div className="flex justify-between">
-                      <dt className="text-gray-600">Avg SF/Ton:</dt>
-                      <dd className="font-mono font-medium">{Math.round(totalSF / results.hvac.totalTons)} SF/Ton</dd>
+                      <dt className="text-gray-600">SF/Ton (Overall):</dt>
+                      <dd className="font-mono font-medium">{results.hvac.totalPlantTons > 0 ? Math.round(totalSF / results.hvac.totalPlantTons) : '—'} SF/Ton</dd>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between border-t border-gray-200 pt-1 mt-1">
                       <dt className="text-gray-600">Total Heating:</dt>
                       <dd className="font-mono font-medium">{results.hvac.totalMBH.toLocaleString()} MBH</dd>
                     </div>
@@ -1188,12 +1225,6 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
                       <dt className="text-gray-600">Exhaust:</dt>
                       <dd className="font-mono font-medium">{results.hvac.totalExhaustCFM.toLocaleString()} CFM</dd>
                     </div>
-                    {results.hvac.dehumidLbHr > 0 && (
-                      <div className="flex justify-between">
-                        <dt className="text-gray-600">Dehumid:</dt>
-                        <dd className="font-mono font-medium">{results.hvac.dehumidLbHr} lb/hr</dd>
-                      </div>
-                    )}
                     <div className="flex justify-between">
                       <dt className="text-gray-600">Est. RTU Count:</dt>
                       <dd className="font-mono font-medium">{results.hvac.rtuCount} units</dd>

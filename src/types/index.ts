@@ -465,7 +465,9 @@ export interface HVACCalcResult {
   totalVentCFM: number
   totalExhaustCFM: number
   dehumidLbHr: number
+  dehumidTons: number      // Estimated cooling tons for dehumidification equipment
   poolChillerTons: number  // Tracked separately for mechanical loads
+  totalPlantTons: number   // Total cooling plant: space + pool chiller + dehumid
   rtuCount: number
 }
 
