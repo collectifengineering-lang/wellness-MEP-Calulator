@@ -2429,139 +2429,198 @@ export default function ScanWorkspace() {
         )}
 
         {activeTab === 'spaces' && (
-          <>
-            {/* Spaces List */}
-            <div className="w-80 border-r border-surface-700 bg-surface-800/50 flex flex-col">
-              <div className="p-4 border-b border-surface-700 flex items-center justify-between">
-                <h3 className="font-semibold text-white">Extracted Spaces</h3>
-                <button
-                  onClick={handleAddSpace}
-                  className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm transition-colors"
-                >
-                  + Add
-                </button>
+          <div className="flex-1 overflow-y-auto p-6">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-xl font-bold text-white">Extracted Spaces</h2>
+                <p className="text-sm text-surface-400 mt-1">
+                  {currentScan.extractedSpaces.length} spaces • {currentScan.extractedSpaces.reduce((sum, s) => sum + s.sf, 0).toLocaleString()} SF total
+                </p>
               </div>
-              
-              <div className="flex-1 overflow-y-auto p-2">
-                {currentScan.extractedSpaces.length === 0 ? (
-                  <div className="text-center py-8 text-surface-500">
-                    <div className="text-4xl mb-3">🤖</div>
-                    <p className="text-sm">No spaces extracted yet</p>
-                    <p className="text-xs mt-1">Analyze a drawing to extract spaces</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {/* Summary banner for low-confidence spaces */}
-                    {(() => {
-                      const lowConfCount = currentScan.extractedSpaces.filter(s => s.confidenceSource === 'estimated').length
-                      if (lowConfCount > 0) {
-                        return (
-                          <div className="flex items-center gap-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-xs">
-                            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                            </svg>
-                            <span>{lowConfCount} space{lowConfCount > 1 ? 's' : ''} with estimated SF - review recommended</span>
-                          </div>
-                        )
-                      }
-                      return null
-                    })()}
-                    
-                    {currentScan.extractedSpaces.map(space => {
-                      const isLowConfidence = space.confidenceSource === 'estimated'
-                      return (
-                        <div
-                          key={space.id}
-                          onClick={() => setSelectedSpaceId(space.id)}
-                          className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                            selectedSpaceId === space.id
-                              ? 'bg-violet-600/20 border border-violet-500'
-                              : isLowConfidence
-                                ? 'bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/20'
-                                : 'bg-surface-700/30 hover:bg-surface-700/50 border border-transparent'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-2 min-w-0">
-                              {/* Confidence indicator icon */}
-                              {isLowConfidence ? (
-                                <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <title>SF was estimated visually</title>
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                              ) : (
-                                <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <title>SF read from text</title>
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              )}
-                              <h4 className="font-medium text-white truncate">{space.name}</h4>
-                            </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteSpace(space.id)
-                              }}
-                              className="p-1 rounded hover:bg-red-500/20 text-surface-500 hover:text-red-400"
-                            >
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-surface-400 ml-6">
-                            <span className={isLowConfidence ? 'text-amber-400 font-medium' : ''}>{space.sf.toLocaleString()} SF</span>
-                            {isLowConfidence && (
-                              <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[10px]">estimated</span>
-                            )}
-                            {space.zoneType && (
-                              <span className="px-1.5 py-0.5 bg-surface-600 rounded">{space.zoneType}</span>
-                            )}
-                          </div>
-                          {Object.keys(space.fixtures).length > 0 && (
-                            <div className="mt-2 ml-6 flex flex-wrap gap-1">
-                              {Object.entries(space.fixtures).slice(0, 4).map(([key, count]) => (
-                                <span key={key} className="text-xs px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">
-                                  {count} {key}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          <div className="mt-2 ml-6 flex items-center gap-1">
-                            <div className="flex-1 h-1 bg-surface-600 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full ${isLowConfidence ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                                style={{ width: `${space.confidence}%` }}
-                              />
-                            </div>
-                            <span className="text-xs text-surface-500">{space.confidence}%</span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={handleAddSpace}
+                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                <span>+</span> Add Space
+              </button>
             </div>
 
-            {/* Space Editor */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {selectedSpace ? (
-                <SpaceEditor 
-                  space={selectedSpace} 
-                  onUpdate={(updates) => updateExtractedSpace(currentScan.id, selectedSpace.id, updates)}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-surface-500">
-                  <div className="text-center">
-                    <div className="text-5xl mb-4">🏠</div>
-                    <p>Select a space to edit</p>
-                    <p className="text-sm mt-1">or add a new one</p>
+            {currentScan.extractedSpaces.length === 0 ? (
+              <div className="text-center py-16 text-surface-500">
+                <div className="text-5xl mb-4">🤖</div>
+                <p className="text-lg">No spaces extracted yet</p>
+                <p className="text-sm mt-2">Go to Drawings tab and analyze a floor plan</p>
+              </div>
+            ) : (
+              <>
+                {/* Summary banner for low-confidence spaces */}
+                {(() => {
+                  const lowConfCount = currentScan.extractedSpaces.filter(s => s.confidenceSource === 'estimated').length
+                  if (lowConfCount > 0) {
+                    return (
+                      <div className="flex items-center gap-2 p-3 mb-6 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-sm">
+                        <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <span>{lowConfCount} space{lowConfCount > 1 ? 's' : ''} with estimated SF - click to review and correct</span>
+                      </div>
+                    )
+                  }
+                  return null
+                })()}
+
+                {/* Spaces grouped by floor */}
+                {(() => {
+                  // Group spaces by floor
+                  const floorGroups: Record<string, ExtractedSpace[]> = {}
+                  currentScan.extractedSpaces.forEach(space => {
+                    const floor = space.floor || 'Unknown Floor'
+                    if (!floorGroups[floor]) floorGroups[floor] = []
+                    floorGroups[floor].push(space)
+                  })
+                  
+                  // Sort floors logically
+                  const sortedFloors = Object.keys(floorGroups).sort((a, b) => {
+                    const order = ['Cellar', 'Basement', 'Ground', '1st Floor', '2nd Floor', '3rd Floor', '4th Floor', '5th Floor', 'Roof', 'Unknown Floor']
+                    const aIdx = order.findIndex(f => a.toLowerCase().includes(f.toLowerCase()))
+                    const bIdx = order.findIndex(f => b.toLowerCase().includes(f.toLowerCase()))
+                    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+                    if (aIdx !== -1) return -1
+                    if (bIdx !== -1) return 1
+                    return a.localeCompare(b)
+                  })
+                  
+                  return (
+                    <div className="space-y-6">
+                      {sortedFloors.map(floor => {
+                        const spaces = floorGroups[floor]
+                        const floorSF = spaces.reduce((sum, s) => sum + s.sf, 0)
+                        
+                        return (
+                          <div key={floor} className="bg-surface-800 rounded-xl border border-surface-700 overflow-hidden">
+                            {/* Floor Header */}
+                            <div className="px-4 py-3 bg-surface-700/50 border-b border-surface-700 flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <span className="text-lg">🏢</span>
+                                <div>
+                                  <h3 className="font-semibold text-white">{floor}</h3>
+                                  <p className="text-xs text-surface-400">{spaces.length} spaces • {floorSF.toLocaleString()} SF</p>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Spaces Grid */}
+                            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                              {spaces.map(space => {
+                                const isLowConfidence = space.confidenceSource === 'estimated'
+                                const fixtureCount = Object.values(space.fixtures).reduce((a, b) => a + b, 0)
+                                
+                                return (
+                                  <div
+                                    key={space.id}
+                                    onClick={() => setSelectedSpaceId(space.id)}
+                                    className={`p-3 rounded-lg cursor-pointer transition-all hover:scale-[1.02] ${
+                                      isLowConfidence
+                                        ? 'bg-amber-500/10 border border-amber-500/30 hover:border-amber-500/50'
+                                        : 'bg-surface-700/50 border border-surface-600 hover:border-violet-500/50'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2 mb-2">
+                                      <h4 className="font-medium text-white text-sm leading-tight">{space.name}</h4>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleDeleteSpace(space.id)
+                                        }}
+                                        className="p-1 rounded hover:bg-red-500/20 text-surface-500 hover:text-red-400 flex-shrink-0"
+                                      >
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2 text-xs">
+                                      <span className={`font-medium ${isLowConfidence ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                        {space.sf.toLocaleString()} SF
+                                      </span>
+                                      {isLowConfidence && (
+                                        <span className="px-1 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[10px]">est</span>
+                                      )}
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2 mt-2 text-xs text-surface-400">
+                                      {space.zoneType && (
+                                        <span className="px-1.5 py-0.5 bg-surface-600 rounded truncate max-w-[100px]">{space.zoneType}</span>
+                                      )}
+                                      {fixtureCount > 0 && (
+                                        <span className="px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">🚿 {fixtureCount}</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )
+                })()}
+              </>
+            )}
+
+            {/* Space Editor Modal */}
+            {selectedSpace && (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="bg-surface-800 border border-surface-600 rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                  {/* Modal Header */}
+                  <div className="px-6 py-4 border-b border-surface-700 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold text-white">{selectedSpace.name}</h3>
+                      <p className="text-sm text-surface-400">{selectedSpace.floor} • {selectedSpace.sf.toLocaleString()} SF</p>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedSpaceId(null)}
+                      className="p-2 hover:bg-surface-700 rounded-lg text-surface-400 hover:text-white transition-colors"
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  
+                  {/* Modal Content */}
+                  <div className="flex-1 overflow-y-auto p-6">
+                    <SpaceEditor 
+                      space={selectedSpace} 
+                      onUpdate={(updates) => updateExtractedSpace(currentScan.id, selectedSpace.id, updates)}
+                    />
+                  </div>
+                  
+                  {/* Modal Footer */}
+                  <div className="px-6 py-4 border-t border-surface-700 flex justify-end gap-3">
+                    <button
+                      onClick={() => {
+                        handleDeleteSpace(selectedSpace.id)
+                        setSelectedSpaceId(null)
+                      }}
+                      className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Delete Space
+                    </button>
+                    <button
+                      onClick={() => setSelectedSpaceId(null)}
+                      className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-medium transition-colors"
+                    >
+                      Done
+                    </button>
                   </div>
                 </div>
-              )}
-            </div>
-          </>
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === 'export' && (
