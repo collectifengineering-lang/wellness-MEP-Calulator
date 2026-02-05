@@ -235,9 +235,9 @@ export default function ScanWorkspace() {
         console.log('[Floor Detect] Result:', result)
         
         // detectFloorLevel returns "Unknown" if not found, so check for valid floor
-        if (result.floor && result.floor !== 'Unknown' && result.confidence > 30) {
+        if (result.floor && result.floor !== 'Unknown' && result.confidence > 30 && currentScan) {
           // Update the drawing with detected floor
-          updateDrawing(selectedDrawing.id, { floor: result.floor })
+          updateDrawing(currentScan.id, selectedDrawing.id, { floor: result.floor })
           // Also update lastFloorUsed so tags default to this
           setLastFloorUsed(result.floor)
           console.log('[Floor Detect] Set floor to:', result.floor)
