@@ -520,73 +520,62 @@ If truly no match, use "custom". Only respond with valid JSON, no explanation.`
 // Shared extraction prompt for both Claude and Grok
 const EXTRACTION_PROMPT = `You are extracting room data from an architectural floor plan.
 
-**CRITICAL: READ THE ACTUAL TEXT ON THE PLAN. DO NOT INVENT OR GUESS ROOM NAMES.**
+TASK: Extract ALL rooms/spaces with their Name, Type, and Square Footage.
 
-TASK: Extract rooms/spaces with their EXACT names as written on the plan.
-
-## STEP 1: READ THE TITLE BLOCK
-Look in corners (usually bottom-right) for:
-- Plan title: "CELLAR PROPOSED PLAN", "1ST FLOOR PROPOSED FLOOR PLAN", "2ND FLOOR PLAN"
-- This tells you which floor you're looking at
-- Common formats: "1st Floor", "Cellar", "Basement", "2nd Floor", "Roof", "Ground"
-
-## STEP 2: FIND ROOM LABELS
-Look for text labels that identify rooms:
-- Room tags in boxes: "BEDROOM 101 150 SF"
-- Inline labels: "KITCHEN", "LIVING ROOM" written inside rooms
-- Area schedule tables with room names and SF
-
-## STEP 3: EXTRACT ONLY WHAT YOU CAN READ
-
-**RESIDENTIAL ROOMS** (for houses, townhouses, apartments):
-- Living Room, Family Room, Great Room
-- Kitchen, Kitchenette, Pantry
-- Bedroom, Master Bedroom, Guest Room
-- Bathroom, Full Bath, Half Bath, Powder Room
-- Dining Room, Breakfast Nook
-- Laundry, Utility Room, Mudroom
-- Garage, Carport
-- Closet, Walk-in Closet, Storage
-- Basement, Cellar
-- Attic, Bonus Room, Den, Study
-
-**COMMERCIAL ROOMS** (for offices, wellness, retail):
-- Office, Conference Room, Reception, Lobby
-- Gym, Fitness, Locker Room, Pool
-- Retail, Cafe, Restaurant
-- Mechanical Room, Storage
-
-## FLOOR PATTERNS
+## STEP 1: IDENTIFY THE FLOOR/LEVEL
+Look in title block or plan header for:
 - "CELLAR PROPOSED PLAN" → floor: "Cellar"
 - "1ST FLOOR PROPOSED FLOOR PLAN" → floor: "1st Floor"
 - "2ND FLOOR PROPOSED PLAN" → floor: "2nd Floor"
 - "PROPOSED ROOF FLOOR PLAN" → floor: "Roof"
-- "BASEMENT PLAN" → floor: "Basement"
+- "Level 3", "Floor 2", "L1", "Basement", "Ground"
+
+## STEP 2: FIND ROOMS - Use ALL methods
+
+**Method A - Read Labels (BEST):**
+- Room tags: "BEDROOM 101 150 SF"
+- Inline text: "KITCHEN", "LIVING ROOM"
+- Area schedule tables
+
+**Method B - Identify by Fixtures (when no labels):**
+- KITCHEN: Counter, sink, stove/range symbols
+- BATHROOM: Toilet, tub/shower, sink symbols  
+- BEDROOM: Enclosed room with closet
+- LIVING ROOM: Large open space near entry
+- LAUNDRY: Washer/dryer symbols
+- GARAGE: Vehicle space, garage door
+
+**Method C - Identify by Size:**
+- Small (~50-100 SF) = Bathroom, Closet
+- Medium (~100-200 SF) = Bedroom, Office
+- Large (~200-500 SF) = Living Room, Kitchen
+
+## ROOM TYPES
+
+**Residential:**
+Living Room, Kitchen, Dining Room, Bedroom, Master Bedroom, Bathroom, Half Bath, Laundry, Garage, Closet, Storage, Basement, Cellar
+
+**Commercial:**
+Office, Conference, Reception, Gym, Locker Room, Pool, Spa, Sauna, Retail, Cafe, Mechanical Room
 
 ## DO NOT EXTRACT
 - Stairs, Elevator, Corridor, Hallway
-- Key Notes, Legend items, Title block text
-- Construction notes ("PROVIDE NEW...")
-- "FDNY ACCESS", "EXIT", "EGRESS"
-
-## DO NOT INVENT
-- If you can't read a room name, skip it
-- Do NOT guess names or make up technical terms
-- Use ONLY text you can ACTUALLY READ
+- Title blocks, Key Notes, Construction notes
 
 Respond with ONLY valid JSON:
 {
   "floor": "1st Floor",
   "zones": [
-    {"name": "Living Room", "type": "residential", "sf": 350},
     {"name": "Kitchen", "type": "residential", "sf": 200},
-    {"name": "Bedroom", "type": "residential", "sf": 150}
+    {"name": "Living Room", "type": "residential", "sf": 350},
+    {"name": "Bedroom", "type": "residential", "sf": 150},
+    {"name": "Bathroom", "type": "residential", "sf": 50}
   ],
-  "totalSF": 700,
-  "notes": "Found X rooms with names read from plan labels."
+  "totalSF": 750,
+  "notes": "Residential plan - extracted X rooms."
 }
 
-ONLY extract rooms with names you can ACTUALLY READ on the plan!`
+Be THOROUGH - extract every room whether labeled or identified by layout!`
 
 // Track which provider was used for extraction
 export type AIProvider = 'claude' | 'grok' | 'none'

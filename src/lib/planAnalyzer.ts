@@ -343,93 +343,70 @@ function formatFloorPrefix(floor: string): string {
 // =============================================================================
 const EXTRACTION_PROMPT = `You are an expert architect analyzing floor plans to extract room/space data.
 
-**CRITICAL RULE: READ THE ACTUAL TEXT ON THE PLAN. DO NOT INVENT OR GUESS ROOM NAMES.**
+**OBJECTIVE:** Extract ALL distinct rooms/spaces with their Name, Type, and Square Footage (SF).
 
-**OBJECTIVE:** Extract ALL distinct rooms/spaces with their EXACT Name (as written on plan), Type, and Square Footage.
-
-## STEP 1: READ THE TITLE BLOCK FIRST
-Look in the corners (usually bottom-right) for:
-- Plan title: "CELLAR PROPOSED PLAN", "1ST FLOOR PROPOSED FLOOR PLAN", "SECOND FLOOR PLAN"
-- Floor level: "Level 1", "1st Floor", "Cellar", "Basement", "2nd Floor", "Roof"
-- Project name and address
-- Scale notation
-
-## STEP 2: FIND ROOM LABELS
-Look for text labels that identify rooms. Common formats:
-
-**Format A - Room Tag Box:**
-┌─────────────┐
-│  BEDROOM    │  ← Room name (USE EXACTLY AS WRITTEN)
-│    101      │  ← Room number
-│  150 SF     │  ← Square footage
-└─────────────┘
-
-**Format B - Inline Text:**
-"KITCHEN" or "LIVING ROOM" written directly inside the room boundary
-
-**Format C - Leader Line:**
-Text box with arrow/line pointing to the room
-
-**Format D - Area Schedule Table:**
-Tables listing rooms with Name, Number, and Area columns
-
-## STEP 3: EXTRACT EXACTLY WHAT YOU SEE
-
-**RESIDENTIAL ROOMS** (townhouse, apartment, house):
-- Living Room, Family Room, Great Room
-- Kitchen, Kitchenette, Pantry
-- Bedroom, Master Bedroom, Guest Room
-- Bathroom, Full Bath, Half Bath, Powder Room
-- Dining Room, Breakfast Nook
-- Laundry, Utility Room
-- Garage, Carport
-- Closet, Walk-in Closet, Storage
-- Basement, Cellar
-- Attic, Bonus Room
-
-**COMMERCIAL/WELLNESS ROOMS**:
-- Office, Conference Room, Reception
-- Gym, Fitness, Locker Room
-- Pool, Spa, Sauna, Steam Room
-- Retail, Cafe, Restaurant
-- Mechanical Room, Electrical Room
-
-## FLOOR IDENTIFICATION PATTERNS
+## STEP 1: IDENTIFY THE FLOOR/LEVEL
+Look in title block (corners) or plan header for:
 - "CELLAR PROPOSED PLAN" → floor: "Cellar"
-- "1ST FLOOR PROPOSED FLOOR PLAN" → floor: "1st Floor"
+- "1ST FLOOR PROPOSED FLOOR PLAN" → floor: "1st Floor"  
 - "2ND FLOOR PROPOSED PLAN" → floor: "2nd Floor"
 - "PROPOSED ROOF FLOOR PLAN" → floor: "Roof"
 - "BASEMENT PLAN" → floor: "Basement"
-- "GROUND FLOOR" → floor: "Ground"
+- "Level 3", "Floor 2", "L1", "Ground" etc.
+
+## STEP 2: FIND ROOMS - Use ALL available clues
+
+**Method A - Read Text Labels (BEST):**
+- Room tags: "BEDROOM 101 150 SF"
+- Inline labels: "KITCHEN", "LIVING ROOM" inside rooms
+- Leader lines pointing to rooms
+- Area schedule tables
+
+**Method B - Identify by Fixtures/Layout (when no labels):**
+- KITCHEN: Has counter, sink, stove/range symbols
+- BATHROOM: Has toilet, tub/shower, sink symbols
+- BEDROOM: Enclosed room with closet nearby
+- LIVING ROOM: Large open space, often near entry
+- DINING ROOM: Near kitchen, may have table symbol
+- LAUNDRY: Has washer/dryer symbols
+- GARAGE: Vehicle space with garage door
+
+**Method C - Identify by Room Shape/Size:**
+- Small enclosed rooms (~50-100 SF) = Bathroom, Closet, Utility
+- Medium rooms (~100-200 SF) = Bedroom, Office
+- Large open areas (~200-500 SF) = Living Room, Kitchen, Great Room
+
+## STEP 3: EXTRACT ALL ROOMS YOU CAN IDENTIFY
+
+**Residential Rooms:**
+Living Room, Family Room, Kitchen, Dining Room, Bedroom, Master Bedroom, Bathroom, Half Bath, Laundry, Utility Room, Garage, Closet, Storage, Basement, Cellar, Attic
+
+**Commercial Rooms:**
+Office, Conference Room, Reception, Lobby, Gym, Fitness, Locker Room, Pool, Spa, Sauna, Steam Room, Retail, Cafe, Restaurant, Mechanical Room
 
 ## CONFIDENCE SCORING
-- "high" = SF was read from text (saw "150 SF" or "1,200 SQFT")
-- "low" = SF was estimated (no explicit number found)
+- "high" = SF was read from text label
+- "low" = SF was estimated from visual size
 
 ## DO NOT EXTRACT
-- Stairs, Elevator, Corridor, Hallway, Vestibule
-- Key Notes sections, Legend items, Title blocks
-- Construction notes (e.g., "PROVIDE NEW CONCRETE...")
-- "FDNY ACCESS", "EXIT", "EGRESS"
-
-## DO NOT INVENT
-- If you cannot read a room name clearly, skip it or use "Unknown Room"
-- Do NOT guess names like "Horizontal Assembly" or make up technical terms
-- Use ONLY the EXACT text you can read on the plan
+- Stairs, Elevator, Corridor, Hallway
+- Title block text, Key Notes, Legend items
+- Construction notes
 
 ## OUTPUT FORMAT (JSON only)
 {
   "floor": "1st Floor",
   "zones": [
-    {"name": "Living Room", "type": "residential", "sf": 350, "confidence": "high"},
     {"name": "Kitchen", "type": "residential", "sf": 200, "confidence": "high"},
-    {"name": "Bedroom 1", "type": "residential", "sf": 150, "confidence": "low", "notes": "SF estimated"}
+    {"name": "Living Room", "type": "residential", "sf": 350, "confidence": "low"},
+    {"name": "Bedroom", "type": "residential", "sf": 150, "confidence": "low"},
+    {"name": "Bathroom", "type": "residential", "sf": 50, "confidence": "low"}
   ],
-  "totalSF": 700,
-  "notes": "Residential townhouse plan. Found X rooms."
+  "totalSF": 750,
+  "notes": "Residential plan. X rooms with labels, Y rooms identified by layout."
 }
 
-REMEMBER: Only extract rooms with names you can ACTUALLY READ on the plan!`
+Be THOROUGH - extract every room you can identify, whether labeled or not!`
 
 // Symbol legend context prompt
 const LEGEND_CONTEXT_PROMPT = (legend: SymbolLegend) => `
