@@ -61,6 +61,7 @@ export default function ScanWorkspace() {
   const [tagEditName, setTagEditName] = useState('')
   const [tagEditSF, setTagEditSF] = useState('')
   const [tagEditFloor, setTagEditFloor] = useState('')
+  const [lastFloorUsed, setLastFloorUsed] = useState('1') // Remember last floor for subsequent tags
   
   // Store regions as PERCENTAGES (0-100) so they scale with image display
   // Supports both rectangles and polygons
@@ -544,7 +545,7 @@ export default function ScanWorkspace() {
       })
       setTagEditName('')
       setTagEditSF('')
-      setTagEditFloor(currentScan?.extractedSpaces[0]?.floor || '1')
+      setTagEditFloor(lastFloorUsed) // Use last floor used for continuity
       setShowTagModal(true)
       
       // Send to AI for reading
@@ -968,6 +969,9 @@ export default function ScanWorkspace() {
     
     const sf = parseInt(tagEditSF) || 0
     const floor = tagEditFloor.trim() || '1'
+    
+    // Remember this floor for the next tag
+    setLastFloorUsed(floor)
     
     // Create new extracted space
     const newSpace: ExtractedSpace = {
@@ -2019,7 +2023,8 @@ export default function ScanWorkspace() {
                       )}
                     
                     {/* Extracted Spaces (from AI analysis) - positioned using percentages */}
-                    {imageBounds && currentScan.extractedSpaces.filter(s => s.boundingBox).map(space => (
+                    {/* Only show spaces for the CURRENT drawing/page */}
+                    {imageBounds && currentScan.extractedSpaces.filter(s => s.boundingBox && s.drawingId === selectedDrawing?.id).map(space => (
                       <div
                         key={`extracted-${space.id}`}
                         className={`absolute border-2 ${
@@ -2202,8 +2207,8 @@ export default function ScanWorkspace() {
                           </>
                         )}
                         
-                        {/* Extracted Space Polygons */}
-                        {currentScan.extractedSpaces.filter(s => s.polygonPoints).map(space => {
+                        {/* Extracted Space Polygons - Only show for current drawing/page */}
+                        {currentScan.extractedSpaces.filter(s => s.polygonPoints && s.drawingId === selectedDrawing?.id).map(space => {
                           const pixelPoints = space.polygonPoints!.map(p => ({
                             x: (p.xPercent / 100) * imageBounds.width,
                             y: (p.yPercent / 100) * imageBounds.height,
