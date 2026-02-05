@@ -230,13 +230,13 @@ export const fixtureUnits = {
   dryer: { wsfu: 0, dfu: 4, hot_gph: 0 }, // Condensate drain for gas dryers
 }
 
-// Sanitary pipe sizing
+// Sanitary pipe sizing (US standard - no 5" pipe, skip from 4" to 6")
 export const sanitarySizing = {
   thresholds: [
     { maxDFU: 20, pipeSize: '3"' },
     { maxDFU: 160, pipeSize: '4"' },
-    { maxDFU: 360, pipeSize: '5"' },
     { maxDFU: 620, pipeSize: '6"' },
+    { maxDFU: 1400, pipeSize: '8"' },
   ],
   backwash_pit_required_gpm: 225, // above this, need pit/tank
   backwash_pit_min_gallons: 1000,
