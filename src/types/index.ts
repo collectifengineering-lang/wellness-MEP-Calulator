@@ -20,6 +20,9 @@ export interface SavedReport {
       totalVentCFM: number
       totalExhaustCFM: number
       dehumidLbHr: number
+      dehumidTons: number
+      poolChillerTons: number
+      totalPlantTons: number
       rtuCount: number
     }
     electrical: {
