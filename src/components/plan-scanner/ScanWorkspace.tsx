@@ -2908,9 +2908,9 @@ export default function ScanWorkspace() {
               updateExtractedSpace(currentScan.id, space.id, space)
             })
           }}
-          onExport={(target) => {
+          onExport={(_target) => {
             setShowZoneMatchingModal(false)
-            // TODO: Route to different export targets
+            // TODO: Route to different export targets based on _target
             setShowExportModal(true)
           }}
         />
@@ -3219,7 +3219,7 @@ function SpaceEditor({ space, onUpdate }: { space: ExtractedSpace; onUpdate: (up
               />
               
               {/* Toggle for recommended vs all fixtures */}
-              {space.zoneType && getDbZoneTypeDefault(space.zoneType)?.visible_fixtures?.length > 0 && !fixtureSearch && (
+              {space.zoneType && (getDbZoneTypeDefault(space.zoneType)?.visible_fixtures?.length ?? 0) > 0 && !fixtureSearch && (
                 <div className="flex items-center gap-2 mb-4">
                   <button
                     onClick={() => setShowAllFixtures(false)}

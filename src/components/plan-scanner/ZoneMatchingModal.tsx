@@ -78,7 +78,6 @@ export default function ZoneMatchingModal({ isOpen, onClose, spaces, onUpdateSpa
   
   const [matchingMode, setMatchingMode] = useState<MatchingMode>('commercial')
   const [isMatching, setIsMatching] = useState(false)
-  const [selectedSpaces, setSelectedSpaces] = useState<Set<string>>(new Set(spaces.map(s => s.id)))
   const [groupedSpaces, setGroupedSpaces] = useState<ExtractedSpace[]>(spaces)
   
   // Fetch zone types on mount
@@ -414,7 +413,6 @@ export default function ZoneMatchingModal({ isOpen, onClose, spaces, onUpdateSpa
           <div className="space-y-2">
             {groupedSpaces.map(space => {
               const isMatched = space.zoneType && space.zoneType !== 'custom'
-              const zoneInfo = space.zoneType ? dbZoneTypeDefaults.find(zt => zt.id === space.zoneType) : null
               
               return (
                 <div
