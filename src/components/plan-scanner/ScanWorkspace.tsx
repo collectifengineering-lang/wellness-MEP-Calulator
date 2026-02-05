@@ -988,7 +988,7 @@ export default function ScanWorkspace() {
       pageNumber: selectedDrawing?.pageNumber,
       drawingId: selectedDrawing?.id,
       userCreated: false,
-      confidenceSource: sf > 0 ? 'ai_explicit' : 'ai_estimated'
+      confidenceSource: sf > 0 ? 'explicit' : 'estimated'
     }
     
     setExtractedSpaces(currentScan.id, [...currentScan.extractedSpaces, newSpace])
