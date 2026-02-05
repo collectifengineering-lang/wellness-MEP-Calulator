@@ -5,15 +5,18 @@ import { climateFactors } from '../data/defaults'
 /**
  * DEHUMIDIFICATION TO COOLING TONS CONVERSION
  * 
- * Conservative rule of thumb for pool dehumidifiers:
- * - Latent heat of vaporization: ~1,061 BTU/lb
- * - 1 ton = 12,000 BTU/hr
- * - Base conversion: 1,061 / 12,000 = 0.088 tons per lb/hr
- * - Adding ~35% for sensible reheat and equipment loads = 0.12 tons per lb/hr
+ * Based on typical pool dehumidifier equipment ratings:
+ * - A 4-ton dehumidifier typically removes ~20 lb/hr of moisture
+ * - This gives: 4 tons / 20 lb/hr = 0.20 tons per lb/hr
  * 
- * This aligns with real equipment specs (e.g., Seresco, Dectron pool dehumidifiers)
+ * This accounts for the TOTAL cooling capacity of the dehumidifier which includes:
+ * - Latent cooling (moisture removal via condensation)
+ * - Sensible cooling (cooling the air stream)
+ * - Reheat component (warming air back to setpoint)
+ * 
+ * Reference: Industry standard for Dectron, Seresco, Desert Aire pool dehumidifiers
  */
-export const DEHUMID_TONS_PER_LB_HR = 0.12
+export const DEHUMID_TONS_PER_LB_HR = 0.20
 
 /**
  * Calculate HVAC loads from zones
