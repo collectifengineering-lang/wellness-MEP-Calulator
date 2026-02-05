@@ -12,13 +12,14 @@ interface LineItemsEditorProps {
 
 const categoryOptions = [
   { value: 'lighting', label: '💡 Lighting', unit: 'kW' },
-  { value: 'power', label: '🔌 Power', unit: 'kW' },
+  { value: 'power', label: '🔌 Power/Equipment', unit: 'kW' },
+  { value: 'electrical', label: '⚡ Electric Heat/Pool', unit: 'kW' },
   { value: 'ventilation', label: '🌬️ Ventilation', unit: 'CFM' },
   { value: 'exhaust', label: '💨 Exhaust', unit: 'CFM' },
   { value: 'cooling', label: '❄️ Cooling', unit: 'tons' },
   { value: 'pool_chiller', label: '🏊 Pool Chiller', unit: 'tons' },
-  { value: 'heating', label: '🔥 Heating', unit: 'MBH' },
-  { value: 'gas', label: '⛽ Gas', unit: 'MBH' },
+  { value: 'heating', label: '🔥 Heating (Gas)', unit: 'MBH' },
+  { value: 'gas', label: '⛽ Gas Appliance', unit: 'MBH' },
   { value: 'dehumidification', label: '💧 Dehumidification', unit: 'lb/hr' },
   { value: 'other', label: '📦 Other', unit: '' },
 ] as const

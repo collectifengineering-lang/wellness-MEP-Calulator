@@ -123,9 +123,15 @@ export default function ZoneEditor({ zone, onClose }: ZoneEditorProps) {
     (defaults.exhaust_cfm_shower || 0) * showerCount
   
   // 3. LINE ITEM TOTALS (the visible equipment!) - SIMPLE MATH!
-  const lineItemKW = localZone.lineItems
-    .filter(li => li.category === 'power' || li.category === 'lighting')
-    .reduce((sum, li) => sum + (li.unit === 'kW' ? li.quantity * li.value : (li.quantity * li.value) / 1000), 0)
+  // NOTE: Match actual electrical.ts calculation - count by UNIT not category
+  // This ensures zone totals match project totals (any item with kW/W/HP counts)
+  const lineItemKW = localZone.lineItems.reduce((sum, li) => {
+    const unit = li.unit?.toLowerCase() || ''
+    if (unit === 'kw') return sum + li.quantity * li.value
+    if (unit === 'w') return sum + (li.quantity * li.value) / 1000
+    if (unit === 'hp') return sum + li.quantity * li.value * 0.746
+    return sum
+  }, 0)
   
   const lineItemGasMBH = localZone.lineItems
     .filter(li => li.category === 'gas')
