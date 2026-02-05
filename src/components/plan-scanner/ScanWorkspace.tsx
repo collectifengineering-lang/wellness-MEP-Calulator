@@ -9,6 +9,7 @@ import { analyzeDrawing, calculateScale, detectSpaceBoundaries, formatFloorPrefi
 import { extractZonesFromPDF, type ExtractedZone } from '../../lib/xai'
 import { v4 as uuidv4 } from 'uuid'
 import ExportModal from './ExportModal'
+import ZoneMatchingModal from './ZoneMatchingModal'
 import { NYC_FIXTURE_DATABASE, getFixtureById } from '../../data/nycFixtures'
 
 type TabType = 'drawings' | 'spaces' | 'export'
@@ -33,6 +34,8 @@ export default function ScanWorkspace() {
   const [analysisProgress, setAnalysisProgress] = useState('')
   const [detectingBoundaries, setDetectingBoundaries] = useState(false)
   const [showExportModal, setShowExportModal] = useState(false)
+  const [showZoneMatchingModal, setShowZoneMatchingModal] = useState(false)
+  const [selectedSpacesForGroup, setSelectedSpacesForGroup] = useState<Set<string>>(new Set())
   const [calibrationDistance, setCalibrationDistance] = useState<string>('')
   const [showCalibrationInput, setShowCalibrationInput] = useState(false)
   const [showScaleModal, setShowScaleModal] = useState(false)
@@ -1280,6 +1283,71 @@ export default function ScanWorkspace() {
     if (selectedSpaceId === spaceId) {
       setSelectedSpaceId(null)
     }
+    // Also remove from group selection
+    setSelectedSpacesForGroup(prev => {
+      const next = new Set(prev)
+      next.delete(spaceId)
+      return next
+    })
+  }
+
+  // Toggle space selection for grouping
+  const toggleSpaceForGroup = (spaceId: string) => {
+    setSelectedSpacesForGroup(prev => {
+      const next = new Set(prev)
+      if (next.has(spaceId)) {
+        next.delete(spaceId)
+      } else {
+        next.add(spaceId)
+      }
+      return next
+    })
+  }
+
+  // Combine selected spaces into one
+  const handleCombineSpaces = () => {
+    if (!currentScan || selectedSpacesForGroup.size < 2) return
+    
+    const spacesToCombine = currentScan.extractedSpaces.filter(s => selectedSpacesForGroup.has(s.id))
+    const totalSF = spacesToCombine.reduce((sum, s) => sum + s.sf, 0)
+    const firstSpace = spacesToCombine[0]
+    
+    // Combine fixtures
+    const combinedFixtures: Record<string, number> = {}
+    spacesToCombine.forEach(s => {
+      Object.entries(s.fixtures).forEach(([fixtureId, count]) => {
+        combinedFixtures[fixtureId] = (combinedFixtures[fixtureId] || 0) + count
+      })
+    })
+    
+    // Find most common zone type
+    const typeCount: Record<string, number> = {}
+    spacesToCombine.forEach(s => {
+      if (s.zoneType) {
+        typeCount[s.zoneType] = (typeCount[s.zoneType] || 0) + 1
+      }
+    })
+    const mostCommonType = Object.entries(typeCount).sort((a, b) => b[1] - a[1])[0]?.[0]
+    
+    // Create combined space
+    const combinedSpace: ExtractedSpace = {
+      id: crypto.randomUUID(),
+      name: spacesToCombine.map(s => s.name).join(' + '),
+      floor: firstSpace.floor,
+      sf: totalSF,
+      zoneType: mostCommonType || firstSpace.zoneType,
+      fixtures: combinedFixtures,
+      equipment: spacesToCombine.flatMap(s => s.equipment || []),
+      confidence: Math.min(...spacesToCombine.map(s => s.confidence)),
+      confidenceSource: spacesToCombine.some(s => s.confidenceSource === 'estimated') ? 'estimated' : 'explicit'
+    }
+    
+    // Remove old spaces and add combined one
+    const remaining = currentScan.extractedSpaces.filter(s => !selectedSpacesForGroup.has(s.id))
+    setExtractedSpaces(currentScan.id, [...remaining, combinedSpace])
+    
+    // Clear selection
+    setSelectedSpacesForGroup(new Set())
   }
 
   const selectedSpace = currentScan?.extractedSpaces.find(s => s.id === selectedSpaceId)
@@ -2438,12 +2506,41 @@ export default function ScanWorkspace() {
                   {currentScan.extractedSpaces.length} spaces • {currentScan.extractedSpaces.reduce((sum, s) => sum + s.sf, 0).toLocaleString()} SF total
                 </p>
               </div>
-              <button
-                onClick={handleAddSpace}
-                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
-              >
-                <span>+</span> Add Space
-              </button>
+              <div className="flex items-center gap-2">
+                {selectedSpacesForGroup.size > 0 && (
+                  <div className="flex items-center gap-2 mr-2">
+                    <span className="text-sm text-surface-400">
+                      {selectedSpacesForGroup.size} selected
+                    </span>
+                    {selectedSpacesForGroup.size >= 2 && (
+                      <button
+                        onClick={handleCombineSpaces}
+                        className="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-1"
+                      >
+                        🔗 Combine
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSelectedSpacesForGroup(new Set())}
+                      className="px-3 py-1.5 bg-surface-700 hover:bg-surface-600 text-surface-300 rounded-lg text-sm transition-colors"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+                <button
+                  onClick={() => setShowZoneMatchingModal(true)}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                >
+                  🤖 Match Zones
+                </button>
+                <button
+                  onClick={handleAddSpace}
+                  className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+                >
+                  <span>+</span> Add Space
+                </button>
+              </div>
             </div>
 
             {currentScan.extractedSpaces.length === 0 ? (
@@ -2508,6 +2605,26 @@ export default function ScanWorkspace() {
                                   <p className="text-xs text-surface-400">{spaces.length} spaces • {floorSF.toLocaleString()} SF</p>
                                 </div>
                               </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    const floorSpaceIds = spaces.map(s => s.id)
+                                    const allSelected = floorSpaceIds.every(id => selectedSpacesForGroup.has(id))
+                                    setSelectedSpacesForGroup(prev => {
+                                      const next = new Set(prev)
+                                      if (allSelected) {
+                                        floorSpaceIds.forEach(id => next.delete(id))
+                                      } else {
+                                        floorSpaceIds.forEach(id => next.add(id))
+                                      }
+                                      return next
+                                    })
+                                  }}
+                                  className="px-2 py-1 text-xs bg-surface-600 hover:bg-surface-500 text-surface-300 rounded transition-colors"
+                                >
+                                  {spaces.every(s => selectedSpacesForGroup.has(s.id)) ? 'Deselect All' : 'Select All'}
+                                </button>
+                              </div>
                             </div>
                             
                             {/* Spaces Grid */}
@@ -2515,19 +2632,33 @@ export default function ScanWorkspace() {
                               {spaces.map(space => {
                                 const isLowConfidence = space.confidenceSource === 'estimated'
                                 const fixtureCount = Object.values(space.fixtures).reduce((a, b) => a + b, 0)
+                                const isSelectedForGroup = selectedSpacesForGroup.has(space.id)
                                 
                                 return (
                                   <div
                                     key={space.id}
                                     onClick={() => setSelectedSpaceId(space.id)}
                                     className={`p-3 rounded-lg cursor-pointer transition-all hover:scale-[1.02] ${
-                                      isLowConfidence
-                                        ? 'bg-amber-500/10 border border-amber-500/30 hover:border-amber-500/50'
-                                        : 'bg-surface-700/50 border border-surface-600 hover:border-violet-500/50'
+                                      isSelectedForGroup
+                                        ? 'bg-cyan-500/20 border-2 border-cyan-500 ring-2 ring-cyan-500/30'
+                                        : isLowConfidence
+                                          ? 'bg-amber-500/10 border border-amber-500/30 hover:border-amber-500/50'
+                                          : 'bg-surface-700/50 border border-surface-600 hover:border-violet-500/50'
                                     }`}
                                   >
                                     <div className="flex items-start justify-between gap-2 mb-2">
-                                      <h4 className="font-medium text-white text-sm leading-tight">{space.name}</h4>
+                                      {/* Checkbox for grouping */}
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelectedForGroup}
+                                        onChange={(e) => {
+                                          e.stopPropagation()
+                                          toggleSpaceForGroup(space.id)
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-4 h-4 rounded border-surface-500 bg-surface-700 text-cyan-500 focus:ring-cyan-500 focus:ring-offset-0 flex-shrink-0 mt-0.5"
+                                      />
+                                      <h4 className="font-medium text-white text-sm leading-tight flex-1 min-w-0">{space.name}</h4>
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation()
@@ -2541,7 +2672,7 @@ export default function ScanWorkspace() {
                                       </button>
                                     </div>
                                     
-                                    <div className="flex items-center gap-2 text-xs">
+                                    <div className="flex items-center gap-2 text-xs ml-6">
                                       <span className={`font-medium ${isLowConfidence ? 'text-amber-400' : 'text-emerald-400'}`}>
                                         {space.sf.toLocaleString()} SF
                                       </span>
@@ -2550,9 +2681,16 @@ export default function ScanWorkspace() {
                                       )}
                                     </div>
                                     
-                                    <div className="flex items-center gap-2 mt-2 text-xs text-surface-400">
+                                    <div className="flex items-center gap-2 mt-2 text-xs text-surface-400 ml-6 flex-wrap">
                                       {space.zoneType && (
-                                        <span className="px-1.5 py-0.5 bg-surface-600 rounded truncate max-w-[100px]">{space.zoneType}</span>
+                                        <span className={`px-1.5 py-0.5 rounded truncate max-w-[120px] ${
+                                          space.zoneType === 'custom' ? 'bg-surface-600' : 'bg-emerald-500/20 text-emerald-400'
+                                        }`}>
+                                          {space.zoneType}
+                                        </span>
+                                      )}
+                                      {!space.zoneType && (
+                                        <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[10px]">unmatched</span>
                                       )}
                                       {fixtureCount > 0 && (
                                         <span className="px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">🚿 {fixtureCount}</span>
@@ -2625,51 +2763,110 @@ export default function ScanWorkspace() {
 
         {activeTab === 'export' && (
           <div className="flex-1 p-6">
-            <div className="max-w-2xl mx-auto">
+            <div className="max-w-3xl mx-auto">
               <div className="text-center mb-8">
                 <div className="text-5xl mb-4">📤</div>
                 <h2 className="text-2xl font-bold text-white mb-2">Export Extracted Data</h2>
                 <p className="text-surface-400">
-                  Send your {currentScan.extractedSpaces.length} spaces to another module for detailed calculations
+                  Match zone types, then export to MEP calculation modules
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <ExportCard
-                  icon="🏗️"
-                  title="Concept MEP Design"
-                  description="Full MEP calculations with zones"
-                  onClick={() => setShowExportModal(true)}
-                />
-                <ExportCard
-                  icon="🚿"
-                  title="Plumbing / Fire Protection"
-                  description="WSFU/DFU, pipe sizing, DHW"
-                  onClick={() => setShowExportModal(true)}
-                />
-                <ExportCard
-                  icon="❄️"
-                  title="HVAC"
-                  description="Cooling, heating, ventilation loads"
-                  onClick={() => setShowExportModal(true)}
-                />
-                <ExportCard
-                  icon="⚡"
-                  title="Electrical"
-                  description="Lighting, power, service sizing"
-                  disabled
-                />
+              {/* Step 1: Zone Matching */}
+              <div className="mb-6 bg-gradient-to-r from-violet-500/20 to-cyan-500/20 rounded-xl border border-violet-500/30 p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-violet-600 flex items-center justify-center text-2xl">
+                      🤖
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">Step 1: Match Zone Types</h3>
+                      <p className="text-sm text-surface-400">
+                        Use AI to match spaces to zone types for MEP calculations
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowZoneMatchingModal(true)}
+                    className="px-6 py-3 bg-violet-600 hover:bg-violet-500 text-white rounded-lg font-medium flex items-center gap-2"
+                  >
+                    🎯 Match Zones
+                  </button>
+                </div>
+                
+                {/* Matching Status */}
+                <div className="mt-4 flex items-center gap-4 text-sm">
+                  {(() => {
+                    const matched = currentScan.extractedSpaces.filter(s => s.zoneType && s.zoneType !== 'custom').length
+                    const total = currentScan.extractedSpaces.length
+                    const percent = total > 0 ? Math.round((matched / total) * 100) : 0
+                    return (
+                      <>
+                        <div className="flex-1 h-2 bg-surface-700 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-gradient-to-r from-violet-500 to-cyan-500" 
+                            style={{ width: `${percent}%` }} 
+                          />
+                        </div>
+                        <span className={matched === total ? 'text-emerald-400' : 'text-amber-400'}>
+                          {matched}/{total} matched ({percent}%)
+                        </span>
+                      </>
+                    )
+                  })()}
+                </div>
               </div>
 
-              <div className="mt-8 bg-surface-800 rounded-xl border border-surface-700 overflow-hidden">
+              {/* Step 2: Export Destinations */}
+              <div className="mb-6">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-full bg-surface-700 flex items-center justify-center text-sm">2</span>
+                  Export To
+                </h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <ExportCard
+                    icon="🏗️"
+                    title="Concept MEP"
+                    description="Full MEP (as Zones)"
+                    onClick={() => setShowExportModal(true)}
+                  />
+                  <ExportCard
+                    icon="❄️"
+                    title="HVAC"
+                    description="Loads & ventilation"
+                    onClick={() => setShowExportModal(true)}
+                  />
+                  <ExportCard
+                    icon="🚿"
+                    title="Plumbing"
+                    description="WSFU/DFU, DHW"
+                    onClick={() => setShowExportModal(true)}
+                  />
+                  <ExportCard
+                    icon="⚡"
+                    title="Electrical"
+                    description="Power & lighting"
+                    onClick={() => setShowExportModal(true)}
+                  />
+                </div>
+              </div>
+
+              {/* Summary */}
+              <div className="bg-surface-800 rounded-xl border border-surface-700 overflow-hidden">
                 <div className="px-6 py-4 border-b border-surface-700">
                   <h3 className="font-semibold text-white">Export Summary</h3>
                 </div>
                 <div className="p-6">
-                  <div className="grid grid-cols-3 gap-4 text-center">
+                  <div className="grid grid-cols-4 gap-4 text-center">
                     <div>
                       <p className="text-2xl font-bold text-violet-400">{currentScan.extractedSpaces.length}</p>
                       <p className="text-sm text-surface-400">Spaces</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-emerald-400">
+                        {currentScan.extractedSpaces.filter(s => s.zoneType).length}
+                      </p>
+                      <p className="text-sm text-surface-400">Matched</p>
                     </div>
                     <div>
                       <p className="text-2xl font-bold text-cyan-400">
@@ -2678,7 +2875,7 @@ export default function ScanWorkspace() {
                       <p className="text-sm text-surface-400">Fixtures</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-bold text-emerald-400">
+                      <p className="text-2xl font-bold text-amber-400">
                         {currentScan.extractedSpaces.reduce((sum, s) => sum + s.sf, 0).toLocaleString()}
                       </p>
                       <p className="text-sm text-surface-400">Total SF</p>
@@ -2696,6 +2893,26 @@ export default function ScanWorkspace() {
         <ExportModal
           scan={currentScan}
           onClose={() => setShowExportModal(false)}
+        />
+      )}
+      
+      {/* Zone Matching Modal */}
+      {showZoneMatchingModal && (
+        <ZoneMatchingModal
+          isOpen={showZoneMatchingModal}
+          onClose={() => setShowZoneMatchingModal(false)}
+          spaces={currentScan.extractedSpaces}
+          onUpdateSpaces={(updatedSpaces) => {
+            // Update extracted spaces with new zone assignments
+            updatedSpaces.forEach(space => {
+              updateExtractedSpace(currentScan.id, space.id, space)
+            })
+          }}
+          onExport={(target) => {
+            setShowZoneMatchingModal(false)
+            // TODO: Route to different export targets
+            setShowExportModal(true)
+          }}
         />
       )}
     </div>
