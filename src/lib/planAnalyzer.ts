@@ -2,6 +2,8 @@
  * Plan Analyzer - AI-powered drawing analysis for Plan Scanner
  * Uses the SAME extraction logic as Concept MEP for consistency
  * Claude (primary) with Grok fallback
+ * 
+ * v2.0 - Added grid tiling for high-res images and improved prompting
  */
 
 import { ExtractedSpace, SymbolLegend } from '../store/useScannerStore'
@@ -16,6 +18,159 @@ const XAI_API_URL = 'https://api.x.ai/v1/chat/completions'
 // Check if providers are configured
 const isClaudeReady = () => !!ANTHROPIC_API_KEY && ANTHROPIC_API_KEY.length > 10
 const isGrokReady = () => !!XAI_API_KEY && XAI_API_KEY.length > 10
+
+// =============================================================================
+// TILING CONFIGURATION - For high-resolution floor plan analysis
+// =============================================================================
+const TILE_CONFIG = {
+  maxDimension: 2000,      // Split if either dimension exceeds this
+  overlapPercent: 0.15,    // 15% overlap to catch text on seams
+  rows: 2,
+  cols: 2,
+  jpegQuality: 0.85,       // Balance quality vs size
+}
+
+// =============================================================================
+// IMAGE TILING - Split large images for better text recognition
+// =============================================================================
+interface ImageTile {
+  id: string
+  base64: string
+  row: number
+  col: number
+}
+
+/**
+ * Split a canvas into overlapping tiles for parallel AI analysis
+ */
+function tileCanvas(canvas: HTMLCanvasElement): ImageTile[] {
+  const { rows, cols, overlapPercent, jpegQuality } = TILE_CONFIG
+  const tiles: ImageTile[] = []
+  
+  const tileW = canvas.width / cols
+  const tileH = canvas.height / rows
+  const overlapX = tileW * overlapPercent
+  const overlapY = tileH * overlapPercent
+  
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      // Calculate crop coordinates with overlap
+      const x = Math.max(0, (c * tileW) - overlapX)
+      const y = Math.max(0, (r * tileH) - overlapY)
+      
+      // Calculate dimensions (clamping to canvas edge)
+      const w = Math.min(canvas.width - x, tileW + (overlapX * 2))
+      const h = Math.min(canvas.height - y, tileH + (overlapY * 2))
+      
+      // Create tile canvas
+      const tileCanvas = document.createElement('canvas')
+      tileCanvas.width = w
+      tileCanvas.height = h
+      
+      const ctx = tileCanvas.getContext('2d')
+      if (ctx) {
+        ctx.drawImage(canvas, x, y, w, h, 0, 0, w, h)
+        const dataUrl = tileCanvas.toDataURL('image/jpeg', jpegQuality)
+        tiles.push({
+          id: `tile_${r}_${c}`,
+          base64: dataUrl.split(',')[1],
+          row: r,
+          col: c,
+        })
+      }
+    }
+  }
+  
+  console.log(`🔲 Split image into ${tiles.length} tiles (${rows}x${cols}) with ${overlapPercent * 100}% overlap`)
+  return tiles
+}
+
+/**
+ * Check if image needs tiling based on dimensions
+ */
+function needsTiling(width: number, height: number): boolean {
+  return width > TILE_CONFIG.maxDimension || height > TILE_CONFIG.maxDimension
+}
+
+/**
+ * Create a canvas from base64 image data
+ */
+async function base64ToCanvas(base64: string, mimeType: string): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      if (ctx) {
+        ctx.drawImage(img, 0, 0)
+        resolve(canvas)
+      } else {
+        reject(new Error('Could not get canvas context'))
+      }
+    }
+    img.onerror = () => reject(new Error('Failed to load image'))
+    img.src = `data:${mimeType};base64,${base64}`
+  })
+}
+
+// =============================================================================
+// DEDUPLICATION - Merge results from overlapping tiles
+// =============================================================================
+interface RawZone {
+  name: string
+  type: string
+  sf: number
+  fixtures?: Record<string, number>
+  confidence?: 'high' | 'low'
+  notes?: string
+}
+
+/**
+ * Merge zones from multiple tiles and remove duplicates
+ * Duplicates = same name AND SF within 5% tolerance
+ */
+function mergeAndDeduplicate(allZones: RawZone[]): RawZone[] {
+  const uniqueZones: RawZone[] = []
+  
+  for (const zone of allZones) {
+    // Check if this zone already exists
+    const existingIndex = uniqueZones.findIndex(existing => {
+      const nameMatch = existing.name.toLowerCase().trim() === zone.name.toLowerCase().trim()
+      if (!nameMatch) return false
+      
+      // SF tolerance: within 5%
+      const sfDiff = Math.abs(existing.sf - zone.sf)
+      const sfTolerance = Math.max(existing.sf, zone.sf) * 0.05
+      return sfDiff <= sfTolerance
+    })
+    
+    if (existingIndex === -1) {
+      // New unique zone
+      uniqueZones.push(zone)
+    } else {
+      // Duplicate found - keep the one with more info
+      const existing = uniqueZones[existingIndex]
+      
+      // Prefer high confidence over low
+      if (zone.confidence === 'high' && existing.confidence !== 'high') {
+        uniqueZones[existingIndex] = zone
+      }
+      // Merge notes if new one has more detail
+      else if (zone.notes && (!existing.notes || zone.notes.length > existing.notes.length)) {
+        existing.notes = zone.notes
+      }
+      // Merge fixtures if new one has more
+      else if (zone.fixtures && Object.keys(zone.fixtures).length > Object.keys(existing.fixtures || {}).length) {
+        existing.fixtures = { ...existing.fixtures, ...zone.fixtures }
+      }
+    }
+  }
+  
+  console.log(`🔄 Deduplicated ${allZones.length} → ${uniqueZones.length} zones`)
+  return uniqueZones
+}
 
 // =============================================================================
 // ZONE TYPE MAPPING - Same as Concept MEP
@@ -183,94 +338,95 @@ function formatFloorPrefix(floor: string): string {
 }
 
 // =============================================================================
-// EXTRACTION PROMPT - Same thorough prompt as Concept MEP
+// EXTRACTION PROMPT - Optimized for architectural floor plans
+// Handles: Leader lines, color-coded areas, furniture clutter
 // =============================================================================
-const EXTRACTION_PROMPT = `You are extracting room data from an architectural floor plan or area schedule.
+const EXTRACTION_PROMPT = `You are an expert Senior MEP Estimator analyzing architectural floor plans for engineering load calculations.
 
-TASK: Find EVERY room/space with a SQUARE FOOTAGE number. Be thorough - don't miss any!
+**OBJECTIVE:** Extract ALL distinct spaces/zones with their Name, Type, and Square Footage (SF).
 
-HOW TO READ THE DOCUMENT:
+## CRITICAL VISUAL ANALYSIS RULES
 
-1. **ARCHITECTURAL ROOM TAGS** (Most Common Method):
-   Look for CALLOUT BOXES with LEADERS/ARROWS pointing to spaces. Standard format:
-   ┌─────────────┐
-   │  ROOM NAME  │  ← e.g., "REC RM", "HALL", "GYM", "OFFICE"
-   │    C.02     │  ← Room number (e.g., "101", "C.02", "A-123")
-   │    P.T      │  ← Phase/Type indicator (ignore this line)
-   │  361 SQFT   │  ← SQUARE FOOTAGE - extract this!
-   └─────────────┘
-   The leader/arrow points FROM the tag TO the room it describes.
+### 1. LEADER LINES (Most Important!)
+Many architectural plans use "floating room tags" - text boxes connected to rooms by thin lines or arrows.
+- If you see a text block (e.g., "LOCKER ROOM 1,500 SF") in WHITE SPACE with a LINE pointing to a COLORED or SHADED area, that shaded area IS the room
+- Associate the tag text with the room it POINTS TO, not the whitespace where the tag sits
+- Standard room tag format:
+  ┌─────────────┐
+  │  ROOM NAME  │  ← "REC RM", "GYM", "OFFICE"
+  │    C.02     │  ← Room number
+  │  361 SQFT   │  ← SQUARE FOOTAGE - extract this!
+  └─────────────┘
+        │
+        └──────▶ [colored room area]
 
-2. **COLOR-CODED AREAS**:
-   - Rooms are often filled with distinct COLORS (pink, blue, yellow, green, etc.)
-   - Each color typically represents a different department or zone type
-   - The room tag for a colored area may be OUTSIDE the area, with a leader pointing in
+### 2. IGNORE FURNITURE CLUTTER
+- IGNORE symbols for: gym equipment (treadmills, weights, benches), office desks, tables, chairs, sofas
+- These are DISTRACTIONS. Focus ONLY on:
+  - Architectural walls (thick lines enclosing spaces)
+  - Room labels and text tags
+  - Area numbers (e.g., "1,055 SF", "2,400 sqft")
+- Do NOT let dense equipment icons prevent you from reading small text labels
 
-3. **AREA SCHEDULES / TABLES**:
-   - Look for tables with columns: Room Name, Room #, Area (SF)
-   - Tables often appear in corners or alongside the floor plan
+### 3. COLOR-CODED AREAS
+- Rooms are often filled with colors (pink, blue, yellow, green, magenta)
+- Each color = different zone type or department
+- The room tag may be OUTSIDE the colored region, pointing IN with a leader line
 
-4. Look for INLINE LABELS: "ROOM NAME" with "X,XXX SF" below or beside
-5. Numbers like "10,274 sqft", "482 SF", "191 SQFT" are square footage
-6. SCAN THE ENTIRE IMAGE - room tags can be in corners, edges, anywhere
-7. Even SMALL TEXT contains valid rooms - read everything carefully
+### 4. SPATIAL HIERARCHY
+- If a large area is labeled "WELLNESS" but contains smaller labeled rooms (e.g., "Sauna", "Steam", "Plunge"), extract the SMALLER specific rooms
+- If labels apply to clusters, create entries for visually distinct sub-spaces
 
-IDENTIFY THE FLOOR/LEVEL:
-- Look in TITLE BLOCK (usually corners) for: "Level 3", "Level 4", "Floor 2", "L1"
-- Look in room numbers: "C.02" might mean "Level C", "3.01" might mean "Level 3"
-- Look for headers: "Level 3 - GYM & Co-Work", "Level 4 - Wellness"
-- Common formats: "L1", "Level 1", "1F", "Ground", "Roof", "B1" (basement)
+### 5. AREA SCHEDULES / TABLES
+- Look for tables with columns: Room Name, Room #, Area (SF)
+- Tables appear in corners or alongside floor plans
+- Extract ALL rows from area schedules
 
-EXTRACT ALL OF THESE (including small rooms):
-- GYM, FITNESS (often 3,000-15,000 SF)
-- CO-WORK, COWORKING (often 2,000-8,000 SF)
-- CONFERENCE ROOM, CONF ROOM (often 200-800 SF) - may have multiple!
-- LOUNGE, BREAK AREA (often 500-2,000 SF)
-- RECEPTION, LOBBY (often 200-1,000 SF)
-- OFFICE, MANAGER'S OFFICE (often 100-500 SF)
-- CALL BOOTH, PHONE BOOTH (often 50-150 SF)
-- LOCKER ROOM, MEN'S/WOMEN'S LOCKERS (often 1,000-3,000 SF)
-- POOL, POOL WELLNESS, POOL BAR (often 500-5,000 SF)
-- CAFÉ, F&B (often 500-2,000 SF)
-- CHILD CARE, KIDS CLUB (often 500-2,000 SF)
-- RECOVERY, LONGEVITY, STRETCHING (often 500-3,000 SF)
-- CONTRAST SUITE, SAUNA, STEAM (often 200-2,000 SF)
-- MMA, BOXING, YOGA STUDIO (often 1,000-3,000 SF)
-- MECHANICAL, MECH ROOM, BOH (often 300-1,000 SF)
-- TERRACE, OUTDOOR (often 1,000-5,000 SF)
-- RESTROOM, RR (often 100-500 SF)
-- STORAGE (often 100-500 SF)
+## FLOOR/LEVEL IDENTIFICATION
+- Check TITLE BLOCK (corners) for: "Level 3", "Floor 2", "L1"
+- Room numbers hint at floor: "C.02" = Level C, "3.01" = Level 3
+- Headers: "Level 3 - GYM & Co-Work", "Level 4 - Wellness"
+- Formats: "L1", "Level 1", "1F", "Ground", "Roof", "B1", "Basement"
 
-COUNT PLUMBING FIXTURES if visible:
-- toilets/water closets
-- urinals
-- sinks/lavatories
-- showers
-- floor drains
-- drinking fountains
+## EXTRACT THESE SPACE TYPES (including small rooms)
+- GYM, FITNESS, CARDIO, WEIGHTS (3,000-15,000 SF)
+- LOCKER ROOM, LOCKERS (1,000-3,000 SF) 
+- POOL, NATATORIUM, POOL DECK (500-5,000 SF)
+- SAUNA, STEAM ROOM, HAMMAM (200-1,000 SF)
+- YOGA STUDIO, PILATES, GROUP FITNESS (800-2,500 SF)
+- CONFERENCE ROOM, MEETING (200-800 SF) - may have multiple!
+- OFFICE, ADMIN (100-500 SF)
+- RECEPTION, LOBBY (200-1,000 SF)
+- CAFÉ, JUICE BAR, F&B (500-2,000 SF)
+- MECHANICAL, MEP, BOH (300-1,000 SF)
+- RESTROOM, RR (100-500 SF)
+- STORAGE, JANITOR (50-300 SF)
 
-IMPORTANT:
-- Extract EVERY room with SF, even if small (50+ SF)
-- If same room type appears multiple times (e.g., 3 Conf Rooms), list each separately
-- DO NOT skip small offices, call booths, break areas
-- DO NOT EXTRACT: Stairs, Elevators, Corridors (unless they have SF numbers)
+## COUNT FIXTURES if visible
+toilets, urinals, sinks/lavatories, showers, floor drains
 
-Respond with ONLY valid JSON:
+## CONFIDENCE SCORING
+- "high" = SF was read EXPLICITLY from text (e.g., saw "1,500 SF")
+- "low" = SF was ESTIMATED visually (no explicit number found)
+
+## DO NOT EXTRACT
+- Stairs, Elevators, Corridors, Hallways, Vestibules, Egress paths
+- Random text that is NOT a room label (e.g., "FDNY ACCESS", "EXIT", notes)
+
+## OUTPUT FORMAT (JSON only, no markdown)
 {
   "floor": "Level 3",
   "zones": [
-    {"name": "Gym", "type": "gym", "sf": 10274, "fixtures": {"toilets": 0, "showers": 0}},
-    {"name": "Co-Work", "type": "office", "sf": 5252, "fixtures": {}},
-    {"name": "Conf Room", "type": "conference", "sf": 482, "fixtures": {}},
-    {"name": "Conf Room", "type": "conference", "sf": 482, "fixtures": {}},
-    {"name": "Men's Locker", "type": "locker", "sf": 2000, "fixtures": {"toilets": 6, "urinals": 4, "lavatories": 8, "showers": 12}},
-    {"name": "Women's Locker", "type": "locker", "sf": 2200, "fixtures": {"toilets": 10, "lavatories": 8, "showers": 12}}
+    {"name": "Gym", "type": "gym", "sf": 10274, "confidence": "high", "fixtures": {}},
+    {"name": "Locker Room", "type": "locker", "sf": 2000, "confidence": "high", "fixtures": {"toilets": 6, "showers": 12}},
+    {"name": "Studio A", "type": "fitness_studio", "sf": 1055, "confidence": "high", "fixtures": {}},
+    {"name": "Office", "type": "office", "sf": 400, "confidence": "low", "notes": "SF estimated from visual scale"}
   ],
-  "totalSF": 13520,
-  "notes": "Found X rooms including small offices and booths"
+  "totalSF": 13729,
+  "notes": "Found X rooms. Y had explicit SF, Z were estimated."
 }
 
-Be THOROUGH. Missing rooms is worse than including extras!`
+Be THOROUGH. Missing rooms is worse than including extras. Trace every leader line!`
 
 // Symbol legend context prompt
 const LEGEND_CONTEXT_PROMPT = (legend: SymbolLegend) => `
@@ -303,7 +459,7 @@ export interface AnalysisResult {
 }
 
 // =============================================================================
-// MAIN ANALYSIS FUNCTION
+// MAIN ANALYSIS FUNCTION - With tiling support for high-res images
 // =============================================================================
 export async function analyzeDrawing(
   imageBase64: string,
@@ -318,41 +474,113 @@ export async function analyzeDrawing(
   console.log(`   Image type: ${mimeType}`)
   console.log(`   Image size: ${Math.round(imageBase64.length / 1024)}KB base64`)
   
-  let rawResult: { zones: any[]; totalSF: number; floor: string; rawResponse: string } | null = null
+  let rawResult: { zones: RawZone[]; totalSF: number; floor: string; rawResponse: string } | null = null
   
-  // Try Claude first (preferred for document analysis)
-  if (isClaudeReady()) {
-    try {
-      console.log('🔵 Attempting extraction with Claude...')
-      rawResult = await extractWithClaude(imageBase64, mimeType, legend)
-      console.log(`✅ Claude extraction successful: ${rawResult.zones.length} zones found`)
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      console.error('❌ Claude extraction failed:', msg)
-      errors.push(`Claude: ${msg}`)
+  // Check if we need to tile the image for better text recognition
+  let useTiling = false
+  let tiles: ImageTile[] = []
+  
+  try {
+    const canvas = await base64ToCanvas(imageBase64, mimeType)
+    console.log(`   Image dimensions: ${canvas.width}x${canvas.height}px`)
+    
+    if (needsTiling(canvas.width, canvas.height)) {
+      useTiling = true
+      tiles = tileCanvas(canvas)
+      console.log(`🔲 Large image detected - using ${tiles.length}-tile strategy`)
     }
+  } catch (err) {
+    console.warn('Could not check image dimensions for tiling:', err)
+    // Continue without tiling
+  }
+  
+  if (useTiling && tiles.length > 0) {
+    // TILED ANALYSIS: Process each tile in parallel
+    console.log('🔵 Starting parallel tile analysis...')
+    
+    const tileResults = await Promise.allSettled(
+      tiles.map(async (tile) => {
+        console.log(`   Processing ${tile.id}...`)
+        if (isClaudeReady()) {
+          return await extractWithClaude(tile.base64, 'image/jpeg', legend)
+        } else if (isGrokReady()) {
+          return await extractWithGrok(tile.base64, 'image/jpeg', legend)
+        }
+        throw new Error('No AI provider configured')
+      })
+    )
+    
+    // Collect all zones from successful tile analyses
+    const allZones: RawZone[] = []
+    let detectedFloor = 'Unknown'
+    
+    tileResults.forEach((result, idx) => {
+      if (result.status === 'fulfilled' && result.value) {
+        console.log(`   ✅ ${tiles[idx].id}: ${result.value.zones.length} zones`)
+        allZones.push(...result.value.zones)
+        // Use first non-Unknown floor detected
+        if (detectedFloor === 'Unknown' && result.value.floor && result.value.floor !== 'Unknown') {
+          detectedFloor = result.value.floor
+        }
+      } else if (result.status === 'rejected') {
+        console.error(`   ❌ ${tiles[idx].id}: ${result.reason}`)
+        errors.push(`Tile ${tiles[idx].id}: ${result.reason}`)
+      }
+    })
+    
+    if (allZones.length === 0) {
+      throw new Error(`Tiled analysis failed - no zones found in any tile:\n${errors.join('\n')}`)
+    }
+    
+    // Merge and deduplicate zones from overlapping tiles
+    const uniqueZones = mergeAndDeduplicate(allZones)
+    
+    rawResult = {
+      zones: uniqueZones,
+      totalSF: uniqueZones.reduce((sum, z) => sum + (z.sf || 0), 0),
+      floor: detectedFloor,
+      rawResponse: `Tiled analysis: ${tiles.length} tiles, ${allZones.length} raw zones, ${uniqueZones.length} after dedup`
+    }
+    
+    console.log(`✅ Tiled extraction complete: ${uniqueZones.length} unique zones`)
+    
   } else {
-    console.log('⚠️ Claude not configured - check VITE_ANTHROPIC_API_KEY')
-    errors.push('Claude: API key not configured')
-  }
-  
-  // Fallback to Grok only if Claude fails
-  if (!rawResult && isGrokReady()) {
-    try {
-      console.log('🟠 Falling back to Grok...')
-      rawResult = await extractWithGrok(imageBase64, mimeType, legend)
-      console.log(`✅ Grok extraction successful: ${rawResult.zones.length} zones found`)
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      console.error('❌ Grok extraction failed:', msg)
-      errors.push(`Grok: ${msg}`)
+    // SINGLE IMAGE ANALYSIS: Original approach
+    
+    // Try Claude first (preferred for document analysis)
+    if (isClaudeReady()) {
+      try {
+        console.log('🔵 Attempting extraction with Claude...')
+        rawResult = await extractWithClaude(imageBase64, mimeType, legend)
+        console.log(`✅ Claude extraction successful: ${rawResult.zones.length} zones found`)
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        console.error('❌ Claude extraction failed:', msg)
+        errors.push(`Claude: ${msg}`)
+      }
+    } else {
+      console.log('⚠️ Claude not configured - check VITE_ANTHROPIC_API_KEY')
+      errors.push('Claude: API key not configured')
     }
-  } else if (!rawResult) {
-    console.log('⚠️ Grok not configured - check VITE_XAI_API_KEY')
-  }
-  
-  if (!rawResult) {
-    throw new Error(`AI analysis failed:\n${errors.join('\n')}`)
+    
+    // Fallback to Grok only if Claude fails
+    if (!rawResult && isGrokReady()) {
+      try {
+        console.log('🟠 Falling back to Grok...')
+        rawResult = await extractWithGrok(imageBase64, mimeType, legend)
+        console.log(`✅ Grok extraction successful: ${rawResult.zones.length} zones found`)
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error)
+        console.error('❌ Grok extraction failed:', msg)
+        errors.push(`Grok: ${msg}`)
+      }
+    } else if (!rawResult) {
+      console.log('⚠️ Grok not configured - check VITE_XAI_API_KEY')
+    }
+    
+    if (!rawResult) {
+      throw new Error(`AI analysis failed:\n${errors.join('\n')}`)
+    }
   }
 
   // Process the raw zones using the same logic as Concept MEP
@@ -361,13 +589,15 @@ export async function analyzeDrawing(
 
   // Filter and process zones
   const processedZones = rawResult.zones
-    .map((z: any) => ({
+    .map((z: RawZone) => ({
       name: z.name || 'Unknown',
       type: z.type || 'unknown',
-      sf: Math.round(z.sf || z.area || 0),
+      sf: Math.round(z.sf || 0),
       fixtures: z.fixtures || {},
+      confidence: z.confidence || 'low',  // Preserve AI's confidence assessment
+      notes: z.notes,
     }))
-    .filter((z: any) => {
+    .filter((z) => {
       if (!z.sf || z.sf <= 0) {
         console.log(`   Skipping "${z.name}" - no SF`)
         return false
@@ -380,6 +610,11 @@ export async function analyzeDrawing(
     })
 
   console.log(`📊 ${processedZones.length} valid zones after filtering`)
+  
+  // Log confidence breakdown
+  const highConfCount = processedZones.filter(z => z.confidence === 'high').length
+  const lowConfCount = processedZones.filter(z => z.confidence === 'low').length
+  console.log(`   📊 Confidence: ${highConfCount} high, ${lowConfCount} low (estimated)`)
 
   // Track name occurrences to handle duplicates
   const nameCount: Record<string, number> = {}
@@ -388,7 +623,7 @@ export async function analyzeDrawing(
   const floorPrefix = formatFloorPrefix(detectedFloor)
 
   // Map to ExtractedSpace format with floor prefix and duplicate handling
-  const spaces: ExtractedSpace[] = processedZones.map((z: any) => {
+  const spaces: ExtractedSpace[] = processedZones.map((z) => {
     // Get zone type suggestion
     const keywordMatch = suggestZoneType(z.name || z.type || '')
     const suggestedType = keywordMatch !== 'custom' && keywordMatch !== '_skip_' ? keywordMatch : 'custom'
@@ -404,8 +639,12 @@ export async function analyzeDrawing(
       finalName = `${floorPrefix} - ${baseName} (${occurrence})`
     }
     
-    // Determine confidence based on zone type match
-    const confidence = keywordMatch !== 'custom' && keywordMatch !== '_skip_' ? 75 : 50
+    // Convert AI confidence to numeric score (0-100)
+    // High confidence (explicit SF) = 85-95, Low confidence (estimated) = 40-60
+    const baseConfidence = z.confidence === 'high' ? 90 : 50
+    // Boost slightly if we recognized the zone type
+    const typeBonus = keywordMatch !== 'custom' && keywordMatch !== '_skip_' ? 5 : 0
+    const confidence = Math.min(100, baseConfidence + typeBonus)
     
     return {
       id: uuidv4(),
@@ -416,7 +655,9 @@ export async function analyzeDrawing(
       fixtures: z.fixtures || {},
       equipment: [],
       confidence,
-    }
+      // Store the source of confidence for UI display
+      confidenceSource: z.confidence === 'high' ? 'explicit' : 'estimated',
+    } as ExtractedSpace
   })
 
   // Fix first occurrence names if there were duplicates

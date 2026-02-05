@@ -18,6 +18,9 @@ export interface ExtractedSpace {
     unit?: string
   }>
   confidence: number // 0-100
+  // Source of the confidence score for UI display
+  // 'explicit' = SF was read from text, 'estimated' = SF was visually estimated
+  confidenceSource?: 'explicit' | 'estimated'
   // Bounding box as percentages (0-100) of the image dimensions
   // This ensures regions display correctly regardless of image scaling
   boundingBox?: { 

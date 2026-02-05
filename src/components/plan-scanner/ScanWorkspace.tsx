@@ -1002,21 +1002,33 @@ export default function ScanWorkspace() {
           
           {/* Tabs */}
           <div className="flex bg-surface-700/50 rounded-lg p-1">
-            {(['drawings', 'spaces', 'export'] as TabType[]).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === tab
-                    ? 'bg-violet-600 text-white'
-                    : 'text-surface-400 hover:text-white'
-                }`}
-              >
-                {tab === 'drawings' && '📄 Drawings'}
-                {tab === 'spaces' && `🏠 Spaces (${currentScan.extractedSpaces.length})`}
-                {tab === 'export' && '📤 Export'}
-              </button>
-            ))}
+            {(['drawings', 'spaces', 'export'] as TabType[]).map(tab => {
+              const lowConfCount = currentScan.extractedSpaces.filter(s => s.confidenceSource === 'estimated').length
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+                    activeTab === tab
+                      ? 'bg-violet-600 text-white'
+                      : 'text-surface-400 hover:text-white'
+                  }`}
+                >
+                  {tab === 'drawings' && '📄 Drawings'}
+                  {tab === 'spaces' && (
+                    <>
+                      🏠 Spaces ({currentScan.extractedSpaces.length})
+                      {lowConfCount > 0 && (
+                        <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-xs">
+                          {lowConfCount} ⚠️
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {tab === 'export' && '📤 Export'}
+                </button>
+              )
+            })}
           </div>
           
           <div className="flex items-center gap-4">
@@ -1925,56 +1937,92 @@ export default function ScanWorkspace() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {currentScan.extractedSpaces.map(space => (
-                      <div
-                        key={space.id}
-                        onClick={() => setSelectedSpaceId(space.id)}
-                        className={`p-3 rounded-lg cursor-pointer transition-colors ${
-                          selectedSpaceId === space.id
-                            ? 'bg-violet-600/20 border border-violet-500'
-                            : 'bg-surface-700/30 hover:bg-surface-700/50 border border-transparent'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <h4 className="font-medium text-white truncate">{space.name}</h4>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDeleteSpace(space.id)
-                            }}
-                            className="p-1 rounded hover:bg-red-500/20 text-surface-500 hover:text-red-400"
-                          >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    {/* Summary banner for low-confidence spaces */}
+                    {(() => {
+                      const lowConfCount = currentScan.extractedSpaces.filter(s => s.confidenceSource === 'estimated').length
+                      if (lowConfCount > 0) {
+                        return (
+                          <div className="flex items-center gap-2 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-400 text-xs">
+                            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                             </svg>
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-surface-400">
-                          <span>{space.sf} SF</span>
-                          {space.zoneType && (
-                            <span className="px-1.5 py-0.5 bg-surface-600 rounded">{space.zoneType}</span>
+                            <span>{lowConfCount} space{lowConfCount > 1 ? 's' : ''} with estimated SF - review recommended</span>
+                          </div>
+                        )
+                      }
+                      return null
+                    })()}
+                    
+                    {currentScan.extractedSpaces.map(space => {
+                      const isLowConfidence = space.confidenceSource === 'estimated'
+                      return (
+                        <div
+                          key={space.id}
+                          onClick={() => setSelectedSpaceId(space.id)}
+                          className={`p-3 rounded-lg cursor-pointer transition-colors ${
+                            selectedSpaceId === space.id
+                              ? 'bg-violet-600/20 border border-violet-500'
+                              : isLowConfidence
+                                ? 'bg-amber-500/5 hover:bg-amber-500/10 border border-amber-500/20'
+                                : 'bg-surface-700/30 hover:bg-surface-700/50 border border-transparent'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              {/* Confidence indicator icon */}
+                              {isLowConfidence ? (
+                                <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" title="SF was estimated visually">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                              ) : (
+                                <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" title="SF read from text">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              )}
+                              <h4 className="font-medium text-white truncate">{space.name}</h4>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteSpace(space.id)
+                              }}
+                              className="p-1 rounded hover:bg-red-500/20 text-surface-500 hover:text-red-400"
+                            >
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-surface-400 ml-6">
+                            <span className={isLowConfidence ? 'text-amber-400 font-medium' : ''}>{space.sf.toLocaleString()} SF</span>
+                            {isLowConfidence && (
+                              <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[10px]">estimated</span>
+                            )}
+                            {space.zoneType && (
+                              <span className="px-1.5 py-0.5 bg-surface-600 rounded">{space.zoneType}</span>
+                            )}
+                          </div>
+                          {Object.keys(space.fixtures).length > 0 && (
+                            <div className="mt-2 ml-6 flex flex-wrap gap-1">
+                              {Object.entries(space.fixtures).slice(0, 4).map(([key, count]) => (
+                                <span key={key} className="text-xs px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">
+                                  {count} {key}
+                                </span>
+                              ))}
+                            </div>
                           )}
-                        </div>
-                        {Object.keys(space.fixtures).length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {Object.entries(space.fixtures).slice(0, 4).map(([key, count]) => (
-                              <span key={key} className="text-xs px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">
-                                {count} {key}
-                              </span>
-                            ))}
+                          <div className="mt-2 ml-6 flex items-center gap-1">
+                            <div className="flex-1 h-1 bg-surface-600 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full ${isLowConfidence ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                style={{ width: `${space.confidence}%` }}
+                              />
+                            </div>
+                            <span className="text-xs text-surface-500">{space.confidence}%</span>
                           </div>
-                        )}
-                        <div className="mt-2 flex items-center gap-1">
-                          <div className="flex-1 h-1 bg-surface-600 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-emerald-500"
-                              style={{ width: `${space.confidence}%` }}
-                            />
-                          </div>
-                          <span className="text-xs text-surface-500">{space.confidence}%</span>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>
