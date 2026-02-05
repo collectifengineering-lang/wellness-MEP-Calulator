@@ -206,12 +206,23 @@ ${zones.map(z => {
 SPECIAL EQUIPMENT:
 ${zones.filter(z => {
   const d = getZoneDefaults(z.type)
-  return d.gas_mbh || d.dehumidification_lb_hr || d.requires_type1_hood || z.type.includes('sauna') || z.type.includes('banya') || z.type.includes('steam')
+  // Check actual zone data, not just defaults
+  const hasGasLineItems = z.lineItems?.some(li => li.category === 'gas' && li.value > 0)
+  const hasElectricLineItems = z.lineItems?.some(li => li.category === 'electrical' && li.value > 0)
+  const hasDehumid = z.processLoads?.dehumidification_lb_hr > 0
+  return hasGasLineItems || hasElectricLineItems || hasDehumid || d.requires_type1_hood || z.type.includes('sauna') || z.type.includes('banya') || z.type.includes('steam')
 }).map(z => {
   const d = getZoneDefaults(z.type)
   const items: string[] = []
-  if (d.gas_mbh) items.push(`Gas heater: ${d.gas_mbh} MBH`)
-  if (d.dehumidification_lb_hr) items.push(`Dehumid: ${d.dehumidification_lb_hr} lb/hr`)
+  // Get actual equipment from line items
+  const gasPoolHeater = z.lineItems?.find(li => li.category === 'gas' && li.name.toLowerCase().includes('pool'))
+  const electricPoolHeater = z.lineItems?.find(li => li.category === 'electrical' && li.name.toLowerCase().includes('pool'))
+  const gasHeaters = z.lineItems?.filter(li => li.category === 'gas' && li.value > 0 && !li.name.toLowerCase().includes('pool'))
+  const actualDehumid = z.processLoads?.dehumidification_lb_hr
+  gasHeaters?.forEach(gh => items.push(`${gh.name}: ${gh.value} ${gh.unit}`))
+  if (actualDehumid && actualDehumid > 0) items.push(`Dehumid: ${actualDehumid} lb/hr`)
+  if (electricPoolHeater) items.push(`Electric pool heater: ${electricPoolHeater.value} kW`)
+  if (gasPoolHeater) items.push(`Gas pool heater: ${gasPoolHeater.value} MBH`)
   if (d.requires_type1_hood) items.push('Type I hood required')
   if (d.requires_mau) items.push(`MUA: ${d.mau_cfm || 0} CFM`)
   return `${z.name}: ${items.join(', ')}`

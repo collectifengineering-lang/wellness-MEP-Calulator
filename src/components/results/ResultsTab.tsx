@@ -1302,17 +1302,32 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
               <div className="space-y-3 text-sm">
                 {zones.filter(z => {
                   const d = getZoneDefaults(z.type)
-                  return d.gas_mbh || d.dehumidification_lb_hr || d.requires_type1_hood || d.requires_standby_power || d.laundry_equipment
+                  // Check actual zone data, not just defaults
+                  const hasGasLineItems = z.lineItems?.some(li => li.category === 'gas' && li.value > 0)
+                  const hasElectricLineItems = z.lineItems?.some(li => li.category === 'electrical' && li.value > 0)
+                  const hasDehumid = z.processLoads?.dehumidification_lb_hr > 0
+                  return hasGasLineItems || hasElectricLineItems || hasDehumid || d.requires_type1_hood || d.requires_standby_power || d.laundry_equipment
                 }).map(zone => {
                   const d = getZoneDefaults(zone.type)
+                  // Get actual equipment from line items
+                  const gasPoolHeater = zone.lineItems?.find(li => li.category === 'gas' && li.name.toLowerCase().includes('pool'))
+                  const electricPoolHeater = zone.lineItems?.find(li => li.category === 'electrical' && li.name.toLowerCase().includes('pool'))
+                  const gasHeaters = zone.lineItems?.filter(li => li.category === 'gas' && li.value > 0 && !li.name.toLowerCase().includes('pool'))
+                  const actualDehumid = zone.processLoads?.dehumidification_lb_hr
                   return (
                     <div key={zone.id} className="bg-gray-50 p-3 rounded-lg">
                       <h4 className="font-semibold text-gray-900">{zone.name} ({d.displayName})</h4>
                       <ul className="list-disc list-inside mt-1 text-gray-600 text-xs space-y-0.5">
-                        {d.gas_mbh && <li>Gas furnace: {d.gas_mbh.toLocaleString()} MBH</li>}
+                        {/* Show actual gas heaters from line items */}
+                        {gasHeaters?.map(gh => (
+                          <li key={gh.id}>{gh.name}: {gh.value.toLocaleString()} {gh.unit}</li>
+                        ))}
                         {d.flue_size_in && <li>Flue: {d.flue_size_in}" I.D. SS Double Wall</li>}
-                        {d.dehumidification_lb_hr && <li>Dehumidification: {d.dehumidification_lb_hr} lb/hr</li>}
-                        {d.pool_heater_gas_mbh && <li>Pool heater: {d.pool_heater_gas_mbh} MBH</li>}
+                        {/* Show actual dehumidification from zone processLoads */}
+                        {actualDehumid > 0 && <li>Dehumidification: {actualDehumid} lb/hr</li>}
+                        {/* Show pool heater from line items - electric OR gas */}
+                        {electricPoolHeater && <li>Electric pool heater: {electricPoolHeater.value.toLocaleString()} kW</li>}
+                        {gasPoolHeater && <li>Gas pool heater: {gasPoolHeater.value.toLocaleString()} MBH</li>}
                         {d.requires_type1_hood && <li>Type I hood required</li>}
                         {d.requires_mau && d.mau_cfm && <li>Make-up air unit: {d.mau_cfm.toLocaleString()} CFM</li>}
                         {d.requires_standby_power && <li>Standby power required</li>}
