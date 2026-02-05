@@ -82,7 +82,19 @@ function cfmToCfmPerSf(cfm: number, areaSf: number): number {
 }
 
 // Calculate Vbz (breathing zone ventilation) per ASHRAE 62.1
-function calculateVbz(spaceType: ASHRAE62SpaceType, occupants: number, areaSf: number): number {
+// Handles both Rp/Ra rate-based AND ACH-based ventilation modes
+function calculateVbz(
+  spaceType: ASHRAE62SpaceType, 
+  occupants: number, 
+  areaSf: number,
+  ceilingHeightFt: number = 10
+): number {
+  // Check if space type uses ACH-based ventilation (for wellness spaces like saunas)
+  if (spaceType.ventilationMode === 'ach' && spaceType.ventilationAch) {
+    const volumeCf = areaSf * ceilingHeightFt
+    return (spaceType.ventilationAch * volumeCf) / 60
+  }
+  // Default: Rp/Ra rate-based calculation
   return (spaceType.Rp * occupants) + (spaceType.Ra * areaSf)
 }
 
@@ -172,7 +184,7 @@ export default function VentilationSection({ zone, onUpdate }: VentilationSectio
       return calculateHealthcareOACfm(ashrae170SpaceType, zone.sf, ceilingHeight)
     }
     if (ashrae62SpaceType) {
-      return calculateVbz(ashrae62SpaceType, occupants, zone.sf)
+      return calculateVbz(ashrae62SpaceType, occupants, zone.sf, ceilingHeight)
     }
     // Fallback to rate-based
     return zone.rates.ventilation_cfm_sf * zone.sf
@@ -247,6 +259,12 @@ export default function VentilationSection({ zone, onUpdate }: VentilationSectio
     // Get exhaust from ASHRAE 62.1 space type (now includes Table 6-2 data)
     const spaceType = ashrae62SpaceType || customSpaceType
     if (spaceType) {
+      // ACH-based exhaust (for wellness spaces like saunas)
+      if (spaceType.ventilationMode === 'ach' && spaceType.exhaustAch) {
+        const volumeCf = zone.sf * ceilingHeight
+        return (spaceType.exhaustAch * volumeCf) / 60
+      }
+      
       let exhaustCfm = 0
       
       // Area-based exhaust (CFM/SF)
