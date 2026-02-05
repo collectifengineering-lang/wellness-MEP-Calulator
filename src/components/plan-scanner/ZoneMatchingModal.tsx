@@ -90,7 +90,6 @@ export default function ZoneMatchingModal({ isOpen, onClose, spaces, onUpdateSpa
   // Update grouped spaces when props change
   useEffect(() => {
     setGroupedSpaces(spaces)
-    setSelectedSpaces(new Set(spaces.map(s => s.id)))
   }, [spaces])
   
   // Group zone types by category for dropdown
@@ -300,7 +299,6 @@ export default function ZoneMatchingModal({ isOpen, onClose, spaces, onUpdateSpa
     
     setGroupedSpaces(updated)
     onUpdateSpaces(updated)
-    setSelectedSpaces(new Set([combinedSpace.id]))
   }
   
   // Count matched vs unmatched
