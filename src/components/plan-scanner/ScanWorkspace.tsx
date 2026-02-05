@@ -2649,7 +2649,7 @@ function SpaceEditor({ space, onUpdate }: { space: ExtractedSpace; onUpdate: (up
   const [fixtureSearch, setFixtureSearch] = useState('')
   
   // Get zone types from database
-  const { dbZoneTypeDefaults, fetchZoneTypeDefaults } = useSettingsStore()
+  const { dbZoneTypeDefaults, fetchZoneTypeDefaults, getDbZoneTypeDefault } = useSettingsStore()
   
   // Fetch zone types on mount if not loaded
   useEffect(() => {
@@ -2668,6 +2668,41 @@ function SpaceEditor({ space, onUpdate }: { space: ExtractedSpace; onUpdate: (up
     })
     return grouped
   }, [dbZoneTypeDefaults])
+  
+  // Handle zone type selection - bring in defaults
+  const handleZoneTypeChange = (zoneTypeId: string) => {
+    const updates: Partial<ExtractedSpace> = { zoneType: zoneTypeId }
+    
+    if (zoneTypeId) {
+      const zoneDefaults = getDbZoneTypeDefault(zoneTypeId)
+      if (zoneDefaults) {
+        // Bring in default fixtures if available
+        if (zoneDefaults.default_fixtures && Object.keys(zoneDefaults.default_fixtures).length > 0) {
+          // Merge with existing fixtures (don't overwrite user edits)
+          updates.fixtures = { ...space.fixtures, ...zoneDefaults.default_fixtures }
+        }
+        
+        // Bring in default equipment if available
+        if (zoneDefaults.default_equipment && zoneDefaults.default_equipment.length > 0) {
+          // Merge with existing equipment
+          const existingEquipTypes = new Set(space.equipment.map(e => e.type))
+          const newEquipment = zoneDefaults.default_equipment.filter(
+            (e: any) => !existingEquipTypes.has(e.type)
+          )
+          if (newEquipment.length > 0) {
+            updates.equipment = [...space.equipment, ...newEquipment]
+          }
+        }
+        
+        console.log(`[Zone Type] Applied defaults for ${zoneDefaults.display_name}:`, {
+          fixtures: zoneDefaults.default_fixtures,
+          equipment: zoneDefaults.default_equipment
+        })
+      }
+    }
+    
+    onUpdate(updates)
+  }
 
   // Get displayed fixtures (those with count > 0)
   const displayedFixtures = useMemo(() => {
@@ -2769,7 +2804,7 @@ function SpaceEditor({ space, onUpdate }: { space: ExtractedSpace; onUpdate: (up
             <label className="block text-sm text-surface-400 mb-1">Zone Type</label>
             <select
               value={space.zoneType || ''}
-              onChange={(e) => onUpdate({ zoneType: e.target.value })}
+              onChange={(e) => handleZoneTypeChange(e.target.value)}
               className="w-full px-4 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white focus:border-violet-500 focus:outline-none"
             >
               <option value="">Select type...</option>
