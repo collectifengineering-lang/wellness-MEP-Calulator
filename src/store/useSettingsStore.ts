@@ -744,11 +744,47 @@ export const useSettingsStore = create<SettingsState>()(
       
       getZoneDefaults: (zoneType) => {
         const state = get()
-        // Check custom overrides first
+        
+        // 1. Check database-loaded defaults first (single source of truth)
+        const dbDefault = state.dbZoneTypeDefaults.find(d => d.id === zoneType)
+        if (dbDefault) {
+          // Convert DB format to ZoneDefaults format
+          const baseDefaults = builtInDefaults[zoneType as ZoneType] || builtInDefaults.custom
+          return {
+            ...baseDefaults,
+            displayName: dbDefault.display_name,
+            category: dbDefault.category,
+            defaultSF: dbDefault.default_sf,
+            switchable: dbDefault.switchable,
+            // CRITICAL: Map ashrae_space_type_id to defaultVentilationSpaceType
+            defaultVentilationSpaceType: dbDefault.ashrae_space_type_id,
+            defaultRates: {
+              lighting_w_sf: dbDefault.lighting_w_sf ?? baseDefaults.defaultRates.lighting_w_sf,
+              receptacle_va_sf: dbDefault.receptacle_va_sf ?? baseDefaults.defaultRates.receptacle_va_sf,
+              cooling_sf_ton: dbDefault.cooling_sf_ton ?? baseDefaults.defaultRates.cooling_sf_ton,
+              heating_btuh_sf: dbDefault.heating_btuh_sf ?? baseDefaults.defaultRates.heating_btuh_sf,
+            },
+            fixed_kw: dbDefault.fixed_kw ?? baseDefaults.fixed_kw,
+            gas_mbh: dbDefault.gas_mbh ?? baseDefaults.gas_mbh,
+            ventilation_cfm: dbDefault.ventilation_cfm ?? baseDefaults.ventilation_cfm,
+            exhaust_cfm: dbDefault.exhaust_cfm ?? baseDefaults.exhaust_cfm,
+            pool_heater_gas_mbh: dbDefault.pool_heater_gas_mbh ?? baseDefaults.pool_heater_gas_mbh,
+            latent_adder: dbDefault.latent_adder ?? baseDefaults.latent_adder,
+            occupants_per_1000sf: dbDefault.occupants_per_1000sf ?? baseDefaults.occupants_per_1000sf,
+            defaultFixtures: dbDefault.default_fixtures ?? baseDefaults.defaultFixtures,
+            visibleFixtures: dbDefault.visible_fixtures ?? baseDefaults.visibleFixtures,
+            defaultEquipment: dbDefault.default_equipment ?? baseDefaults.defaultEquipment,
+            requires_standby_power: dbDefault.requires_standby_power ?? baseDefaults.requires_standby_power,
+            requires_type1_hood: dbDefault.requires_type1_hood ?? baseDefaults.requires_type1_hood,
+          }
+        }
+        
+        // 2. Check custom overrides (localStorage fallback)
         if (state.customZoneDefaults[zoneType]) {
           return state.customZoneDefaults[zoneType]
         }
-        // Fall back to built-in defaults
+        
+        // 3. Fall back to built-in defaults
         return builtInDefaults[zoneType as ZoneType] || builtInDefaults.custom
       },
       
