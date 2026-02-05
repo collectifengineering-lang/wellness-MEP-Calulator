@@ -41,6 +41,8 @@ export default function ExportModal({ scan, onClose }: ExportModalProps) {
   // HVAC space type matching modal state
   const [showHVACMatching, setShowHVACMatching] = useState(false)
   const [spaceTypeMappings, setSpaceTypeMappings] = useState<SpaceTypeMapping[]>([])
+  const [hvacMatchingMode, setHvacMatchingMode] = useState<'residential' | 'commercial'>('commercial')
+  const [isAIMatching, setIsAIMatching] = useState(false)
   
   // Initialize space type mappings when HVAC is selected
   const initializeHVACMappings = () => {
@@ -68,6 +70,138 @@ export default function ExportModal({ scan, onClose }: ExportModalProps) {
     })
     return categories
   }, [])
+  
+  // AI Match All spaces to ASHRAE 62.1 types
+  const handleAIMatchASHRAE = async () => {
+    setIsAIMatching(true)
+    
+    try {
+      const spaceNames = spaceTypeMappings.map(m => m.spaceName)
+      
+      // Build available types list based on mode
+      const availableTypes = ASHRAE62_SPACE_TYPES
+        .filter(t => {
+          const cat = t.category.toLowerCase()
+          if (hvacMatchingMode === 'residential') {
+            return cat.includes('dwelling') || cat.includes('general') || cat.includes('food') || 
+                   ['bedroom', 'living_room', 'bathroom', 'kitchen', 'dining'].some(k => t.id.includes(k))
+          }
+          return true // Commercial shows all
+        })
+        .map(t => `- ${t.id}: ${t.name} (${t.category})`)
+        .join('\n')
+      
+      const prompt = `
+You are matching architectural space names to ASHRAE 62.1 ventilation space types for ${hvacMatchingMode === 'residential' ? 'RESIDENTIAL' : 'COMMERCIAL/WELLNESS'} buildings.
+
+SPACES TO MATCH (use 0-based index):
+${spaceNames.map((name, i) => `${i}. "${name}"`).join('\n')}
+
+AVAILABLE ASHRAE 62.1 SPACE TYPES (use the ID before the colon):
+${availableTypes}
+
+Respond with JSON ONLY:
+{
+  "matches": [
+    {"index": 0, "typeId": "bedroom", "confidence": "high"},
+    {"index": 1, "typeId": "living_room", "confidence": "high"}
+  ]
+}
+
+MATCHING RULES for ${hvacMatchingMode.toUpperCase()} buildings:
+- "index" is the 0-based position from the spaces list above
+- "typeId" MUST be one of the IDs listed above
+- Match EVERY space - provide a match for all ${spaceNames.length} spaces
+${hvacMatchingMode === 'residential' ? `
+- Kitchens → kitchen_residential or kitchen_default
+- Bathrooms/Toilets/Showers → bathroom_residential
+- Bedrooms → bedroom
+- Living rooms/Family rooms → living_room
+- Dining rooms → dining
+- Hallways/Corridors/Foyers/Vestibules → corridor
+- Closets/Storage → storage_general
+- Garages → garage
+- Laundry → laundry
+` : `
+- Showers/Locker rooms → locker_room
+- Toilets/Restrooms → toilet_public
+- Kitchens → kitchen_commercial or food_court
+- Gyms/Fitness → gym
+- Lobbies/Reception → lobby
+- Offices → office
+- Conference rooms → conference
+- Hallways/Corridors → corridor
+- Storage → storage_general
+`}
+- If unsure, pick the closest match from the list - do NOT skip any space
+`
+
+      const claudeKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+      if (!claudeKey) {
+        console.error('No Claude API key')
+        return
+      }
+      
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': claudeKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4000,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      })
+      
+      if (!response.ok) {
+        console.error('AI response not ok:', response.status)
+        return
+      }
+      
+      const data = await response.json()
+      const text = data.content?.[0]?.text || ''
+      console.log('ASHRAE AI Response:', text)
+      
+      const jsonMatch = text.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        console.error('No JSON found')
+        return
+      }
+      
+      const result = JSON.parse(jsonMatch[0])
+      
+      if (!result.matches || !Array.isArray(result.matches)) {
+        console.error('No matches array')
+        return
+      }
+      
+      // Apply AI matches
+      setSpaceTypeMappings(prev => prev.map((mapping, index) => {
+        const match = result.matches.find((m: any) => m.index === index)
+        if (match?.typeId) {
+          // Verify it's a valid ASHRAE type
+          const validType = ASHRAE62_SPACE_TYPES.find(t => t.id === match.typeId)
+          if (validType) {
+            return { 
+              ...mapping, 
+              suggestedTypeId: match.typeId,
+              selectedTypeId: match.typeId 
+            }
+          }
+        }
+        return mapping
+      }))
+      
+    } catch (error) {
+      console.error('AI matching failed:', error)
+    } finally {
+      setIsAIMatching(false)
+    }
+  }
 
   const toggleTarget = (target: ExportTarget) => {
     setSelectedTargets(prev =>
@@ -483,6 +617,50 @@ export default function ExportModal({ scan, onClose }: ExportModalProps) {
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
+              </button>
+            </div>
+            
+            {/* Toolbar with Mode Toggle and AI Button */}
+            <div className="px-6 py-3 border-b border-surface-700 flex items-center justify-between gap-4 bg-surface-700/30">
+              {/* Mode Toggle */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-surface-400">Mode:</span>
+                <div className="flex bg-surface-700 rounded-lg p-1">
+                  <button
+                    onClick={() => setHvacMatchingMode('residential')}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                      hvacMatchingMode === 'residential' ? 'bg-emerald-600 text-white' : 'text-surface-400 hover:text-white'
+                    }`}
+                  >
+                    🏠 Residential
+                  </button>
+                  <button
+                    onClick={() => setHvacMatchingMode('commercial')}
+                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                      hvacMatchingMode === 'commercial' ? 'bg-violet-600 text-white' : 'text-surface-400 hover:text-white'
+                    }`}
+                  >
+                    🏢 Commercial
+                  </button>
+                </div>
+              </div>
+              
+              {/* AI Match Button */}
+              <button
+                onClick={handleAIMatchASHRAE}
+                disabled={isAIMatching}
+                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium flex items-center gap-2"
+              >
+                {isAIMatching ? (
+                  <>
+                    <span className="animate-spin">🔄</span>
+                    Matching...
+                  </>
+                ) : (
+                  <>
+                    🤖 AI Match All
+                  </>
+                )}
               </button>
             </div>
             
