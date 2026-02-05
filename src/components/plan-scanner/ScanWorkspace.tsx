@@ -4,7 +4,7 @@ import { Logo } from '../shared/Logo'
 import UserMenu from '../auth/UserMenu'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useScannerStore, ExtractedSpace, ScanDrawing } from '../../store/useScannerStore'
-import { analyzeDrawing, calculateScale, detectSpaceBoundaries, formatFloorPrefix, readTagFromRegion, type DetectedRegion } from '../../lib/planAnalyzer'
+import { analyzeDrawing, calculateScale, detectSpaceBoundaries, formatFloorPrefix, readTagFromRegion, detectFloorLevel, type DetectedRegion } from '../../lib/planAnalyzer'
 import { extractZonesFromPDF, type ExtractedZone } from '../../lib/xai'
 import { v4 as uuidv4 } from 'uuid'
 import ExportModal from './ExportModal'
@@ -62,6 +62,7 @@ export default function ScanWorkspace() {
   const [tagEditSF, setTagEditSF] = useState('')
   const [tagEditFloor, setTagEditFloor] = useState('')
   const [lastFloorUsed, setLastFloorUsed] = useState('1') // Remember last floor for subsequent tags
+  const [detectingFloor, setDetectingFloor] = useState(false)
   
   // Store regions as PERCENTAGES (0-100) so they scale with image display
   // Supports both rectangles and polygons
@@ -215,6 +216,48 @@ export default function ScanWorkspace() {
   }, [calibrationPoints])
 
   const selectedDrawing = currentScan?.drawings.find(d => d.id === selectedDrawingId)
+
+  // Auto-detect floor when entering tag reader mode on a new page
+  useEffect(() => {
+    const detectFloor = async () => {
+      // Only detect if in tag reader mode, have a drawing, have an image, and floor not already detected
+      if (drawingMode !== 'tagReader' || !selectedDrawing || !renderedImageUrl || selectedDrawing.floor) {
+        return
+      }
+      
+      setDetectingFloor(true)
+      console.log('[Floor Detect] Auto-detecting floor for page:', selectedDrawing.fileName)
+      
+      try {
+        // Extract base64 data from data URL
+        const base64Data = renderedImageUrl.replace(/^data:image\/\w+;base64,/, '')
+        const result = await detectFloorLevel(base64Data, 'image/png')
+        console.log('[Floor Detect] Result:', result)
+        
+        // detectFloorLevel returns "Unknown" if not found, so check for valid floor
+        if (result.floor && result.floor !== 'Unknown' && result.confidence > 30) {
+          // Update the drawing with detected floor
+          updateDrawing(selectedDrawing.id, { floor: result.floor })
+          // Also update lastFloorUsed so tags default to this
+          setLastFloorUsed(result.floor)
+          console.log('[Floor Detect] Set floor to:', result.floor)
+        }
+      } catch (error) {
+        console.error('[Floor Detect] Error:', error)
+      } finally {
+        setDetectingFloor(false)
+      }
+    }
+    
+    detectFloor()
+  }, [drawingMode, selectedDrawing?.id, renderedImageUrl, selectedDrawing?.floor, updateDrawing])
+
+  // When switching pages, use that page's detected floor (if any)
+  useEffect(() => {
+    if (selectedDrawing?.floor) {
+      setLastFloorUsed(selectedDrawing.floor)
+    }
+  }, [selectedDrawing?.id, selectedDrawing?.floor])
 
   // Convert PDF to image when selected (must be after selectedDrawing is defined)
   useEffect(() => {
@@ -1561,6 +1604,24 @@ export default function ScanWorkspace() {
                     >
                       🏷️ Read Tags
                     </button>
+                    
+                    {/* Show detected floor badge when in tag reader mode */}
+                    {drawingMode === 'tagReader' && (
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        detectingFloor 
+                          ? 'bg-amber-500/20 text-amber-400 animate-pulse' 
+                          : selectedDrawing?.floor 
+                            ? 'bg-emerald-500/20 text-emerald-400' 
+                            : 'bg-surface-600 text-surface-400'
+                      }`}>
+                        {detectingFloor 
+                          ? '🔍 Detecting floor...' 
+                          : selectedDrawing?.floor 
+                            ? `📍 ${selectedDrawing.floor}` 
+                            : '📍 Floor: ?'
+                        }
+                      </span>
+                    )}
                     
                     <button
                       onClick={() => setShowScaleModal(true)}

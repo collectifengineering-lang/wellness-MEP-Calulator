@@ -1516,3 +1516,4 @@ export async function readTagFromRegion(imageBase64: string): Promise<TagReadRes
     return { ...defaultResult, error: String(error) }
   }
 }
+
