@@ -314,6 +314,63 @@ export default function ScanWorkspace() {
     })
   }
 
+  // ============================================
+  // Thumbnail Generation from Bounding Box
+  // ============================================
+  const generateThumbnail = async (
+    imageDataUrl: string,
+    boundingBox: { xPercent: number; yPercent: number; widthPercent: number; heightPercent: number },
+    maxSize: number = 150
+  ): Promise<string | undefined> => {
+    return new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        try {
+          // Calculate actual pixel coordinates
+          const x = (boundingBox.xPercent / 100) * img.width
+          const y = (boundingBox.yPercent / 100) * img.height
+          const w = (boundingBox.widthPercent / 100) * img.width
+          const h = (boundingBox.heightPercent / 100) * img.height
+          
+          // Add 10% padding around the crop
+          const padding = 0.1
+          const padX = Math.max(0, x - w * padding)
+          const padY = Math.max(0, y - h * padding)
+          const padW = Math.min(img.width - padX, w * (1 + padding * 2))
+          const padH = Math.min(img.height - padY, h * (1 + padding * 2))
+          
+          // Calculate thumbnail size maintaining aspect ratio
+          const aspect = padW / padH
+          let thumbW = maxSize
+          let thumbH = maxSize
+          if (aspect > 1) {
+            thumbH = maxSize / aspect
+          } else {
+            thumbW = maxSize * aspect
+          }
+          
+          // Create canvas and draw cropped region
+          const canvas = document.createElement('canvas')
+          canvas.width = thumbW
+          canvas.height = thumbH
+          const ctx = canvas.getContext('2d')
+          
+          if (ctx) {
+            ctx.drawImage(img, padX, padY, padW, padH, 0, 0, thumbW, thumbH)
+            resolve(canvas.toDataURL('image/jpeg', 0.7))
+          } else {
+            resolve(undefined)
+          }
+        } catch (err) {
+          console.error('Thumbnail generation failed:', err)
+          resolve(undefined)
+        }
+      }
+      img.onerror = () => resolve(undefined)
+      img.src = imageDataUrl
+    })
+  }
+
   const handleAnalyze = async () => {
     if (!currentScan || !selectedDrawing) return
     
@@ -323,6 +380,7 @@ export default function ScanWorkspace() {
     try {
       let imageData: string
       let mimeType = 'image/png'
+      let fullImageDataUrl: string = ''
       
       // Check if this is a PDF - need to render to image first
       if (selectedDrawing.fileType === 'application/pdf') {
@@ -331,6 +389,7 @@ export default function ScanWorkspace() {
         const { base64, mime } = await renderPdfPageToImage(selectedDrawing.fileUrl, pageNum)
         imageData = base64
         mimeType = mime
+        fullImageDataUrl = `data:${mime};base64,${base64}`
         console.log(`PDF page ${pageNum} converted to image: ${Math.round(imageData.length / 1024)}KB`)
       } else {
         // Regular image - extract base64
@@ -338,8 +397,10 @@ export default function ScanWorkspace() {
         if (base64Match) {
           mimeType = base64Match[1]
           imageData = base64Match[2]
+          fullImageDataUrl = selectedDrawing.fileUrl
         } else {
           imageData = selectedDrawing.fileUrl
+          fullImageDataUrl = selectedDrawing.fileUrl
         }
       }
       
@@ -352,11 +413,22 @@ export default function ScanWorkspace() {
       
       const result = await analyzeDrawing(imageData, mimeType, activeLegend)
       
-      setAnalysisProgress(`Found ${result.spaces.length} spaces! Processing...`)
+      setAnalysisProgress(`Found ${result.spaces.length} spaces! Generating thumbnails...`)
+      
+      // Generate thumbnails for spaces with bounding boxes
+      const spacesWithThumbnails = await Promise.all(
+        result.spaces.map(async (space) => {
+          if (space.boundingBox && fullImageDataUrl) {
+            const thumbnail = await generateThumbnail(fullImageDataUrl, space.boundingBox)
+            return { ...space, thumbnailBase64: thumbnail }
+          }
+          return space
+        })
+      )
       
       // Merge with existing spaces (don't overwrite user edits)
       const existingNames = new Set(currentScan.extractedSpaces.map(s => s.name.toLowerCase()))
-      const newSpaces = result.spaces.filter(s => !existingNames.has(s.name.toLowerCase()))
+      const newSpaces = spacesWithThumbnails.filter(s => !existingNames.has(s.name.toLowerCase()))
       
       const allSpaces = [...currentScan.extractedSpaces, ...newSpaces]
       setExtractedSpaces(currentScan.id, allSpaces)
@@ -1967,60 +2039,80 @@ export default function ScanWorkspace() {
                                 : 'bg-surface-700/30 hover:bg-surface-700/50 border border-transparent'
                           }`}
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-2 min-w-0">
-                              {/* Confidence indicator icon */}
-                              {isLowConfidence ? (
-                                <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <title>SF was estimated visually</title>
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                              ) : (
-                                <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <title>SF read from text</title>
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
+                          <div className="flex gap-3">
+                            {/* Thumbnail preview */}
+                            {space.thumbnailBase64 ? (
+                              <div className="flex-shrink-0 w-16 h-16 rounded overflow-hidden bg-surface-600 border border-surface-500">
+                                <img 
+                                  src={space.thumbnailBase64} 
+                                  alt={`Preview of ${space.name}`}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            ) : (
+                              <div className="flex-shrink-0 w-16 h-16 rounded bg-surface-600 border border-surface-500 flex items-center justify-center">
+                                <span className="text-2xl">🏠</span>
+                              </div>
+                            )}
+                            
+                            {/* Space details */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {/* Confidence indicator icon */}
+                                  {isLowConfidence ? (
+                                    <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <title>SF was estimated visually</title>
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                  ) : (
+                                    <svg className="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <title>SF read from text</title>
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                  <h4 className="font-medium text-white truncate text-sm">{space.name}</h4>
+                                </div>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleDeleteSpace(space.id)
+                                  }}
+                                  className="p-1 rounded hover:bg-red-500/20 text-surface-500 hover:text-red-400"
+                                >
+                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-2 text-xs text-surface-400">
+                                <span className={isLowConfidence ? 'text-amber-400 font-medium' : ''}>{space.sf.toLocaleString()} SF</span>
+                                {isLowConfidence && (
+                                  <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[10px]">estimated</span>
+                                )}
+                                {space.zoneType && (
+                                  <span className="px-1.5 py-0.5 bg-surface-600 rounded">{space.zoneType}</span>
+                                )}
+                              </div>
+                              {Object.keys(space.fixtures).length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {Object.entries(space.fixtures).slice(0, 3).map(([key, count]) => (
+                                    <span key={key} className="text-xs px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">
+                                      {count} {key}
+                                    </span>
+                                  ))}
+                                </div>
                               )}
-                              <h4 className="font-medium text-white truncate">{space.name}</h4>
+                              <div className="mt-1 flex items-center gap-1">
+                                <div className="flex-1 h-1 bg-surface-600 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full ${isLowConfidence ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                    style={{ width: `${space.confidence}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-surface-500">{space.confidence}%</span>
+                              </div>
                             </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteSpace(space.id)
-                              }}
-                              className="p-1 rounded hover:bg-red-500/20 text-surface-500 hover:text-red-400"
-                            >
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-surface-400 ml-6">
-                            <span className={isLowConfidence ? 'text-amber-400 font-medium' : ''}>{space.sf.toLocaleString()} SF</span>
-                            {isLowConfidence && (
-                              <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded text-[10px]">estimated</span>
-                            )}
-                            {space.zoneType && (
-                              <span className="px-1.5 py-0.5 bg-surface-600 rounded">{space.zoneType}</span>
-                            )}
-                          </div>
-                          {Object.keys(space.fixtures).length > 0 && (
-                            <div className="mt-2 ml-6 flex flex-wrap gap-1">
-                              {Object.entries(space.fixtures).slice(0, 4).map(([key, count]) => (
-                                <span key={key} className="text-xs px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">
-                                  {count} {key}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                          <div className="mt-2 ml-6 flex items-center gap-1">
-                            <div className="flex-1 h-1 bg-surface-600 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full ${isLowConfidence ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                                style={{ width: `${space.confidence}%` }}
-                              />
-                            </div>
-                            <span className="text-xs text-surface-500">{space.confidence}%</span>
                           </div>
                         </div>
                       )
