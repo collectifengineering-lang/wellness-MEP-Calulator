@@ -338,95 +338,98 @@ function formatFloorPrefix(floor: string): string {
 }
 
 // =============================================================================
-// EXTRACTION PROMPT - Optimized for architectural floor plans
-// Handles: Leader lines, color-coded areas, furniture clutter
+// EXTRACTION PROMPT - Universal for ALL architectural floor plans
+// Handles: Residential, Commercial, Wellness, Mixed-Use
 // =============================================================================
-const EXTRACTION_PROMPT = `You are an expert Senior MEP Estimator analyzing architectural floor plans for engineering load calculations.
+const EXTRACTION_PROMPT = `You are an expert architect analyzing floor plans to extract room/space data.
 
-**OBJECTIVE:** Extract ALL distinct spaces/zones with their Name, Type, and Square Footage (SF).
+**CRITICAL RULE: READ THE ACTUAL TEXT ON THE PLAN. DO NOT INVENT OR GUESS ROOM NAMES.**
 
-## CRITICAL VISUAL ANALYSIS RULES
+**OBJECTIVE:** Extract ALL distinct rooms/spaces with their EXACT Name (as written on plan), Type, and Square Footage.
 
-### 1. LEADER LINES (Most Important!)
-Many architectural plans use "floating room tags" - text boxes connected to rooms by thin lines or arrows.
-- If you see a text block (e.g., "LOCKER ROOM 1,500 SF") in WHITE SPACE with a LINE pointing to a COLORED or SHADED area, that shaded area IS the room
-- Associate the tag text with the room it POINTS TO, not the whitespace where the tag sits
-- Standard room tag format:
-  ┌─────────────┐
-  │  ROOM NAME  │  ← "REC RM", "GYM", "OFFICE"
-  │    C.02     │  ← Room number
-  │  361 SQFT   │  ← SQUARE FOOTAGE - extract this!
-  └─────────────┘
-        │
-        └──────▶ [colored room area]
+## STEP 1: READ THE TITLE BLOCK FIRST
+Look in the corners (usually bottom-right) for:
+- Plan title: "CELLAR PROPOSED PLAN", "1ST FLOOR PROPOSED FLOOR PLAN", "SECOND FLOOR PLAN"
+- Floor level: "Level 1", "1st Floor", "Cellar", "Basement", "2nd Floor", "Roof"
+- Project name and address
+- Scale notation
 
-### 2. IGNORE FURNITURE CLUTTER
-- IGNORE symbols for: gym equipment (treadmills, weights, benches), office desks, tables, chairs, sofas
-- These are DISTRACTIONS. Focus ONLY on:
-  - Architectural walls (thick lines enclosing spaces)
-  - Room labels and text tags
-  - Area numbers (e.g., "1,055 SF", "2,400 sqft")
-- Do NOT let dense equipment icons prevent you from reading small text labels
+## STEP 2: FIND ROOM LABELS
+Look for text labels that identify rooms. Common formats:
 
-### 3. COLOR-CODED AREAS
-- Rooms are often filled with colors (pink, blue, yellow, green, magenta)
-- Each color = different zone type or department
-- The room tag may be OUTSIDE the colored region, pointing IN with a leader line
+**Format A - Room Tag Box:**
+┌─────────────┐
+│  BEDROOM    │  ← Room name (USE EXACTLY AS WRITTEN)
+│    101      │  ← Room number
+│  150 SF     │  ← Square footage
+└─────────────┘
 
-### 4. SPATIAL HIERARCHY
-- If a large area is labeled "WELLNESS" but contains smaller labeled rooms (e.g., "Sauna", "Steam", "Plunge"), extract the SMALLER specific rooms
-- If labels apply to clusters, create entries for visually distinct sub-spaces
+**Format B - Inline Text:**
+"KITCHEN" or "LIVING ROOM" written directly inside the room boundary
 
-### 5. AREA SCHEDULES / TABLES
-- Look for tables with columns: Room Name, Room #, Area (SF)
-- Tables appear in corners or alongside floor plans
-- Extract ALL rows from area schedules
+**Format C - Leader Line:**
+Text box with arrow/line pointing to the room
 
-## FLOOR/LEVEL IDENTIFICATION
-- Check TITLE BLOCK (corners) for: "Level 3", "Floor 2", "L1"
-- Room numbers hint at floor: "C.02" = Level C, "3.01" = Level 3
-- Headers: "Level 3 - GYM & Co-Work", "Level 4 - Wellness"
-- Formats: "L1", "Level 1", "1F", "Ground", "Roof", "B1", "Basement"
+**Format D - Area Schedule Table:**
+Tables listing rooms with Name, Number, and Area columns
 
-## EXTRACT THESE SPACE TYPES (including small rooms)
-- GYM, FITNESS, CARDIO, WEIGHTS (3,000-15,000 SF)
-- LOCKER ROOM, LOCKERS (1,000-3,000 SF) 
-- POOL, NATATORIUM, POOL DECK (500-5,000 SF)
-- SAUNA, STEAM ROOM, HAMMAM (200-1,000 SF)
-- YOGA STUDIO, PILATES, GROUP FITNESS (800-2,500 SF)
-- CONFERENCE ROOM, MEETING (200-800 SF) - may have multiple!
-- OFFICE, ADMIN (100-500 SF)
-- RECEPTION, LOBBY (200-1,000 SF)
-- CAFÉ, JUICE BAR, F&B (500-2,000 SF)
-- MECHANICAL, MEP, BOH (300-1,000 SF)
-- RESTROOM, RR (100-500 SF)
-- STORAGE, JANITOR (50-300 SF)
+## STEP 3: EXTRACT EXACTLY WHAT YOU SEE
 
-## COUNT FIXTURES if visible
-toilets, urinals, sinks/lavatories, showers, floor drains
+**RESIDENTIAL ROOMS** (townhouse, apartment, house):
+- Living Room, Family Room, Great Room
+- Kitchen, Kitchenette, Pantry
+- Bedroom, Master Bedroom, Guest Room
+- Bathroom, Full Bath, Half Bath, Powder Room
+- Dining Room, Breakfast Nook
+- Laundry, Utility Room
+- Garage, Carport
+- Closet, Walk-in Closet, Storage
+- Basement, Cellar
+- Attic, Bonus Room
+
+**COMMERCIAL/WELLNESS ROOMS**:
+- Office, Conference Room, Reception
+- Gym, Fitness, Locker Room
+- Pool, Spa, Sauna, Steam Room
+- Retail, Cafe, Restaurant
+- Mechanical Room, Electrical Room
+
+## FLOOR IDENTIFICATION PATTERNS
+- "CELLAR PROPOSED PLAN" → floor: "Cellar"
+- "1ST FLOOR PROPOSED FLOOR PLAN" → floor: "1st Floor"
+- "2ND FLOOR PROPOSED PLAN" → floor: "2nd Floor"
+- "PROPOSED ROOF FLOOR PLAN" → floor: "Roof"
+- "BASEMENT PLAN" → floor: "Basement"
+- "GROUND FLOOR" → floor: "Ground"
 
 ## CONFIDENCE SCORING
-- "high" = SF was read EXPLICITLY from text (e.g., saw "1,500 SF")
-- "low" = SF was ESTIMATED visually (no explicit number found)
+- "high" = SF was read from text (saw "150 SF" or "1,200 SQFT")
+- "low" = SF was estimated (no explicit number found)
 
 ## DO NOT EXTRACT
-- Stairs, Elevators, Corridors, Hallways, Vestibules, Egress paths
-- Random text that is NOT a room label (e.g., "FDNY ACCESS", "EXIT", notes)
+- Stairs, Elevator, Corridor, Hallway, Vestibule
+- Key Notes sections, Legend items, Title blocks
+- Construction notes (e.g., "PROVIDE NEW CONCRETE...")
+- "FDNY ACCESS", "EXIT", "EGRESS"
 
-## OUTPUT FORMAT (JSON only, no markdown)
+## DO NOT INVENT
+- If you cannot read a room name clearly, skip it or use "Unknown Room"
+- Do NOT guess names like "Horizontal Assembly" or make up technical terms
+- Use ONLY the EXACT text you can read on the plan
+
+## OUTPUT FORMAT (JSON only)
 {
-  "floor": "Level 3",
+  "floor": "1st Floor",
   "zones": [
-    {"name": "Gym", "type": "gym", "sf": 10274, "confidence": "high", "fixtures": {}},
-    {"name": "Locker Room", "type": "locker", "sf": 2000, "confidence": "high", "fixtures": {"toilets": 6, "showers": 12}},
-    {"name": "Studio A", "type": "fitness_studio", "sf": 1055, "confidence": "high", "fixtures": {}},
-    {"name": "Office", "type": "office", "sf": 400, "confidence": "low", "notes": "SF estimated from visual scale"}
+    {"name": "Living Room", "type": "residential", "sf": 350, "confidence": "high"},
+    {"name": "Kitchen", "type": "residential", "sf": 200, "confidence": "high"},
+    {"name": "Bedroom 1", "type": "residential", "sf": 150, "confidence": "low", "notes": "SF estimated"}
   ],
-  "totalSF": 13729,
-  "notes": "Found X rooms. Y had explicit SF, Z were estimated."
+  "totalSF": 700,
+  "notes": "Residential townhouse plan. Found X rooms."
 }
 
-Be THOROUGH. Missing rooms is worse than including extras. Trace every leader line!`
+REMEMBER: Only extract rooms with names you can ACTUALLY READ on the plan!`
 
 // Symbol legend context prompt
 const LEGEND_CONTEXT_PROMPT = (legend: SymbolLegend) => `

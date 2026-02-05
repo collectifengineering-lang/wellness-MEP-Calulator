@@ -518,67 +518,75 @@ If truly no match, use "custom". Only respond with valid JSON, no explanation.`
 }
 
 // Shared extraction prompt for both Claude and Grok
-const EXTRACTION_PROMPT = `You are extracting room data from an architectural floor plan or area schedule.
+const EXTRACTION_PROMPT = `You are extracting room data from an architectural floor plan.
 
-TASK: Find EVERY room/space with a SQUARE FOOTAGE number. Be thorough - don't miss any!
+**CRITICAL: READ THE ACTUAL TEXT ON THE PLAN. DO NOT INVENT OR GUESS ROOM NAMES.**
 
-HOW TO READ THE DOCUMENT:
-1. Look for TABLES with room names and SF in cells
-2. Look for LABELS on floor plans: "ROOM NAME" with "X,XXX sqft" below or beside
-3. Numbers like "10,274 sqft", "482 sqft", "191 sqft" are square footage
-4. SCAN THE ENTIRE IMAGE - rooms can be in corners, small cells, anywhere
-5. Even SMALL TEXT contains valid rooms - read everything carefully
+TASK: Extract rooms/spaces with their EXACT names as written on the plan.
 
-IDENTIFY THE FLOOR/LEVEL:
-- Look in TITLE BLOCK (usually corners) for: "Level 3", "Level 4", "Floor 2", "L1"
-- Look for headers: "Level 3 - GYM & Co-Work", "Level 4 - Wellness"
-- Common formats: "L1", "Level 1", "1F", "Ground", "Roof", "B1" (basement)
+## STEP 1: READ THE TITLE BLOCK
+Look in corners (usually bottom-right) for:
+- Plan title: "CELLAR PROPOSED PLAN", "1ST FLOOR PROPOSED FLOOR PLAN", "2ND FLOOR PLAN"
+- This tells you which floor you're looking at
+- Common formats: "1st Floor", "Cellar", "Basement", "2nd Floor", "Roof", "Ground"
 
-EXTRACT ALL OF THESE (including small rooms):
-- GYM, FITNESS (often 3,000-15,000 SF)
-- CO-WORK, COWORKING (often 2,000-8,000 SF)
-- CONFERENCE ROOM, CONF ROOM (often 200-800 SF) - may have multiple!
-- LOUNGE, BREAK AREA (often 500-2,000 SF)
-- RECEPTION, LOBBY (often 200-1,000 SF)
-- OFFICE, MANAGER'S OFFICE (often 100-500 SF)
-- CALL BOOTH, PHONE BOOTH (often 50-150 SF)
-- LOCKER ROOM, MEN'S/WOMEN'S LOCKERS (often 1,000-3,000 SF)
-- POOL, POOL WELLNESS, POOL BAR (often 500-5,000 SF)
-- CAFÉ, F&B (often 500-2,000 SF)
-- CHILD CARE, KIDS CLUB (often 500-2,000 SF)
-- RECOVERY, LONGEVITY, STRETCHING (often 500-3,000 SF)
-- CONTRAST SUITE, SAUNA, STEAM (often 200-2,000 SF)
-- MMA, BOXING, YOGA STUDIO (often 1,000-3,000 SF)
-- MECHANICAL, MECH ROOM, BOH (often 300-1,000 SF)
-- TERRACE, OUTDOOR (often 1,000-5,000 SF)
-- RESTROOM, RR (often 100-500 SF)
-- STORAGE (often 100-500 SF)
+## STEP 2: FIND ROOM LABELS
+Look for text labels that identify rooms:
+- Room tags in boxes: "BEDROOM 101 150 SF"
+- Inline labels: "KITCHEN", "LIVING ROOM" written inside rooms
+- Area schedule tables with room names and SF
 
-IMPORTANT:
-- Extract EVERY room with SF, even if small (50+ SF)
-- If same room type appears multiple times (e.g., 3 Conf Rooms), list each separately
-- DO NOT skip small offices, call booths, break areas
-- DO NOT EXTRACT: Stairs, Elevators, Corridors (unless they have SF numbers)
+## STEP 3: EXTRACT ONLY WHAT YOU CAN READ
+
+**RESIDENTIAL ROOMS** (for houses, townhouses, apartments):
+- Living Room, Family Room, Great Room
+- Kitchen, Kitchenette, Pantry
+- Bedroom, Master Bedroom, Guest Room
+- Bathroom, Full Bath, Half Bath, Powder Room
+- Dining Room, Breakfast Nook
+- Laundry, Utility Room, Mudroom
+- Garage, Carport
+- Closet, Walk-in Closet, Storage
+- Basement, Cellar
+- Attic, Bonus Room, Den, Study
+
+**COMMERCIAL ROOMS** (for offices, wellness, retail):
+- Office, Conference Room, Reception, Lobby
+- Gym, Fitness, Locker Room, Pool
+- Retail, Cafe, Restaurant
+- Mechanical Room, Storage
+
+## FLOOR PATTERNS
+- "CELLAR PROPOSED PLAN" → floor: "Cellar"
+- "1ST FLOOR PROPOSED FLOOR PLAN" → floor: "1st Floor"
+- "2ND FLOOR PROPOSED PLAN" → floor: "2nd Floor"
+- "PROPOSED ROOF FLOOR PLAN" → floor: "Roof"
+- "BASEMENT PLAN" → floor: "Basement"
+
+## DO NOT EXTRACT
+- Stairs, Elevator, Corridor, Hallway
+- Key Notes, Legend items, Title block text
+- Construction notes ("PROVIDE NEW...")
+- "FDNY ACCESS", "EXIT", "EGRESS"
+
+## DO NOT INVENT
+- If you can't read a room name, skip it
+- Do NOT guess names or make up technical terms
+- Use ONLY text you can ACTUALLY READ
 
 Respond with ONLY valid JSON:
 {
-  "floor": "Level 3",
+  "floor": "1st Floor",
   "zones": [
-    {"name": "Gym", "type": "gym", "sf": 10274},
-    {"name": "Co-Work", "type": "office", "sf": 5252},
-    {"name": "Conf Room", "type": "conference", "sf": 482},
-    {"name": "Conf Room", "type": "conference", "sf": 482},
-    {"name": "Conf Room", "type": "conference", "sf": 482},
-    {"name": "Reception", "type": "reception", "sf": 258},
-    {"name": "Lounge", "type": "lounge", "sf": 1024},
-    {"name": "Manager's Office", "type": "office", "sf": 191},
-    {"name": "Call Booth", "type": "office", "sf": 75}
+    {"name": "Living Room", "type": "residential", "sf": 350},
+    {"name": "Kitchen", "type": "residential", "sf": 200},
+    {"name": "Bedroom", "type": "residential", "sf": 150}
   ],
-  "totalSF": 13520,
-  "notes": "Found X rooms including small offices and booths"
+  "totalSF": 700,
+  "notes": "Found X rooms with names read from plan labels."
 }
 
-Be THOROUGH. Missing rooms is worse than including extras!`
+ONLY extract rooms with names you can ACTUALLY READ on the plan!`
 
 // Track which provider was used for extraction
 export type AIProvider = 'claude' | 'grok' | 'none'
