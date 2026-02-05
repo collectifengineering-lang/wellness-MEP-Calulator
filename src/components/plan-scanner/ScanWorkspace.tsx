@@ -2797,13 +2797,27 @@ function SpaceEditor({ space, onUpdate }: { space: ExtractedSpace; onUpdate: (up
   }, [space.fixtures])
 
   // Filter available fixtures for the add modal
+  // Prioritize fixtures from the zone type's visibleFixtures list
+  const [showAllFixtures, setShowAllFixtures] = useState(false)
+  
   const availableFixtures = useMemo(() => {
     const search = fixtureSearch.toLowerCase()
+    const zoneDefaults = space.zoneType ? getDbZoneTypeDefault(space.zoneType) : null
+    const visibleFixtureIds = zoneDefaults?.visible_fixtures || []
+    
+    // If zone type has visible fixtures and we're not showing all, filter to those
+    if (visibleFixtureIds.length > 0 && !showAllFixtures && !search) {
+      return NYC_FIXTURE_DATABASE.filter(f => 
+        visibleFixtureIds.includes(f.id)
+      )
+    }
+    
+    // Otherwise show all fixtures, filtered by search
     return NYC_FIXTURE_DATABASE.filter(f => 
       f.name.toLowerCase().includes(search) ||
       f.category.toLowerCase().includes(search)
-    ).slice(0, 20) // Limit to 20 results
-  }, [fixtureSearch])
+    ).slice(0, 30) // Limit to 30 results
+  }, [fixtureSearch, space.zoneType, getDbZoneTypeDefault, showAllFixtures])
 
   const handleAddFixture = (fixtureId: string, count: number = 1) => {
     onUpdate({ 
@@ -2983,9 +2997,31 @@ function SpaceEditor({ space, onUpdate }: { space: ExtractedSpace; onUpdate: (up
                 value={fixtureSearch}
                 onChange={(e) => setFixtureSearch(e.target.value)}
                 placeholder="Search fixtures..."
-                className="w-full px-4 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white placeholder-surface-500 focus:border-violet-500 focus:outline-none mb-4"
+                className="w-full px-4 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white placeholder-surface-500 focus:border-violet-500 focus:outline-none mb-2"
                 autoFocus
               />
+              
+              {/* Toggle for recommended vs all fixtures */}
+              {space.zoneType && getDbZoneTypeDefault(space.zoneType)?.visible_fixtures?.length > 0 && !fixtureSearch && (
+                <div className="flex items-center gap-2 mb-4">
+                  <button
+                    onClick={() => setShowAllFixtures(false)}
+                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                      !showAllFixtures ? 'bg-violet-600 text-white' : 'bg-surface-700 text-surface-400 hover:text-white'
+                    }`}
+                  >
+                    Recommended ({getDbZoneTypeDefault(space.zoneType)?.visible_fixtures?.length || 0})
+                  </button>
+                  <button
+                    onClick={() => setShowAllFixtures(true)}
+                    className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                      showAllFixtures ? 'bg-violet-600 text-white' : 'bg-surface-700 text-surface-400 hover:text-white'
+                    }`}
+                  >
+                    All Fixtures
+                  </button>
+                </div>
+              )}
               
               {/* Fixture List */}
               <div className="flex-1 overflow-y-auto space-y-2">
