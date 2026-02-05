@@ -4,6 +4,7 @@ import { Logo } from '../shared/Logo'
 import UserMenu from '../auth/UserMenu'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useScannerStore, ExtractedSpace, ScanDrawing } from '../../store/useScannerStore'
+import { useSettingsStore } from '../../store/useSettingsStore'
 import { analyzeDrawing, calculateScale, detectSpaceBoundaries, formatFloorPrefix, readTagFromRegion, detectFloorLevel, type DetectedRegion } from '../../lib/planAnalyzer'
 import { extractZonesFromPDF, type ExtractedZone } from '../../lib/xai'
 import { v4 as uuidv4 } from 'uuid'
@@ -2591,7 +2592,7 @@ export default function ScanWorkspace() {
                   icon="❄️"
                   title="HVAC"
                   description="Cooling, heating, ventilation loads"
-                  disabled
+                  onClick={() => setShowExportModal(true)}
                 />
                 <ExportCard
                   icon="⚡"
@@ -2646,6 +2647,27 @@ export default function ScanWorkspace() {
 function SpaceEditor({ space, onUpdate }: { space: ExtractedSpace; onUpdate: (updates: Partial<ExtractedSpace>) => void }) {
   const [showAddFixture, setShowAddFixture] = useState(false)
   const [fixtureSearch, setFixtureSearch] = useState('')
+  
+  // Get zone types from database
+  const { dbZoneTypeDefaults, fetchZoneTypeDefaults } = useSettingsStore()
+  
+  // Fetch zone types on mount if not loaded
+  useEffect(() => {
+    if (dbZoneTypeDefaults.length === 0) {
+      fetchZoneTypeDefaults()
+    }
+  }, [dbZoneTypeDefaults.length, fetchZoneTypeDefaults])
+  
+  // Group zone types by category for dropdown
+  const zoneTypesByCategory = useMemo(() => {
+    const grouped: Record<string, typeof dbZoneTypeDefaults> = {}
+    dbZoneTypeDefaults.forEach(zt => {
+      const category = zt.category || 'Other'
+      if (!grouped[category]) grouped[category] = []
+      grouped[category].push(zt)
+    })
+    return grouped
+  }, [dbZoneTypeDefaults])
 
   // Get displayed fixtures (those with count > 0)
   const displayedFixtures = useMemo(() => {
@@ -2751,27 +2773,41 @@ function SpaceEditor({ space, onUpdate }: { space: ExtractedSpace; onUpdate: (up
               className="w-full px-4 py-2 bg-surface-700 border border-surface-600 rounded-lg text-white focus:border-violet-500 focus:outline-none"
             >
               <option value="">Select type...</option>
-              <option value="lobby">Lobby</option>
-              <option value="locker_room">Locker Room</option>
-              <option value="restroom">Restroom</option>
-              <option value="shower_room">Shower Room</option>
-              <option value="pool_indoor">Pool (Indoor)</option>
-              <option value="hot_tub">Hot Tub / Spa</option>
-              <option value="sauna_electric">Sauna</option>
-              <option value="steam_room">Steam Room</option>
-              <option value="open_gym">Gym / Fitness</option>
-              <option value="yoga_studio">Yoga Studio</option>
-              <option value="massage_room">Massage / Treatment</option>
-              <option value="office">Office</option>
-              <option value="conference_room">Conference Room</option>
-              <option value="break_room">Break Room</option>
-              <option value="cafe_light_fb">Café / F&B</option>
-              <option value="kitchen_commercial">Kitchen</option>
-              <option value="laundry_commercial">Laundry</option>
-              <option value="mechanical_room">Mechanical Room</option>
-              <option value="storage">Storage</option>
-              <option value="terrace">Terrace / Outdoor</option>
-              <option value="custom">Other</option>
+              {dbZoneTypeDefaults.length > 0 ? (
+                // Use database zone types grouped by category
+                Object.entries(zoneTypesByCategory).map(([category, types]) => (
+                  <optgroup key={category} label={category}>
+                    {types.map(zt => (
+                      <option key={zt.id} value={zt.id}>{zt.display_name}</option>
+                    ))}
+                  </optgroup>
+                ))
+              ) : (
+                // Fallback to hardcoded list if database not loaded
+                <>
+                  <option value="lobby">Lobby</option>
+                  <option value="locker_room">Locker Room</option>
+                  <option value="restroom">Restroom</option>
+                  <option value="shower_room">Shower Room</option>
+                  <option value="pool_indoor">Pool (Indoor)</option>
+                  <option value="hot_tub">Hot Tub / Spa</option>
+                  <option value="sauna_electric">Sauna</option>
+                  <option value="steam_room">Steam Room</option>
+                  <option value="open_gym">Gym / Fitness</option>
+                  <option value="yoga_studio">Yoga Studio</option>
+                  <option value="massage_room">Massage / Treatment</option>
+                  <option value="office">Office</option>
+                  <option value="conference_room">Conference Room</option>
+                  <option value="break_room">Break Room</option>
+                  <option value="cafe_light_fb">Café / F&B</option>
+                  <option value="kitchen_commercial">Kitchen</option>
+                  <option value="laundry_commercial">Laundry</option>
+                  <option value="mechanical_room">Mechanical Room</option>
+                  <option value="storage">Storage</option>
+                  <option value="terrace">Terrace / Outdoor</option>
+                  <option value="custom">Other</option>
+                </>
+              )}
             </select>
           </div>
         </div>
