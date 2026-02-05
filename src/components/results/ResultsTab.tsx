@@ -1305,7 +1305,7 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
                   // Check actual zone data, not just defaults
                   const hasGasLineItems = z.lineItems?.some(li => li.category === 'gas' && li.value > 0)
                   const hasElectricLineItems = z.lineItems?.some(li => li.category === 'electrical' && li.value > 0)
-                  const hasDehumid = z.processLoads?.dehumidification_lb_hr > 0
+                  const hasDehumid = z.processLoads?.dehumid_lb_hr > 0
                   return hasGasLineItems || hasElectricLineItems || hasDehumid || d.requires_type1_hood || d.requires_standby_power || d.laundry_equipment
                 }).map(zone => {
                   const d = getZoneDefaults(zone.type)
@@ -1313,7 +1313,7 @@ export default function ResultsTab({ calculations }: ResultsTabProps) {
                   const gasPoolHeater = zone.lineItems?.find(li => li.category === 'gas' && li.name.toLowerCase().includes('pool'))
                   const electricPoolHeater = zone.lineItems?.find(li => li.category === 'electrical' && li.name.toLowerCase().includes('pool'))
                   const gasHeaters = zone.lineItems?.filter(li => li.category === 'gas' && li.value > 0 && !li.name.toLowerCase().includes('pool'))
-                  const actualDehumid = zone.processLoads?.dehumidification_lb_hr
+                  const actualDehumid = zone.processLoads?.dehumid_lb_hr
                   return (
                     <div key={zone.id} className="bg-gray-50 p-3 rounded-lg">
                       <h4 className="font-semibold text-gray-900">{zone.name} ({d.displayName})</h4>

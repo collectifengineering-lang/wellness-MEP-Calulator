@@ -56,11 +56,16 @@ export interface CustomAshraeSpaceType {
   category: string
   name: string
   displayName: string
+  // Ventilation mode
+  ventilationMode?: 'cfm_rates' | 'ach' | 'ach_healthcare'
   // ASHRAE 62.1 style (occupancy-based)
   Rp?: number                    // CFM per person
   Ra?: number                    // CFM per SF
   defaultOccupancy?: number      // People per 1000 SF
-  // ASHRAE 170 style (ACH-based)
+  // ACH-based ventilation (for wellness spaces like saunas)
+  ventilationAch?: number        // Total ventilation in ACH
+  exhaustAch?: number            // Exhaust in ACH
+  // ASHRAE 170 style (ACH-based healthcare)
   minTotalACH?: number           // Total air changes per hour
   minOAach?: number              // Outdoor air ACH
   pressureRelationship?: 'positive' | 'negative' | 'equal'
