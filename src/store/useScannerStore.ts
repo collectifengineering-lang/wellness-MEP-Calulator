@@ -41,8 +41,6 @@ export interface ExtractedSpace {
   seatCountManual?: number    // User override
   ashraeOccupancy?: number    // Calculated from ASHRAE density
   finalOccupancy?: number     // MAX(seatCount, ashraeOccupancy)
-  // Thumbnail image of the detected area (base64)
-  thumbnailBase64?: string
 }
 
 export interface SymbolDefinition {

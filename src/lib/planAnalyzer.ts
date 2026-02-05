@@ -125,12 +125,6 @@ interface RawZone {
   fixtures?: Record<string, number>
   confidence?: 'high' | 'low'
   notes?: string
-  boundingBox?: {
-    xPercent: number
-    yPercent: number
-    widthPercent: number
-    heightPercent: number
-  }
 }
 
 /**
@@ -345,126 +339,94 @@ function formatFloorPrefix(floor: string): string {
 
 // =============================================================================
 // EXTRACTION PROMPT - Optimized for architectural floor plans
-// Handles: Leader lines, inline tags, color-coded areas, furniture clutter
+// Handles: Leader lines, color-coded areas, furniture clutter
 // =============================================================================
 const EXTRACTION_PROMPT = `You are an expert Senior MEP Estimator analyzing architectural floor plans for engineering load calculations.
 
-**OBJECTIVE:** Extract ALL distinct spaces/zones with their Name, Type, Square Footage (SF), and approximate bounding box location.
+**OBJECTIVE:** Extract ALL distinct spaces/zones with their Name, Type, and Square Footage (SF).
 
-## CRITICAL: READ THE EXACT SF NUMBER FROM TEXT
+## CRITICAL VISUAL ANALYSIS RULES
 
-**DO NOT ESTIMATE OR CALCULATE SF** - Read it directly from the plan!
-- Look for numbers followed by "SF", "SQFT", "SQ FT", "sq ft", or "S.F."
-- Examples: "298 SF", "107 SQFT", "163 S.F.", "529 sq ft"
-- The SF number is almost always written near or inside the room
-- If you see "Kitchen" and nearby see "298 SF", that room is 298 SF - use EXACTLY that number
-
-## ROOM LABEL FORMATS (Read SF from these!)
-
-### Format A: INLINE ROOM TAGS (Most Common for Residential)
-Room name and SF are inside or near the room, stacked vertically:
+### 1. LEADER LINES (Most Important!)
+Many architectural plans use "floating room tags" - text boxes connected to rooms by thin lines or arrows.
+- If you see a text block (e.g., "LOCKER ROOM 1,500 SF") in WHITE SPACE with a LINE pointing to a COLORED or SHADED area, that shaded area IS the room
+- Associate the tag text with the room it POINTS TO, not the whitespace where the tag sits
+- Standard room tag format:
   ┌─────────────┐
-  │   Kitchen   │  ← Room name
-  │   298 SF    │  ← EXACT square footage - USE THIS NUMBER!
-  └─────────────┘
-
-### Format B: LEADER LINES (Commercial/Zoning Plans)
-Text box connected to room by a line or arrow:
-  ┌─────────────┐
-  │  ROOM NAME  │
-  │  361 SQFT   │ ← Read this exact number
+  │  ROOM NAME  │  ← "REC RM", "GYM", "OFFICE"
+  │    C.02     │  ← Room number
+  │  361 SQFT   │  ← SQUARE FOOTAGE - extract this!
   └─────────────┘
         │
-        └──────▶ [room area]
+        └──────▶ [colored room area]
 
-### Format C: ROOM + NUMBER BESIDE
-  Kitchen  298 SF     ← Name and SF on same line
-  Living/Dining  529  ← Sometimes just the number, means SF
+### 2. IGNORE FURNITURE CLUTTER
+- IGNORE symbols for: gym equipment (treadmills, weights, benches), office desks, tables, chairs, sofas
+- These are DISTRACTIONS. Focus ONLY on:
+  - Architectural walls (thick lines enclosing spaces)
+  - Room labels and text tags
+  - Area numbers (e.g., "1,055 SF", "2,400 sqft")
+- Do NOT let dense equipment icons prevent you from reading small text labels
 
-## FLOOR/LEVEL IDENTIFICATION (Check ALL of these!)
+### 3. COLOR-CODED AREAS
+- Rooms are often filled with colors (pink, blue, yellow, green, magenta)
+- Each color = different zone type or department
+- The room tag may be OUTSIDE the colored region, pointing IN with a leader line
 
-Look for floor identifiers in these locations:
-1. **Plan Title/Header** (large text above or below plan):
-   - "1ST FLOOR PROPOSED FLOOR PLAN"
-   - "2ND FLOOR PROPOSED PLAN"
-   - "CELLAR PROPOSED PLAN"
-   - "BASEMENT FLOOR PLAN"
-   - "GROUND FLOOR PLAN"
-   - "ROOF FLOOR PLAN"
+### 4. SPATIAL HIERARCHY
+- If a large area is labeled "WELLNESS" but contains smaller labeled rooms (e.g., "Sauna", "Steam", "Plunge"), extract the SMALLER specific rooms
+- If labels apply to clusters, create entries for visually distinct sub-spaces
 
-2. **Title Block** (usually bottom right corner):
-   - "Level 1", "Level 2", "Floor 1", "Floor 2"
-   - Sheet titles like "A-100.00" often indicate floor
+### 5. AREA SCHEDULES / TABLES
+- Look for tables with columns: Room Name, Room #, Area (SF)
+- Tables appear in corners or alongside floor plans
+- Extract ALL rows from area schedules
 
-3. **Common Floor Formats**:
-   - Residential: "1ST FLOOR", "2ND FLOOR", "3RD FLOOR", "CELLAR", "BASEMENT"
-   - Commercial: "Level 1", "L1", "Floor 1", "1F", "Ground", "G"
-   - Below grade: "Cellar", "Basement", "B1", "Lower Level"
-   - Above: "Roof", "Penthouse", "PH", "Mezzanine"
+## FLOOR/LEVEL IDENTIFICATION
+- Check TITLE BLOCK (corners) for: "Level 3", "Floor 2", "L1"
+- Room numbers hint at floor: "C.02" = Level C, "3.01" = Level 3
+- Headers: "Level 3 - GYM & Co-Work", "Level 4 - Wellness"
+- Formats: "L1", "Level 1", "1F", "Ground", "Roof", "B1", "Basement"
 
-## IGNORE FURNITURE CLUTTER
-- IGNORE: gym equipment, desks, tables, chairs, sofas, appliances, fixtures symbols
-- Focus ONLY on: walls, room labels, area text (SF numbers)
-
-## COLOR-CODED AREAS
-- Rooms may be filled with colors (pink, blue, yellow, etc.)
-- The room tag may be outside the colored region pointing in
-
-## BOUNDING BOX
-For each room, estimate its position on the image as percentages (0-100):
-- xPercent: left edge position
-- yPercent: top edge position  
-- widthPercent: width of room
-- heightPercent: height of room
-
-## SPACE TYPES (Residential)
-- KITCHEN, KIT (50-400 SF)
-- LIVING ROOM, LIVING, LR (150-500 SF)
-- DINING ROOM, DINING, DR (100-300 SF)
-- BEDROOM, BR, BDRM (80-250 SF)
-- BATHROOM, BATH, BA (30-150 SF)
-- CLOSET, WIC (walk-in closet), CLOSET (10-100 SF)
-- FOYER, ENTRY, HALL (30-150 SF)
-- UTILITY, LAUNDRY (30-100 SF)
-- STORAGE, BASEMENT, CELLAR (varies)
-
-## SPACE TYPES (Commercial/Wellness)
-- GYM, FITNESS (3,000-15,000 SF)
-- LOCKER ROOM (1,000-3,000 SF)
-- POOL (500-5,000 SF)
-- SAUNA, STEAM (200-1,000 SF)
-- OFFICE (100-500 SF)
-- CONFERENCE (200-800 SF)
-- MECHANICAL, MEP (100-1,000 SF)
+## EXTRACT THESE SPACE TYPES (including small rooms)
+- GYM, FITNESS, CARDIO, WEIGHTS (3,000-15,000 SF)
+- LOCKER ROOM, LOCKERS (1,000-3,000 SF) 
+- POOL, NATATORIUM, POOL DECK (500-5,000 SF)
+- SAUNA, STEAM ROOM, HAMMAM (200-1,000 SF)
+- YOGA STUDIO, PILATES, GROUP FITNESS (800-2,500 SF)
+- CONFERENCE ROOM, MEETING (200-800 SF) - may have multiple!
+- OFFICE, ADMIN (100-500 SF)
+- RECEPTION, LOBBY (200-1,000 SF)
+- CAFÉ, JUICE BAR, F&B (500-2,000 SF)
+- MECHANICAL, MEP, BOH (300-1,000 SF)
+- RESTROOM, RR (100-500 SF)
+- STORAGE, JANITOR (50-300 SF)
 
 ## COUNT FIXTURES if visible
-toilets, sinks, showers, tubs
+toilets, urinals, sinks/lavatories, showers, floor drains
 
 ## CONFIDENCE SCORING
-- "high" = SF was READ from text exactly (e.g., you saw "298 SF")
-- "low" = SF was ESTIMATED (no number found - AVOID THIS, look harder!)
+- "high" = SF was read EXPLICITLY from text (e.g., saw "1,500 SF")
+- "low" = SF was ESTIMATED visually (no explicit number found)
 
 ## DO NOT EXTRACT
-- Stairs, Elevators, Corridors (unless labeled with SF)
-- Random annotations (e.g., "FDNY ACCESS", "EXIT", construction notes)
+- Stairs, Elevators, Corridors, Hallways, Vestibules, Egress paths
+- Random text that is NOT a room label (e.g., "FDNY ACCESS", "EXIT", notes)
 
 ## OUTPUT FORMAT (JSON only, no markdown)
 {
-  "floor": "1st Floor",
+  "floor": "Level 3",
   "zones": [
-    {"name": "Kitchen", "type": "kitchen", "sf": 298, "confidence": "high", "boundingBox": {"xPercent": 10, "yPercent": 20, "widthPercent": 25, "heightPercent": 30}},
-    {"name": "Bath", "type": "bathroom", "sf": 107, "confidence": "high", "boundingBox": {"xPercent": 40, "yPercent": 50, "widthPercent": 15, "heightPercent": 20}},
-    {"name": "Living/Dining", "type": "living_room", "sf": 529, "confidence": "high", "boundingBox": {"xPercent": 50, "yPercent": 10, "widthPercent": 40, "heightPercent": 35}}
+    {"name": "Gym", "type": "gym", "sf": 10274, "confidence": "high", "fixtures": {}},
+    {"name": "Locker Room", "type": "locker", "sf": 2000, "confidence": "high", "fixtures": {"toilets": 6, "showers": 12}},
+    {"name": "Studio A", "type": "fitness_studio", "sf": 1055, "confidence": "high", "fixtures": {}},
+    {"name": "Office", "type": "office", "sf": 400, "confidence": "low", "notes": "SF estimated from visual scale"}
   ],
-  "totalSF": 934,
-  "notes": "Found 3 rooms. All SF values read directly from plan text."
+  "totalSF": 13729,
+  "notes": "Found X rooms. Y had explicit SF, Z were estimated."
 }
 
-**CRITICAL REMINDERS:**
-1. READ the SF number from text - DO NOT calculate or estimate!
-2. If text says "298 SF", use 298 - not 300, not 295, EXACTLY 298
-3. confidence should be "high" if you READ the number, "low" only if truly not visible
-4. Include boundingBox for each zone to enable thumbnail cropping`
+Be THOROUGH. Missing rooms is worse than including extras. Trace every leader line!`
 
 // Symbol legend context prompt
 const LEGEND_CONTEXT_PROMPT = (legend: SymbolLegend) => `
@@ -634,7 +596,6 @@ export async function analyzeDrawing(
       fixtures: z.fixtures || {},
       confidence: z.confidence || 'low',  // Preserve AI's confidence assessment
       notes: z.notes,
-      boundingBox: z.boundingBox,  // Preserve bounding box for thumbnail cropping
     }))
     .filter((z) => {
       if (!z.sf || z.sf <= 0) {
@@ -696,8 +657,6 @@ export async function analyzeDrawing(
       confidence,
       // Store the source of confidence for UI display
       confidenceSource: z.confidence === 'high' ? 'explicit' : 'estimated',
-      // Bounding box for thumbnail cropping (percentages 0-100)
-      boundingBox: z.boundingBox,
     } as ExtractedSpace
   })
 
