@@ -576,8 +576,9 @@ export default function HVACHome() {
                 onClick={() => editingProjectId !== project.id && handleOpenProject(project.id)}
               >
                 <div className="flex items-start justify-between mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-cyan-500/20 flex items-center justify-center">
-                    <span className="text-2xl">🐐💨</span>
+                  <div className="w-14 h-14 rounded-xl bg-cyan-500/20 flex items-center justify-center relative">
+                    <span className="text-2xl absolute opacity-60 -right-1 top-1">💨</span>
+                    <span className="text-2xl relative z-10">🐐</span>
                   </div>
                   <div className="flex gap-1">
                     {/* Copy Button */}
