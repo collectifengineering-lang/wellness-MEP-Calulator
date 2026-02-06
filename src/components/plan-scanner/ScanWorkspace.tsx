@@ -12,7 +12,7 @@ import ExportModal from './ExportModal'
 import ZoneMatchingModal from './ZoneMatchingModal'
 import TableImportModal from './TableImportModal'
 import { NYC_FIXTURE_DATABASE, getFixtureById } from '../../data/nycFixtures'
-import { storeImage, getImage, getImagesForScan, cleanupOldImages } from '../../lib/imageStorage'
+import { storeImage, getImagesForScan, cleanupOldImages } from '../../lib/imageStorage'
 
 type TabType = 'drawings' | 'spaces' | 'export'
 
