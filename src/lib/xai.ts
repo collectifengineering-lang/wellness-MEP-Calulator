@@ -988,3 +988,139 @@ export async function extractZonesFromPDF(
     detectedFloor: detectedFloors.length > 0 ? detectedFloors.join(', ') : undefined,
   }
 }
+
+/**
+ * Extract zones from text content (Excel, CSV, or pasted table data)
+ */
+export async function extractZonesFromText(textContent: string): Promise<ExtractionResult> {
+  if (!isClaudeConfigured() && !isGrokConfigured()) {
+    throw new Error('No AI API key configured. Please add VITE_ANTHROPIC_API_KEY or VITE_XAI_API_KEY.')
+  }
+  
+  const prompt = `
+You are extracting space/zone data from a text table (likely from Excel, CSV, or an area schedule).
+
+Look for:
+- Room/Space names
+- Area values (SF, square feet, sq ft, ft², or just numbers)
+- Floor/Level information if present
+
+ZONE TYPES to match:
+${AVAILABLE_ZONE_TYPES.map(z => `- ${z.id}: ${z.name} (${z.keywords})`).join('\n')}
+
+TEXT CONTENT:
+${textContent.substring(0, 8000)}
+
+Return ONLY valid JSON:
+{
+  "zones": [
+    {
+      "name": "Reception",
+      "sf": 500,
+      "floor": "L1",
+      "zoneType": "reception",
+      "confidence": "high"
+    }
+  ],
+  "totalSF": 500
+}
+
+Rules:
+- Extract ALL rooms/spaces found
+- "zoneType" MUST be one of the IDs listed above
+- "floor" should be the level (L1, Level 2, Ground, etc.) or empty if not specified
+- "confidence": "high" if SF was explicitly stated, "medium" if estimated
+- DO NOT invent data - only extract what you see
+- Skip totals/summary rows
+`
+  
+  let responseText = ''
+  
+  // Try Claude first
+  if (isClaudeConfigured()) {
+    try {
+      lastUsedProvider = 'claude'
+      const response = await fetch(ANTHROPIC_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4000,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Claude API error: ${response.status}`)
+      }
+      
+      const data = await response.json()
+      responseText = data.content?.[0]?.text || ''
+    } catch (error) {
+      console.error('Claude failed, trying Grok:', error)
+    }
+  }
+  
+  // Fallback to Grok
+  if (!responseText && isGrokConfigured()) {
+    lastUsedProvider = 'grok'
+    const response = await fetch(XAI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${XAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'grok-2-vision-1212',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 4000
+      })
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Grok API error: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    responseText = data.choices?.[0]?.message?.content || ''
+  }
+  
+  if (!responseText) {
+    throw new Error('No response from AI')
+  }
+  
+  // Parse JSON from response
+  const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+  if (!jsonMatch) {
+    throw new Error('Could not parse AI response')
+  }
+  
+  const parsed = JSON.parse(jsonMatch[0])
+  
+  if (!parsed.zones || !Array.isArray(parsed.zones)) {
+    throw new Error('No zones found in response')
+  }
+  
+  const zones: ExtractedZone[] = parsed.zones
+    .filter((z: any) => z.name && z.sf > 0)
+    .map((z: any) => ({
+      name: z.name,
+      type: 'extracted',
+      suggestedZoneType: z.zoneType || 'custom',
+      sf: Math.round(z.sf),
+      floor: z.floor || 'Unknown',
+      confidence: z.confidence || 'medium',
+      notes: 'Extracted from table/spreadsheet'
+    }))
+  
+  return {
+    zones,
+    totalSF: zones.reduce((sum, z) => sum + z.sf, 0),
+    pageCount: 1
+  }
+}

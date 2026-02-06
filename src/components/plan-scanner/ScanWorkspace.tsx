@@ -12,6 +12,7 @@ import ExportModal from './ExportModal'
 import ZoneMatchingModal from './ZoneMatchingModal'
 import TableImportModal from './TableImportModal'
 import { NYC_FIXTURE_DATABASE, getFixtureById } from '../../data/nycFixtures'
+import { storeImage, getImage, getImagesForScan, cleanupOldImages } from '../../lib/imageStorage'
 
 type TabType = 'drawings' | 'spaces' | 'export'
 
@@ -207,6 +208,43 @@ export default function ScanWorkspace() {
     }
   }, [scanId, scans])
 
+  // Restore images from IndexedDB when loading a scan with empty fileUrls
+  useEffect(() => {
+    const restoreImages = async () => {
+      if (!currentScan || !scanId) return
+      
+      // Check if any drawings have empty fileUrl (they need restoration)
+      const drawingsNeedingRestore = currentScan.drawings.filter(d => !d.fileUrl || d.fileUrl === '')
+      
+      if (drawingsNeedingRestore.length === 0) {
+        // Images are already loaded, clean up old images from IndexedDB
+        cleanupOldImages()
+        return
+      }
+      
+      console.log(`🔄 Restoring ${drawingsNeedingRestore.length} images from IndexedDB...`)
+      
+      // Get all images for this scan from IndexedDB
+      const storedImages = await getImagesForScan(scanId)
+      
+      if (storedImages.size === 0) {
+        console.log('⚠️ No images found in IndexedDB for this scan')
+        return
+      }
+      
+      // Restore each drawing's fileUrl
+      for (const drawing of drawingsNeedingRestore) {
+        const imageData = storedImages.get(drawing.id)
+        if (imageData) {
+          updateDrawing(currentScan.id, drawing.id, { fileUrl: imageData })
+          console.log(`✅ Restored image for: ${drawing.fileName}`)
+        }
+      }
+    }
+    
+    restoreImages()
+  }, [currentScan?.id, scanId])
+
   // Select first drawing when available
   useEffect(() => {
     if (currentScan?.drawings.length && !selectedDrawingId) {
@@ -336,6 +374,8 @@ export default function ScanWorkspace() {
                   pageNumber: pageNum,
                 }
                 addDrawing(currentScan.id, drawing)
+                // Store image in IndexedDB for persistence
+                storeImage(drawing.id, currentScan.id, base64)
                 if (pageNum === 1) {
                   setSelectedDrawingId(drawing.id)
                 }
@@ -363,6 +403,8 @@ export default function ScanWorkspace() {
         pageNumber: 1,
       }
       addDrawing(currentScan.id, drawing)
+      // Store image in IndexedDB for persistence
+      storeImage(drawing.id, currentScan.id, base64)
       setSelectedDrawingId(drawing.id)
     }
     
@@ -1442,7 +1484,7 @@ export default function ScanWorkspace() {
                   onClick={() => fileInputRef.current?.click()}
                   className="w-full px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-sm font-medium transition-colors"
                 >
-                  + Add Drawings
+                  + Add Drawings / Plans
                 </button>
               </div>
               

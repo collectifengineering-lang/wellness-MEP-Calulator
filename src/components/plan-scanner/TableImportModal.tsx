@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { ExtractedSpace } from '../../store/useScannerStore'
 import * as pdfjsLib from 'pdfjs-dist'
+import * as XLSX from 'xlsx'
 
 // Initialize PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
@@ -156,15 +157,28 @@ export default function TableImportModal({ isOpen, onClose, onImport, existingFl
         textContent = await file.text()
         
       } else if (file.type.includes('spreadsheet') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        // For Excel, we'll need to read as text and let AI parse
-        // In production, you'd use a library like xlsx
-        setError('Excel files: Please copy and paste the table content, or export as CSV')
-        setIsParsing(false)
-        return
+        // Parse Excel file using xlsx library
+        const data = await file.arrayBuffer()
+        const workbook = XLSX.read(data)
+        
+        // Get first sheet
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        
+        // Convert to JSON - each row becomes an object
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][]
+        
+        // Convert array data to readable text format for AI parsing
+        textContent = jsonData
+          .filter((row: unknown[]) => row.length > 0) // Skip empty rows
+          .map((row: unknown[]) => row.join('\t'))
+          .join('\n')
+        
+        console.log('Excel parsed text:', textContent.substring(0, 500))
         
       } else if (file.type.includes('word') || file.name.endsWith('.docx') || file.name.endsWith('.doc')) {
-        // For Word docs, similar approach
-        setError('Word files: Please copy and paste the table content')
+        // For Word docs, read as ArrayBuffer and try to extract text
+        setError('Word files: Please copy and paste the table content, or save as PDF/Excel')
         setIsParsing(false)
         return
         
@@ -254,9 +268,9 @@ export default function TableImportModal({ isOpen, onClose, onImport, existingFl
         {/* Header */}
         <div className="px-6 py-4 border-b border-surface-700 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-white">Import Spaces from Table</h2>
+            <h2 className="text-xl font-bold text-white">Import Spaces from Area Table 📊</h2>
             <p className="text-sm text-surface-400 mt-1">
-              Import room data from PDF, Excel, Word, or paste directly
+              Import room data from area schedules (Excel, PDF, CSV) or paste directly
             </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-surface-700 rounded-lg text-surface-400 hover:text-white">
@@ -361,12 +375,12 @@ Bathroom          75"
               >
                 <div className="text-4xl mb-3">📁</div>
                 <p className="text-white font-medium mb-1">Click to upload or drag and drop</p>
-                <p className="text-sm text-surface-400">PDF, CSV supported • Excel/Word: copy & paste instead</p>
+                <p className="text-sm text-surface-400">PDF, Excel (.xlsx), CSV supported</p>
               </div>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.csv,.txt"
+                accept=".pdf,.csv,.txt,.xlsx,.xls"
                 onChange={handleFileUpload}
                 className="hidden"
               />

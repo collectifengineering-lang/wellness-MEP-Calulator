@@ -1,8 +1,10 @@
 import { useState, useRef, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { extractZonesFromPDF, isXAIConfigured, isClaudeConfigured, getLastUsedProvider, type ExtractedZone } from '../../lib/xai'
 import { useProjectStore } from '../../store/useProjectStore'
 import { zoneDefaults } from '../../data/zoneDefaults'
 import type { ZoneType } from '../../types'
+import * as XLSX from 'xlsx'
 
 interface Props {
   isOpen: boolean
@@ -15,6 +17,7 @@ type ImportStep = 'upload' | 'processing' | 'review' | 'error'
 const SMALL_ZONE_SF = 200
 
 export default function PDFImportModal({ isOpen, onClose }: Props) {
+  const navigate = useNavigate()
   const { addZone } = useProjectStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -185,8 +188,12 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
     const file = e.target.files?.[0]
     if (!file) return
     
-    if (!file.type.includes('pdf') && !file.type.includes('image')) {
-      setError('Please upload a PDF or image file')
+    const isExcel = file.type.includes('spreadsheet') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')
+    const isPdf = file.type.includes('pdf')
+    const isImage = file.type.includes('image')
+    
+    if (!isPdf && !isImage && !isExcel) {
+      setError('Please upload a PDF, image, Excel, or CSV file')
       setStep('error')
       return
     }
@@ -198,7 +205,26 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
     try {
       const arrayBuffer = await file.arrayBuffer()
       
-      if (file.type.includes('pdf')) {
+      if (isExcel) {
+        // Parse Excel/CSV file
+        const workbook = XLSX.read(arrayBuffer)
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as unknown[][]
+        
+        // Convert to text for AI parsing
+        const textContent = jsonData
+          .filter((row: unknown[]) => row.length > 0)
+          .map((row: unknown[]) => row.join('\t'))
+          .join('\n')
+        
+        // Use AI to parse the table data
+        const { extractZonesFromText } = await import('../../lib/xai')
+        const result = await extractZonesFromText(textContent)
+        setExtractedZones(result.zones)
+        setSelectedZones(new Set(result.zones.map((_, i) => i)))
+        
+      } else if (isPdf) {
         const result = await extractZonesFromPDF(arrayBuffer, (current, total) => {
           setProgress({ current, total })
         })
@@ -220,7 +246,7 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
       setStep('review')
     } catch (err) {
       console.error('PDF extraction error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to extract zones from PDF')
+      setError(err instanceof Error ? err.message : 'Failed to extract zones from file')
       setStep('error')
     }
   }
@@ -293,9 +319,9 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-surface-700">
           <div>
-            <h2 className="text-xl font-semibold text-white">Import Zones from PDF</h2>
+            <h2 className="text-xl font-semibold text-white">Import Zones from Documents 📥</h2>
             <p className="text-sm text-surface-400 mt-1">
-              Upload a floor plan or area schedule to automatically extract zones
+              Upload floor plans OR area tables (Excel, PDF, CSV) to extract zones
             </p>
           </div>
           <button
@@ -327,27 +353,56 @@ export default function PDFImportModal({ isOpen, onClose }: Props) {
                 </div>
               ) : (
                 <>
-                  <div 
-                    className="w-full max-w-md border-2 border-dashed border-surface-600 rounded-xl p-8 text-center hover:border-primary-500 transition-colors cursor-pointer"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary-500/10 flex items-center justify-center">
-                      <svg className="w-8 h-8 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
+                  <div className="w-full max-w-lg space-y-4">
+                    {/* Main Upload Area */}
+                    <div 
+                      className="border-2 border-dashed border-surface-600 rounded-xl p-6 text-center hover:border-primary-500 transition-colors cursor-pointer"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <div className="flex items-center justify-center gap-4 mb-4">
+                        <div className="w-12 h-12 rounded-full bg-primary-500/10 flex items-center justify-center">
+                          <svg className="w-6 h-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                        </div>
+                        <div className="text-left">
+                          <h3 className="text-lg font-medium text-white">Upload Floor Plan or Area Table</h3>
+                          <p className="text-surface-400 text-sm">
+                            PDF, Image, Excel (.xlsx), or CSV
+                          </p>
+                        </div>
+                      </div>
+                      <span className="inline-block px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg font-medium transition-colors">
+                        Choose File
+                      </span>
                     </div>
-                    <h3 className="text-lg font-medium text-white mb-2">Upload Floor Plan</h3>
-                    <p className="text-surface-400 text-sm mb-4">
-                      PDF or image of floor plans, area schedules, or zone lists
-                    </p>
-                    <span className="inline-block px-4 py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-lg font-medium transition-colors">
-                      Choose File
-                    </span>
+                    
+                    {/* Link to Plan Scanner */}
+                    <div className="bg-surface-700/50 rounded-xl p-4 border border-surface-600">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xl">📐</span>
+                          <div>
+                            <p className="text-sm font-medium text-white">Need more control?</p>
+                            <p className="text-xs text-surface-400">Use Plan Scanner for manual tag reading & boundary detection</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            onClose()
+                            navigate('/plan-scanner')
+                          }}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm rounded-lg font-medium transition-colors"
+                        >
+                          Open Plan Scanner →
+                        </button>
+                      </div>
+                    </div>
                   </div>
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".pdf,image/*"
+                    accept=".pdf,image/*,.xlsx,.xls,.csv"
                     onChange={handleFileSelect}
                     className="hidden"
                   />
